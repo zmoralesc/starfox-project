@@ -1,17 +1,6 @@
 [gd_scene format=3]
 
 [ext_resource type="PackedScene" path="res://enemies/enemy_fighter.tscn" id="1_base"]
-[ext_resource type="Shader" path="res://effects/toon.gdshader" id="toon_shader"]
-
-[sub_resource type="ShaderMaterial" id="Mat_panel_light"]
-shader = ExtResource("toon_shader")
-shader_parameter/albedo = Color(0.36, 0.31, 0.24, 1)
-
-[sub_resource type="StandardMaterial3D" id="Mat_eye_light"]
-albedo_color = Color(1, 0.6, 0.15, 1)
-emission_enabled = true
-emission = Color(1, 0.5, 0.1, 1)
-emission_energy_multiplier = 4.0
 
 [node name="LightFighter" instance=ExtResource("1_base")]
 lead_turns = false
@@ -26,11 +15,7 @@ yaw_rate = 0.7
 turn_response = 3.0
 fire_interval = 0.8
 
-[node name="Eye" parent="Model" index="1"]
-material_override = SubResource("Mat_eye_light")
-
-[node name="PanelL" parent="Model" index="3"]
-material_override = SubResource("Mat_panel_light")
-
-[node name="PanelR" parent="Model" index="4"]
-material_override = SubResource("Mat_panel_light")
+[node name="Mantis" parent="Model" index="0"]
+accent_color = Color(0.52, 0.42, 0.28, 1)
+light_color = Color(1, 0.5, 0.1, 1)
+light_energy = 8.0

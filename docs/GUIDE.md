@@ -174,7 +174,7 @@ weapons/                 Laser bolts (one script, three scenes)
 world/                   Asteroids, the intro cutscene, speed dust, the sky; planet terrain, clouds, the play boundary, the Great Fox
 effects/                 Explosions, muzzle flashes, one-shot sounds, the shield bubble, toon shading, ink outlines
 audio/                   Sound effects (audio/sfx/), level music (LevelMusic + the Music autoload)
-models/                  3D models: the Arwing (player and wingmen), the Great Fox scenery, the destroyer (ours; built by models/destroyer/source/build_destroyer.py)
+models/                  3D models: the Arwing (player and wingmen), the Great Fox scenery, the destroyer and the enemy fighter (ours; each built by a Blender script in its source/ folder)
 comms/                   The dialogue box and its characters
 ui/                      HUD, title screen, pause menu, settings screen, scene fader, theme, the UI font (ui/fonts/)
 settings/                The Settings autoload: input bindings and display options
@@ -495,7 +495,11 @@ Measured on Corneria (3-minute runs, the player flying a loop over hills and mou
 
 ### 8.5 Enemy fighters
 
-**File:** [enemies/enemy_fighter.gd](../enemies/enemy_fighter.gd), scenes [enemy_fighter.tscn](../enemies/enemy_fighter.tscn) (elite) and [light_fighter.tscn](../enemies/light_fighter.tscn) (basic, used in level 1)
+**File:** [enemies/enemy_fighter.gd](../enemies/enemy_fighter.gd), scenes [enemy_fighter.tscn](../enemies/enemy_fighter.tscn) (elite) and [light_fighter.tscn](../enemies/light_fighter.tscn) (basic, used in level 1); model [models/enemy_fighter/](../models/enemy_fighter/) with [fighter_model.gd](../enemies/fighter_model.gd)
+
+**The model: the Venomian "Mantis".** A tapered wedge body with one big glowing compound eye on the forebody, two pincer forelegs reaching past the nose with guns slung under them, swept-back wings ending in upright tip plates, a dorsal fin and twin engines: about 6.2 m across and 5.7 m long, Arwing-sized. Olive hull, dark keel, ribs and pincers, a purple-tinted canopy. To stand out against space it carries lights in the fighter type's colour: the eye, the pincer tips, a strip wrapped round each wing's leading edge (so it faces whoever is ahead) and a bar down the front of each tip plate, bright enough to bloom; the engine glow is the `Model/Glow` node (one wide oval over both nozzles), which `Fighter` brightens with speed. Head-on the lit wings and tip plates read as a coloured "I" shape out to about 170 m; beyond about 250 m any fighter is a few pixels and the HUD brackets and radar take over.
+
+Like the destroyer, it's our own model built from code: [build_enemy_fighter.py](../models/enemy_fighter/source/build_enemy_fighter.py) (game coordinates; colours are the sRGB values the game shows) exports `enemy_fighter.glb`. One model serves both types: `FighterModel` (on the `Model/Mantis` instance) cel-shades it and paints the `Fighter_Accent` markings and `Fighter_Lights` in its `accent_color` / `light_color` / `light_energy`. The elite is purple with red lights (energy 10); `light_fighter.tscn` overrides them to tan with orange lights (energy 8). Muzzles sit at the gun tips, (±0.95, −0.42, −2.15).
 
 A four-state machine. `_update_state()` handles transitions; `_decide()` picks the goal for the current state.
 
@@ -518,11 +522,11 @@ A four-state machine. `_update_state()` handles transitions; `_decide()` picks t
 
 **Asteroids and terrain block line of sight** (the raycast uses the World layer), so hiding behind a rock, or flying low behind a hill, is a real escape.
 
-**Hurtbox.** Two boxes surround each fighter. The `CollisionShape3D` (4.4 × 4.4 × 2.4 m) is what it physically is: what you crash into. The `Hurtbox` child ([enemies/hurtbox.gd](../enemies/hurtbox.gd), an `Area3D` with a 5.5 m cube) is what friendly bolts and your crosshair hit. It's deliberately generous: the collision box is only 2.4 m deep, while the side panels you see when an enemy crosses in front of you are 4.4 m across, so many visually accurate shots used to pass through the panels' front and back halves. Measured with simulated aim at a crossing, weaving light fighter, the 5.5 m hurtbox raised the hit rate from 55% to 75% at 100 m and from 13% to 31% at 200 m (with about 1° of aim wobble). Wingmen barely changed (their kill time on a light fighter went from 3.6 to 3.4 s on average, within the noise), because their aim is already tight. To make enemies easier or harder to hit, change the box size on `Hurtbox/CollisionShape3D` in `enemy_fighter.tscn` (light fighters inherit it).
+**Hurtbox.** Two boxes surround each fighter. The `CollisionShape3D` (6.2 × 2 × 5.6 m, centred 0.5 m forward) is what it physically is: what you crash into. The `Hurtbox` child ([enemies/hurtbox.gd](../enemies/hurtbox.gd), an `Area3D`, 6.6 × 3.8 × 5.2 m, centred 0.5 m forward) is what friendly bolts and your crosshair hit. It's deliberately generous: wider and taller than the flat model, so shots that look like they clip a wing or the body count. With the old TIE-style model it was a 5.5 m cube (around a 4.4 × 4.4 × 2.4 m collision box); when the Mantis replaced it, the new box was sized to keep the hit rate about where it was, a touch in the player's favour. Simulated aim at a crossing, weaving light fighter (old cube, 4 runs → new box, 8 runs): 19.0 → 23.8% at 100 m with 0.5° of aim wobble, 20.8 → 20.8% with 1°, 4.9 → 5.8% at 200 m with 0.5°; 200 m with 1° is noisy (8.2 vs 3.9%, single runs range 0–16%). Hit rate is sensitive to the box: 6.8 × 4 × 5.6 m gave 26.9 / 24.0% at 100 m, a clear buff, and 6.4 × 3.6 × 5.0 m gave 19.8 / 19.8%. Wingmen don't notice (their kill time on a light fighter is identical with either size on each of 5 seeds, 3.5–5.2 s), because they aim at the centre. To make enemies easier or harder to hit, change the box size on `Hurtbox/CollisionShape3D` in `enemy_fighter.tscn` (light fighters inherit it). `radius` (aim assist, avoidance) is 3.5.
 
 `begin_launch(duration)` is used by destroyer hangars: the fighter flies straight out with collisions off (so it can leave through the hull), then the AI takes over.
 
-The two scenes differ only in exports: the light fighter has 3 HP, a fixed 55 m/s, slower turns and a slower fire rate. The elite has 4 HP, can speed up and boost, and aims much better: `lead_turns` on and an `aim_scatter` of 2. **The light fighter inherits the elite scene**, so anything set there applies to it too unless `light_fighter.tscn` overrides it, as it does for `lead_turns` (off) and `aim_scatter` (0).
+The two scenes differ only in exports and the model's colours: the light fighter has 3 HP, a fixed 55 m/s, slower turns and a slower fire rate. The elite has 4 HP, can speed up and boost, and aims much better: `lead_turns` on and an `aim_scatter` of 2. **The light fighter inherits the elite scene**, so anything set there applies to it too unless `light_fighter.tscn` overrides it, as it does for `lead_turns` (off) and `aim_scatter` (0).
 
 ### 8.6 Lasers and hit detection
 

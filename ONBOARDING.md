@@ -12,7 +12,7 @@ This guide assumes you know Godot 4 basics: scenes, nodes, signals and GDScript.
 
 1. Install **Godot 4.7** (standard build, not .NET). The project uses Jolt Physics and Forward+, both built in.
 2. Open the folder in the Godot project manager and press **F5**.
-3. Almost every asset (meshes, sky, effects) is generated in code or built from primitives. The exceptions are the sound effects in `audio/sfx/`, the player/wingman ship model in `models/arwing_assault/`, the Great Fox in `models/great_fox/`, the destroyer in `models/destroyer/` (built by a Blender script there) and the UI font in `ui/fonts/`; all are in the repo, and Godot imports them the first time the project opens.
+3. Almost every asset (meshes, sky, effects) is generated in code or built from primitives. The exceptions are the sound effects in `audio/sfx/`, the player/wingman ship model in `models/arwing_assault/`, the Great Fox in `models/great_fox/`, the destroyer and enemy fighter in `models/destroyer/` and `models/enemy_fighter/` (built by Blender scripts there) and the UI font in `ui/fonts/`; all are in the repo, and Godot imports them the first time the project opens.
 
 **Controls**
 
@@ -55,6 +55,7 @@ enemies/
   enemy_fighter.gd / .tscn EnemyFighter: patrol / chase / evade / seek state machine (the .tscn is the elite fighter)
   light_fighter.tscn       Basic fighter used in level 1: inherits enemy_fighter.tscn, fixed speed, slower turns/fire, 3 HP (elite: 4)
   hurtbox.gd               Hurtbox: enlarged hit zone (Area3D) on enemy fighters; bolts and crosshair hit it, crashes don't
+  fighter_model.gd         FighterModel: on the imported fighter model; cel-shades it, paints accent + lights per fighter type
   enemy_spawner.gd         EnemySpawner: waves, destroyer every 5th wave, global fighter cap
   destroyer.gd / .tscn     Destroyer: capital ship (movement, fade, launches, kill rule)
   destroyer_part.gd        DestroyerPart: a destructible subsystem (bridge / thruster / turret / hangar)
@@ -112,6 +113,8 @@ models/
   great_fox/               Imported Great Fox III (glTF, textures cut to 1024 px; no licence came with it, see README.txt)
   destroyer/               The destroyer (our own model): hull, bridge, thruster and hangar-door .glb files
     source/                build_destroyer.py (builds and exports them in Blender) + collision.txt (hull collision pieces)
+  enemy_fighter/           The Venomian "Mantis" enemy fighter (our own model), one .glb for every fighter type
+    source/                build_enemy_fighter.py (builds and exports it in Blender)
 ```
 
 Every script with a `class_name` (`Fighter`, `Ship`, `Wingman`, `EnemyFighter`, `WingCommand`, `Laser`, and so on) can be used as a type anywhere.
@@ -191,7 +194,7 @@ Defined as constants on `Fighter`.
 | World | 1 (`LAYER_WORLD`) | Asteroids, destroyer hull | everything |
 | Friendly | 2 (`LAYER_FRIENDLY`) | Player (`collision_mask` = 5: World + Enemy) + wingmen (World only) | World + Enemy (player) |
 | Enemy | 4 (`LAYER_ENEMY`) | Enemy fighters, destroyer parts | World only (parts collide with nothing) |
-| Enemy hurtbox | 8 (`LAYER_HURTBOX`) | `Hurtbox` areas on enemy fighters (5.5 m cube; the collision box is 4.4 × 4.4 × 2.4) | nothing: only friendly bolts and the crosshair ray see it |
+| Enemy hurtbox | 8 (`LAYER_HURTBOX`) | `Hurtbox` areas on enemy fighters (6.6 × 3.8 × 5.2 m; the collision box is 6.2 × 2 × 5.6) | nothing: only friendly bolts and the crosshair ray see it |
 
 - **Crashing:** if the player's ship collides with anything, it takes `crash_damage` 30 (once per `crash_cooldown` 0.5 s) and bounces off over `crash_recover_time` 0.6 s: the nose swings smoothly (`crash_turn_sharpness` 5) to a glancing deflection (`crash_deflect` 0.5), a fading push (`crash_push_speed` 10 m/s, `crash_push_fade` 4/s) carries it clear, steering is ignored meanwhile, and the camera shakes (`crash_shake` 0.6). All in the *Crash* export group on `Ship`. Wingmen and enemies just slide or steer around.
 
@@ -329,6 +332,8 @@ A state machine. The HUD doesn't show the state (every enemy marker is the same 
 | `SEEK` | Searches near where the player was heading (60° cone, 450 m) | Spots the player → `CHASE`. After 12 s → `PATROL` |
 
 Any hit triggers `EVADE` (outside the cooldown), through `notify_shot`. **Asteroids block line of sight.**
+
+**Model (the Venomian "Mantis"):** one `.glb` (`models/enemy_fighter/`, built by `source/build_enemy_fighter.py`) for both types, about 6.2 × 5.7 m. `FighterModel` on `Model/Mantis` paints `Fighter_Accent` and `Fighter_Lights` (eye, pincer tips, wing leading edges, tip-plate fronts): elite purple + red lights (energy 10), light fighter tan + orange (energy 8, overridden in `light_fighter.tscn`). Engine glow: `Model/Glow`, one oval over the twin nozzles. Muzzles at the gun tips (±0.95, −0.42, −2.15). Hurtbox 6.6 × 3.8 × 5.2 m, centred 0.5 m forward (about the old 5.5 m cube's hit rate, slightly higher); collision box 6.2 × 2 × 5.6, same centre; `radius` 3.5.
 
 **Waves (`EnemySpawner`):** `enemy_scene` sets the level's fighter type for both waves and destroyer hangars. The base level (`levels/level_base.tscn`, so every mission) uses `light_fighter.tscn`; the script default is the elite `enemy_fighter.tscn`. 3 fighters, then one more per wave up to 8. Each wave spawns 600 m out, roughly ahead of the player and facing random directions. Every 5th wave also brings a destroyer (`destroyer_every`, 0 = never). The next wave comes 6 s after every enemy is gone, destroyer included. At most `max_fighters` (12) enemy fighters can be alive at once, counting hangar launches. Anything that should hold up the next wave must be registered with `spawner.track(node)`. Waves don't start until `start()` is called.
 
