@@ -174,7 +174,7 @@ weapons/                 Laser bolts (one script, three scenes)
 world/                   Asteroids, the intro cutscene, speed dust, the sky; planet terrain, clouds, the play boundary, the Great Fox
 effects/                 Explosions, muzzle flashes, one-shot sounds, the shield bubble, toon shading, ink outlines
 audio/                   Sound effects (audio/sfx/), level music (LevelMusic + the Music autoload)
-models/                  Imported 3D models (the Arwing used by the player and wingmen; the Great Fox scenery)
+models/                  3D models: the Arwing (player and wingmen), the Great Fox scenery, the destroyer (ours; built by models/destroyer/source/build_destroyer.py)
 comms/                   The dialogue box and its characters
 ui/                      HUD, title screen, pause menu, settings screen, scene fader, theme, the UI font (ui/fonts/)
 settings/                The Settings autoload: input bindings and display options
@@ -669,32 +669,47 @@ A "threat" is an enemy in CHASE (`threats()`), nearest to you first. Once on one
 
 ### 8.10 The destroyer
 
-**Files:** [enemies/destroyer.gd](../enemies/destroyer.gd), [destroyer_part.gd](../enemies/destroyer_part.gd), [destroyer_turret.gd](../enemies/destroyer_turret.gd), [destroyer_hangar.gd](../enemies/destroyer_hangar.gd), [obstacle_proxy.gd](../enemies/obstacle_proxy.gd); scene [destroyer.tscn](../enemies/destroyer.tscn)
+**Files:** [enemies/destroyer.gd](../enemies/destroyer.gd), [destroyer_part.gd](../enemies/destroyer_part.gd), [destroyer_turret.gd](../enemies/destroyer_turret.gd), [destroyer_hangar.gd](../enemies/destroyer_hangar.gd), [obstacle_proxy.gd](../enemies/obstacle_proxy.gd); scene [destroyer.tscn](../enemies/destroyer.tscn); model [models/destroyer/](../models/destroyer/)
 
-**Structure.** The hull is the `AnimatableBody3D` root, on the World layer: it blocks shots, sight and ships, but can't be damaged. Damage goes to **parts**, separate `StaticBody3D` children on the Enemy layer:
+**The model.** A broad armoured body splitting into two blade prongs (with an open gap between them and a glowing emitter at their root), a raised deck, a bridge tower with a flared neck under the bridge, an engine block with three thrusters, and hangar housings on both flanks. It's about 368 m long and 175 m wide (1.5× the old box-built wedge), dark gunmetal with crimson bands, amber windows and red-orange engines. It's our own design, built from code: [build_destroyer.py](../models/destroyer/source/build_destroyer.py) runs in Blender (Scripting tab, the Blender MCP, or `blender --background --python build_destroyer.py -- --export`) and exports four `.glb` files next to it:
+
+| File | What | Pivot |
+|---|---|---|
+| `destroyer_hull.glb` | everything that isn't a part | ship origin |
+| `destroyer_bridge.glb` | bridge block, windows, sensor domes, antenna | `BRIDGE_POS` (0, 75, 120) |
+| `destroyer_thruster.glb` | one thruster (used three times), nozzle towards +Z | the nozzle centre |
+| `destroyer_hangar_door.glb` | one door, stripes facing −X (the right door is turned 180°) | the door centre |
+
+Everything in the script is in game coordinates (−Z is the bow), so its numbers match `destroyer.tscn`. Its colours are the **sRGB values the game ends up with**: the script converts them to the linear values Blender and glTF store. They're deliberately dark because the toon light is bright (the old hull's 0.46 grey rendered near-white). It also writes `collision.txt`, the hull's convex collision pieces ready to paste into `destroyer.tscn`. **If you change the shape, re-export, paste the new collision pieces, and update `hull_outline` / `extra_proxies` and any part positions in the scene.** `Destroyer._ready()` cel-shades the imported materials with `ToonMaterial`, like the Great Fox; the editor shows the originals.
+
+**Structure.** The hull is the `AnimatableBody3D` root, on the World layer: it blocks shots, sight and ships, but can't be damaged. Its collision is eight convex pieces (body, both prongs, keel, deck, superstructure, tower, neck) plus boxes for the engine block and hangar housings. Damage goes to **parts**, separate `StaticBody3D` children on the Enemy layer, each holding its model as a `Model` child:
 
 | Part | Count | Health | Score | Notes |
 |---|---|---|---|---|
-| Bridge | 1 | 70 | 3 | Must die to kill the ship |
-| Thruster | 3 | 46 | 2 | Must all die to kill the ship; each lost one slows it |
-| Hangar door | 2 | 29 | 2 | Blown off → no more launches from that side |
-| Turret | 8 | 12 | 1 | Disabled when destroyed |
+| Bridge | 1 | 70 | 3 | Must die to kill the ship. `radius` 27 |
+| Thruster | 3 | 46 | 2 | Must all die to kill the ship; each lost one slows it. `radius` 15 |
+| Hangar door | 2 | 29 | 2 | Blown off → no more launches from that side. `radius` 15; slides up `open_height` 19.5 m |
+| Turret | 8 | 12 | 1 | Disabled when destroyed. `radius` 6; 1.5× the old size, gunmetal |
 | The destroyer itself | | | +10 | |
 
-`Destroyer._ready()` finds every `DestroyerPart` below it and sorts them into `bridge`, `thrusters`, `turrets`, `hangars`. When any part emits `destroyed`, `_on_part_destroyed` checks the **kill rule**: bridge destroyed and no thrusters left → `_die()`, a chain of 14 explosions along the hull, a final blast, a fade-out, then `destroyed` and `queue_free()`.
+Health didn't change with the 1.5× scale-up: bigger parts are just easier to hit, in the player's favour. `radius` (aim assist, wingman fire tolerance, HUD brackets) grew with them.
+
+`Destroyer._ready()` finds every `DestroyerPart` below it and sorts them into `bridge`, `thrusters`, `turrets`, `hangars`. When any part emits `destroyed`, `_on_part_destroyed` checks the **kill rule**: bridge destroyed and no thrusters left → `_die()`, a chain of 14 explosions scattered over the hull (`_random_hull_point()`, inside `hull_outline`), a final blast, a fade-out, then `destroyed` and `queue_free()`.
 
 A destroyed part stays in place, charred (`_char_meshes`), with its lights out and a dim ember light, and leaves the `targets` group. Parts ignore hits until `destroyer.is_vulnerable()` (fully faded in and not dying).
 
 **Life cycle.**
 1. `arrive(destination)`: face the centre, tween visibility 0 → 1 over 4 s (every mesh's `transparency` and every light's energy), then `_activate()`.
-2. Crawl towards the centre at `cruise_speed × (0.25 + 0.75 × fraction of thrusters intact)`, stopping 200 m short. Asteroids in its path are `shatter()`ed (no score).
+2. Crawl towards the centre at `cruise_speed × (0.25 + 0.75 × fraction of thrusters intact)`, stopping `stop_distance` short (300 m in `destroyer.tscn`, so the bigger hull doesn't park over the middle; the script default is 200). Asteroids in its path are `shatter()`ed (no score).
 3. Every `launch_interval` (40 s, first after 15 s), launch a squadron from the next intact hangar, within the fighter cap; if there's no room, retry in 5 s.
 
 **Turrets** pick the player if within `aggro_range` (450 m), else the nearest wingman in range (for show: wingmen can't be hurt). They turn at `turn_rate`, can only pitch from −5° to 80° (blind spots), need their barrels lined up within 3°, and need a clear line of fire past the hull and asteroids.
 
 **Hangars** run their launch as a coroutine: door slides up (tween), fighters spawn at the launch marker one by one with `begin_launch()`, door closes.
 
-**Obstacle proxies.** AI avoidance sees only spheres, so `_build_obstacle_proxies()` covers the wedge-shaped hull with a grid of 14 m spheres, plus one for the bridge tower and one per thruster. **If you change the hull shape, update `HULL_LENGTH`, `HULL_HALF_WIDTH` and the tower proxy to match.**
+**Obstacle proxies.** AI avoidance sees only spheres, so `_build_obstacle_proxies()` fills `hull_outline` (the hull seen from above, (x, z) points, set in `destroyer.tscn`) with a grid of `proxy_radius` (16 m) spheres every `proxy_spacing` (20 m across, 25 m along), keeping only the points inside the outline. On top come `extra_proxies` (the bridge tower and superstructure, the hangar housings) and one per thruster: 89 spheres in all. The gap between the prongs has no spheres. It's open for the player to fly through, but the avoidance margin (radius × 1.3 + 6 m) still makes the AI treat it as closed.
+
+**Wingmen against it** (Attack orders on a turret, the bridge and the centre thruster, 4 runs each; the old ship's numbers from the same test in brackets): turret 3.6–4.1 s (4.1–5.2), bridge 5.9–6.4 s with no hull contact (13.6–38.8 s, scraping the hull in 2 runs), centre thruster 18–33 s (38–46 s, or not killed in 60 s in 2 runs). The centre thruster is still the hard one: sitting between the other two behind the engine block, wingmen scrape the hull in 3 runs out of 4 (mostly a few frames, once 83).
 
 **`sync_to_physics` is off** because the destroyer moves itself outside the physics step in places (`arrive()`); with sync on, the physics server would overwrite those transforms.
 

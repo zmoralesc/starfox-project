@@ -1,0 +1,23 @@
+[sub_resource type="ConvexPolygonShape3D" id="Shape_body_aft"]
+points = PackedVector3Array(-75, -15, 177, -84, -15, 90, -45, -15, -30, 45, -15, -30, 84, -15, 90, 75, -15, 177, -75, 12, 177, -84, 12, 90, -45, 12, -30, 45, 12, -30, 84, 12, 90, 75, 12, 177)
+
+[sub_resource type="ConvexPolygonShape3D" id="Shape_prong_l"]
+points = PackedVector3Array(-45, -15, -30, -51, -15, -187.5, -24, -15, -157.5, -15, -15, -45, -45, 12, -30, -51, 12, -187.5, -24, 12, -157.5, -15, 12, -45)
+
+[sub_resource type="ConvexPolygonShape3D" id="Shape_prong_r"]
+points = PackedVector3Array(15, -15, -45, 24, -15, -157.5, 51, -15, -187.5, 45, -15, -30, 15, 12, -45, 24, 12, -157.5, 51, 12, -187.5, 45, 12, -30)
+
+[sub_resource type="ConvexPolygonShape3D" id="Shape_keel"]
+points = PackedVector3Array(-54, -30, 165, -36, -30, -60, 36, -30, -60, 54, -30, 165, -57.24, -15, 171.75, -38.16, -15, -66.75, 38.16, -15, -66.75, 57.24, -15, 171.75)
+
+[sub_resource type="ConvexPolygonShape3D" id="Shape_deck"]
+points = PackedVector3Array(-45, 12, 165, -51, 12, 90, -18, 12, -37.5, 18, 12, -37.5, 51, 12, 90, 45, 12, 165, -42.3, 24, 159.45, -47.94, 24, 88.95, -16.92, 24, -30.9, 16.92, 24, -30.9, 47.94, 24, 88.95, 42.3, 24, 159.45)
+
+[sub_resource type="ConvexPolygonShape3D" id="Shape_super"]
+points = PackedVector3Array(-27, 24, 150, -21, 24, 67.5, 21, 24, 67.5, 27, 24, 150, -23.22, 39, 144.225, -18.06, 39, 73.275, 18.06, 39, 73.275, 23.22, 39, 144.225)
+
+[sub_resource type="ConvexPolygonShape3D" id="Shape_tower"]
+points = PackedVector3Array(-12, 39, 134, -9, 39, 106, 9, 39, 106, 12, 39, 134, -9, 62, 130.5, -6.75, 62, 109.5, 6.75, 62, 109.5, 9, 62, 130.5)
+
+[sub_resource type="ConvexPolygonShape3D" id="Shape_neck"]
+points = PackedVector3Array(-9, 62, 130.5, -6.75, 62, 109.5, 6.75, 62, 109.5, 9, 62, 130.5, -16, 70, 128.5, -16, 70, 111.5, 16, 70, 111.5, 16, 70, 128.5)

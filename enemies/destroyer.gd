@@ -9,15 +9,31 @@ extends AnimatableBody3D
 ## slows it down.
 ##
 ## The hull itself (this body) is on the World layer: it stops all shots,
-## blocks line of sight and is solid. A grid of ObstacleProxy spheres matching
-## the hull shape lets the AI steer around it.
+## blocks line of sight and is solid. A grid of ObstacleProxy spheres filling
+## hull_outline lets the AI steer around it.
+##
+## The model is built in Blender by models/destroyer/source/build_destroyer.py
+## (one .glb for the hull, one per part type); its materials are cel-shaded at
+## load (ToonMaterial).
 
 signal destroyed
 
-## Hull dimensions, matching the meshes in destroyer.tscn (-Z is the bow).
-const HULL_LENGTH := 250.0
-const HULL_HALF_WIDTH := 55.0  # at the stern; the hull narrows to a point at the bow
+@export_group("Hull shape")
+## The hull's outline seen from above, as (x, z) points in this node's space
+## (-Z is the bow), matching the model. Avoidance spheres fill it and death
+## explosions are scattered inside it. Gaps in the outline (between the prongs)
+## stay open.
+@export var hull_outline := PackedVector2Array()
+## Height of the avoidance spheres' centres, and their radius...
+@export var proxy_height := -2.0
+@export var proxy_radius := 16.0
+## ...and their spacing across (x) and along (z) the hull.
+@export var proxy_spacing := Vector2(20.0, 25.0)
+## Extra spheres for parts that stand out of the hull outline (the bridge
+## tower, hangar housings): local position in xyz, radius in w.
+@export var extra_proxies: Array[Vector4] = []
 
+@export_group("Behaviour")
 @export var cruise_speed := 8.0
 ## Stops this far from its destination (the middle of the zone).
 @export var stop_distance := 200.0
@@ -47,6 +63,8 @@ var _dying := false
 var _launch_timer := 0.0
 var _next_hangar := 0
 var _proxies: Array[ObstacleProxy] = []
+## hull_outline's bounding rectangle (x, z).
+var _hull_bounds := Rect2()
 var _meshes: Array[GeometryInstance3D] = []
 var _lights: Dictionary = {}  # Light3D -> full energy
 
@@ -68,7 +86,12 @@ func _ready() -> void:
 				turrets.append(part as DestroyerTurret)
 			DestroyerPart.Kind.HANGAR:
 				hangars.append(part as DestroyerHangar)
+	_hull_bounds = Rect2(hull_outline[0], Vector2.ZERO) if not hull_outline.is_empty() else Rect2()
+	for point in hull_outline:
+		_hull_bounds = _hull_bounds.expand(point)
 	_build_obstacle_proxies()
+	# Cel-shade the imported models' materials to match the rest of the game.
+	ToonMaterial.convert_tree(self)
 	_collect_visuals(self)
 	_set_visibility(0.0)
 
@@ -160,18 +183,17 @@ func _die() -> void:
 	get_tree().call_group("hud", "add_score", kill_score)
 	# A chain of explosions along the hull, a final blast, then fade away.
 	for i in 14:
-		var z := randf_range(-HULL_LENGTH * 0.45, HULL_LENGTH * 0.5)
-		var half_width := _hull_half_width(z) * 0.8
-		var local := Vector3(randf_range(-half_width, half_width), randf_range(0.0, 20.0), z)
-		Impact.spawn(get_tree().current_scene, global_transform * local, Color(1.0, 0.55, 0.2), randf_range(15.0, 30.0))
+		var spot := _random_hull_point()
+		var local := Vector3(spot.x, randf_range(0.0, 30.0), spot.y)
+		Impact.spawn(get_tree().current_scene, global_transform * local, Color(1.0, 0.55, 0.2), randf_range(22.0, 45.0))
 		# Every other blast, lower and slower than a fighter's: it's a big ship.
 		if i % 2 == 0:
 			SoundFX.play_at(get_tree().current_scene, explosion_sound, global_transform * local, 0.0, randf_range(0.6, 0.8))
 		await get_tree().create_timer(0.22, false).timeout
 		if not is_inside_tree():
 			return
-	Impact.spawn(get_tree().current_scene, global_transform * Vector3(0, 10, 30), Color(1.0, 0.75, 0.4), 70.0)
-	SoundFX.play_at(get_tree().current_scene, explosion_sound, global_transform * Vector3(0, 10, 30), 4.0, 0.5)
+	Impact.spawn(get_tree().current_scene, global_transform * Vector3(0, 15, 45), Color(1.0, 0.75, 0.4), 105.0)
+	SoundFX.play_at(get_tree().current_scene, explosion_sound, global_transform * Vector3(0, 15, 45), 4.0, 0.5)
 	var tween := create_tween()
 	tween.tween_method(_set_visibility, 1.0, 0.0, fade_out_time)
 	await tween.finished
@@ -179,18 +201,26 @@ func _die() -> void:
 	queue_free()
 
 
-## Hull half-width at a given z (the hull is a wedge: a point at the bow).
-func _hull_half_width(z: float) -> float:
-	return HULL_HALF_WIDTH * clampf((z + HULL_LENGTH * 0.5) / HULL_LENGTH, 0.0, 1.0)
+## A random (x, z) point on the hull, inside hull_outline (in from its edges
+## a little, so blasts sit on the hull rather than beside it).
+func _random_hull_point() -> Vector2:
+	var inner := Rect2(_hull_bounds.get_center() - _hull_bounds.size * 0.4, _hull_bounds.size * 0.8)
+	for attempt in 30:
+		var point := Vector2(randf_range(inner.position.x, inner.end.x), randf_range(inner.position.y, inner.end.y))
+		if Geometry2D.is_point_in_polygon(point, hull_outline):
+			return point
+	return _hull_bounds.get_center()
 
 
 ## Asteroids in the way get smashed (no score for the player).
 func _smash_asteroids() -> void:
+	# Only rocks within reach of the hull are worth checking against every sphere.
+	var reach := _hull_bounds.size.length() * 0.5 + 20.0
 	for node in get_tree().get_nodes_in_group("obstacles"):
 		var asteroid := node as Asteroid
 		if asteroid == null or asteroid.health <= 0:
 			continue
-		if global_position.distance_to(asteroid.global_position) > HULL_LENGTH * 0.6 + asteroid.radius:
+		if global_position.distance_to(asteroid.global_position) > reach + asteroid.radius:
 			continue
 		for proxy in _proxies:
 			if proxy.global_position.distance_to(asteroid.global_position) < proxy.radius + asteroid.radius * 0.85:
@@ -198,27 +228,28 @@ func _smash_asteroids() -> void:
 				break
 
 
-## Cover the hull with spheres so AI ships steer around its real shape.
+## Cover the hull with spheres so AI ships steer around its real shape: a grid
+## over hull_outline (symmetric about the centre line), keeping only points
+## inside it, plus extra_proxies and one per thruster.
 func _build_obstacle_proxies() -> void:
-	var z := -HULL_LENGTH * 0.5 + 15.0
-	while z <= HULL_LENGTH * 0.5:
-		var half_width := maxf(_hull_half_width(z) - 6.0, 0.0)
+	var z := _hull_bounds.position.y + proxy_spacing.y * 0.5
+	while z <= _hull_bounds.end.y:
 		var x := 0.0
-		_add_proxy(Vector3(0.0, 4.0, z), 14.0)
-		x = 22.0
-		while x <= half_width:
-			_add_proxy(Vector3(x, 4.0, z), 14.0)
-			_add_proxy(Vector3(-x, 4.0, z), 14.0)
-			x += 22.0
-		z += 25.0
-	_add_proxy(Vector3(0.0, 36.0, 90.0), 18.0)  # bridge tower
+		while x <= _hull_bounds.end.x:
+			for side: float in ([1.0] if x == 0.0 else [1.0, -1.0]):
+				if Geometry2D.is_point_in_polygon(Vector2(x * side, z), hull_outline):
+					_add_proxy(Vector3(x * side, proxy_height, z), proxy_radius)
+			x += proxy_spacing.x
+		z += proxy_spacing.y
+	for extra in extra_proxies:
+		_add_proxy(Vector3(extra.x, extra.y, extra.z), extra.w)
 	for thruster in thrusters:
-		_add_proxy(thruster.position, 11.0)
+		_add_proxy(thruster.position, thruster.radius)
 
 
-func _add_proxy(local_position: Vector3, proxy_radius: float) -> void:
+func _add_proxy(local_position: Vector3, sphere_radius: float) -> void:
 	var proxy := ObstacleProxy.new()
-	proxy.radius = proxy_radius
+	proxy.radius = sphere_radius
 	proxy.position = local_position
 	add_child(proxy)
 	_proxies.append(proxy)

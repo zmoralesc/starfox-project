@@ -12,7 +12,7 @@ This guide assumes you know Godot 4 basics: scenes, nodes, signals and GDScript.
 
 1. Install **Godot 4.7** (standard build, not .NET). The project uses Jolt Physics and Forward+, both built in.
 2. Open the folder in the Godot project manager and press **F5**.
-3. Almost every asset (meshes, sky, effects) is generated in code or built from primitives. The exceptions are the sound effects in `audio/sfx/`, the player/wingman ship model in `models/arwing_assault/`, the Great Fox in `models/great_fox/` and the UI font in `ui/fonts/`; all are in the repo, and Godot imports them the first time the project opens.
+3. Almost every asset (meshes, sky, effects) is generated in code or built from primitives. The exceptions are the sound effects in `audio/sfx/`, the player/wingman ship model in `models/arwing_assault/`, the Great Fox in `models/great_fox/`, the destroyer in `models/destroyer/` (built by a Blender script there) and the UI font in `ui/fonts/`; all are in the repo, and Godot imports them the first time the project opens.
 
 **Controls**
 
@@ -110,6 +110,8 @@ comms/
 models/
   arwing_assault/          Imported Arwing (glTF, CC-BY 4.0, credit in license.txt): the player and wingman model
   great_fox/               Imported Great Fox III (glTF, textures cut to 1024 px; no licence came with it, see README.txt)
+  destroyer/               The destroyer (our own model): hull, bridge, thruster and hangar-door .glb files
+    source/                build_destroyer.py (builds and exports them in Blender) + collision.txt (hull collision pieces)
 ```
 
 Every script with a `class_name` (`Fighter`, `Ship`, `Wingman`, `EnemyFighter`, `WingCommand`, `Laser`, and so on) can be used as a type anywhere.
@@ -331,7 +333,8 @@ Any hit triggers `EVADE` (outside the cooldown), through `notify_shot`. **Astero
 **Waves (`EnemySpawner`):** `enemy_scene` sets the level's fighter type for both waves and destroyer hangars. The base level (`levels/level_base.tscn`, so every mission) uses `light_fighter.tscn`; the script default is the elite `enemy_fighter.tscn`. 3 fighters, then one more per wave up to 8. Each wave spawns 600 m out, roughly ahead of the player and facing random directions. Every 5th wave also brings a destroyer (`destroyer_every`, 0 = never). The next wave comes 6 s after every enemy is gone, destroyer included. At most `max_fighters` (12) enemy fighters can be alive at once, counting hangar launches. Anything that should hold up the next wave must be registered with `spawner.track(node)`. Waves don't start until `start()` is called.
 
 ### Destroyer (`Destroyer`)
-- **Arrival:** appears at `zone_radius` (1000 m) from the centre, fades in over 4 s (`GeometryInstance3D.transparency` on every mesh), then crawls inward at 8 m/s and stops 200 m from the centre. It smashes asteroids in its path with `Asteroid.shatter()`, which awards no score. Fewer working thrusters make it slower.
+- **Arrival:** appears at `zone_radius` (1000 m) from the centre, fades in over 4 s (`GeometryInstance3D.transparency` on every mesh), then crawls inward at 8 m/s and stops `stop_distance` (300 m, set in `destroyer.tscn`) from the centre. It smashes asteroids in its path with `Asteroid.shatter()`, which awards no score. Fewer working thrusters make it slower.
+- **Model:** our own, about 368 × 175 m (1.5× the old one): forked prow with an open gap, bridge tower, three thrusters, side hangars; gunmetal, crimson, amber, red-orange engines. Built in Blender by `models/destroyer/source/build_destroyer.py` (game coordinates; colours are the sRGB values the game shows), exported as four `.glb` files and cel-shaded at load (`ToonMaterial`).
 - **Hull and parts:** the hull is the `AnimatableBody3D` root, on the World layer. All damage goes through `DestroyerPart` children on the Enemy layer, and the parts ignore hits until `is_vulnerable()` (fully faded in and not dying).
 - **Kill rule:** destroying the bridge **and** all three thrusters starts a chain of explosions, then a fade-out, then `destroyed`.
 - **Turrets (`DestroyerTurret`):** a destroyed turret is disabled, charred and stays on the hull.
@@ -342,15 +345,16 @@ Any hit triggers `EVADE` (outside the cooldown), through `notify_shot`. **Astero
   - **Destroying a door** blows it off and stops launches from that side.
 - **Health and score:**
 
-  | Part | Health | Score |
-  |---|---|---|
-  | Bridge | 70 | 3 |
-  | Each thruster | 46 | 2 |
-  | Each hangar door | 29 | 2 |
-  | Each turret | 12 | 1 |
-  | Killing the destroyer | | +10 |
+  | Part | Health | Score | `radius` |
+  |---|---|---|---|
+  | Bridge | 70 | 3 | 27 |
+  | Each thruster | 46 | 2 | 15 |
+  | Each hangar door | 29 | 2 | 15 |
+  | Each turret | 12 | 1 | 6 |
+  | Killing the destroyer | | +10 | |
 
-- **AI steering:** the hull is covered with `ObstacleProxy` spheres generated in `_build_obstacle_proxies()`. If you change the hull's shape in `destroyer.tscn`, update `HULL_LENGTH` / `HULL_HALF_WIDTH` and the bridge-tower proxy to match.
+- **AI steering:** `_build_obstacle_proxies()` fills `hull_outline` (top-down (x, z) outline, set in `destroyer.tscn`) with 16 m `ObstacleProxy` spheres every 20 × 25 m, plus `extra_proxies` (tower, superstructure, hangar housings) and one per thruster: 89 in all. The gap between the prongs is open for the player; the AI avoids it. If you change the model, re-export, paste the new `collision.txt` pieces and update `hull_outline`, `extra_proxies` and part positions.
+- **Wingmen vs. parts** (Attack order, 4 runs): turret 3.6–4.1 s, bridge 5.9–6.4 s, centre thruster 18–33 s (it still makes them scrape the hull in most runs). The old ship: 4.1–5.2 s, 13.6–38.8 s, 38 s to never.
 
 ### Intro (`IntroCutscene`)
 1. Places the formation at the `IntroStart` marker on autopilot. The HUD is hidden and the camera's physics is turned off.
