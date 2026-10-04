@@ -15,7 +15,7 @@ Instructions for coding agents working in this repository. Humans: start with [d
 
 - **OS / shell:** Windows 11. Both PowerShell and Git Bash are available; the commands below are Bash.
 - **Godot executable** (this machine): `C:/Users/zemc7/OneDrive/Documentos/GodotEngine/Godot_v4.7.2-stable_win64.exe`. Referred to as `$GODOT` below.
-- **Not a git repository.** There is no version history to fall back on. Read a file before overwriting it, and make targeted edits rather than rewrites.
+- **Git repository** on branch `main`, remote `origin` = `git@github.com:zmoralesc/starfox-project.git` (private, SSH key auth). Commit and push only when the user asks. Uncommitted work has no history to fall back on, so still read a file before overwriting it and make targeted edits rather than rewrites. `.godot/` (the import cache) is ignored; `.gitattributes` stores text files with LF line endings.
 - **The user often has the Godot editor open.** Scenes may be re-saved by the editor between your turns (it adds `uid=` and `unique_id=` attributes and may change values). Re-read a `.tscn` before editing it, keep values the user changed, and after editing scene files on disk tell the user to reload them in the editor rather than saving the open copies.
 - **No Python.** Use Bash tools (`sed`, `awk`, `grep`) or the file-editing tools. Beware: `awk -v file="$TMP/..."` breaks on Windows backslash paths; prefer the Edit tool for multi-line changes.
 
