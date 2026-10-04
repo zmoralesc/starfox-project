@@ -44,10 +44,9 @@ const HIT_MARKER_WIDTH := 6.0
 
 @export_group("Enemy markers")
 ## Enemy fighters get brackets only within this distance of the crosshair (in
-## pixels of the base layout)...
+## pixels of the base layout). They pop in and out at the edge, no fade, like
+## a combat visor locking on.
 @export_range(20.0, 400.0, 1.0, "suffix:px") var enemy_marker_radius := 180.0
-## ...fading out over this many pixels beyond it.
-@export_range(0.0, 200.0, 1.0, "suffix:px") var enemy_marker_fade := 40.0
 ## No brackets on enemies that something solid (terrain, an asteroid, the
 ## destroyer) hides from the camera, so they can't be tracked through cover.
 ## Clouds don't count: they have no collision.
@@ -195,20 +194,8 @@ func _draw_enemies(cam: Camera3D) -> void:
 		var p := cam.unproject_position(pos)
 		if not visible_rect.has_point(p):
 			continue
-		var alpha := 0.0 if _hidden_enemies.has(enemy) else _crosshair_proximity(p)
-		if alpha > 0.0:
-			_draw_brackets(p, 10.0, Color(COLOR_ENEMY, COLOR_ENEMY.a * alpha))
-
-
-## 1 within enemy_marker_radius of the crosshair, fading to 0 over
-## enemy_marker_fade beyond it.
-func _crosshair_proximity(p: Vector2) -> float:
-	var beyond := p.distance_to(_crosshair_pos) - enemy_marker_radius
-	if beyond <= 0.0:
-		return 1.0
-	if enemy_marker_fade <= 0.0:
-		return 0.0
-	return clampf(1.0 - beyond / enemy_marker_fade, 0.0, 1.0)
+		if not _hidden_enemies.has(enemy) and p.distance_to(_crosshair_pos) <= enemy_marker_radius:
+			_draw_brackets(p, 10.0, COLOR_ENEMY)
 
 
 ## Which enemy fighters something solid hides from the camera: one ray per
