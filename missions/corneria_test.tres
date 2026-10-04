@@ -1,9 +1,0 @@
-[gd_resource type="Resource" script_class="Mission" format=3]
-
-[ext_resource type="Script" path="res://missions/mission.gd" id="1_mission"]
-
-[resource]
-script = ExtResource("1_mission")
-title = "Corneria (test)"
-description = "Enemy fighters over Corneria's hills, lakes and mountains. Fly low to hide behind the hills."
-scene_path = "res://levels/corneria_test.tscn"

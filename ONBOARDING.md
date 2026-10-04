@@ -12,7 +12,7 @@ This guide assumes you know Godot 4 basics: scenes, nodes, signals and GDScript.
 
 1. Install **Godot 4.7** (standard build, not .NET). The project uses Jolt Physics and Forward+, both built in.
 2. Open the folder in the Godot project manager and press **F5**.
-3. Almost every asset (meshes, sky, effects) is generated in code or built from primitives. The exceptions are the sound effects in `audio/sfx/`, the player/wingman ship model in `models/arwing_assault/`, the Great Fox in `models/great_fox/`, the destroyer and enemy fighter in `models/destroyer/` and `models/enemy_fighter/` (built by Blender scripts there) and the UI font in `ui/fonts/`; all are in the repo, and Godot imports them the first time the project opens.
+3. Almost every asset (meshes, sky, effects) is generated in code or built from primitives. The exceptions are the sound effects in `audio/sfx/`, the player/wingman ship model in `models/arwing_assault/`, the Great Fox in `models/great_fox/`, the destroyer, enemy fighter and Corneria map in `models/destroyer/`, `models/enemy_fighter/` and `models/corneria/` (built by Blender scripts there) and the UI font in `ui/fonts/`; all are in the repo, and Godot imports them the first time the project opens.
 
 **Controls**
 
@@ -38,7 +38,7 @@ main.tscn / main.gd        Asteroid Field mission: inherits levels/level_base.ts
 levels/
   level.gd                 Level: shared mission logic (build world, intro + line, spawner start, death/restart, mouse)
   level_base.tscn          Every shared node (ship, camera, wingmen, spawner, HUD, comms, pause, intro); missions inherit it
-  corneria_test.tscn       Corneria test: terrain, lakes, clouds, day sky, enemy waves (no destroyer), play boundary
+  corneria.tscn            Corneria: the 8 km map (terrain + props: city, arches, base...), clouds, day sky, enemy waves (no destroyer), play boundary
 missions/
   mission.gd + *.tres      Mission: title, description, scene_path (listed by the mission selector)
 player/
@@ -73,7 +73,9 @@ world/
   space_dust.gd            Speed streaks around the camera
   space_sky.gdshader       Procedural starfield sky
   space_environment.tres   Shared Environment (sky, glow, tonemap) used by title + Asteroid Field
-  terrain.gd               Terrain: procedural low-poly ground, lakes, far ground, collision; height_at() / surface_height()
+  terrain.gd               Terrain: low-poly ground (noise, or a TerrainMap), lakes, far ground, collision; height_at() / surface_height() / clearance_height()
+  terrain_map.gd           TerrainMap: a hand-made landscape exported from Blender (heights, paint, structure heights)
+  map_props.gd             MapProps: on an imported map props model; toon materials, water material, trimesh collision
   clouds.gd                Clouds: flyable cartoon cloud clusters that fade near the camera
   planet_environment.tres  Day sky + horizon fog for planet missions
   play_boundary.gd         PlayBoundary: edge of a mission area; HUD warning, then the ship turns itself back
@@ -115,6 +117,8 @@ models/
     source/                build_destroyer.py (builds and exports them in Blender) + collision.txt (hull collision pieces)
   enemy_fighter/           The Venomian "Mantis" enemy fighter (our own model), one .glb for every fighter type
     source/                build_enemy_fighter.py (builds and exports it in Blender)
+  corneria/                The Corneria map (our own): corneria_map.tres (TerrainMap) + corneria_props.glb (everything on the ground)
+    source/                build_corneria.py (builds the map in Blender and exports both)
 ```
 
 Every script with a `class_name` (`Fighter`, `Ship`, `Wingman`, `EnemyFighter`, `WingCommand`, `Laser`, and so on) can be used as a type anywhere.
@@ -126,7 +130,7 @@ Every script with a `class_name` (`Fighter`, `Ship`, `Wingman`, `EnemyFighter`, 
 ### Scene flow
 
 ```
-title_screen.tscn --Start--> MissionSelect --pick--> SceneFader.change_scene(mission.scene_path) --> main.tscn / levels/corneria_test.tscn
+title_screen.tscn --Start--> MissionSelect --pick--> SceneFader.change_scene(mission.scene_path) --> main.tscn / levels/corneria.tscn
                                                               |
         main._ready(): spawn asteroids (input actions come from the Settings autoload)
                        |
@@ -213,7 +217,7 @@ Defined as constants on `Fighter`.
 | `comms` | `Comms` | `Comms.find(get_tree())` from anything that talks |
 | `wing_command` | `WingCommand` | HUD; `EnemySpawner` calls `announce_destroyer` on it |
 | `wing_command`, `enemy_spawner`, `destroyer` | singletons in the level | HUD |
-| `terrain` | `Terrain` (planet missions only; joined in `_enter_tree`) | `ChaseCamera` ground clearance, AI ground avoidance, wingman slots, `EnemySpawner` |
+| `terrain` | `Terrain` (planet missions only; joined in `_enter_tree`) | `ChaseCamera` ground clearance, AI ground avoidance, wingman slots, `EnemySpawner`, `Ship` turn back |
 | `boundary` | `PlayBoundary` (missions with an edge; joined in `_enter_tree`) | `Ship` turn back, HUD warning, enemy patrols, `EnemySpawner` |
 
 ### What makes something shootable
@@ -405,30 +409,34 @@ The dialogue box, bottom left: a portrait square (faint static until portraits e
 - **Mission selector** (`ui/mission_select.gd`, node `MissionSelect` in `title_screen.tscn`): Start opens it. One button per `Mission` in its `missions` array, the highlighted one's description underneath, Back (Esc / B) returns to the title menu.
 
 ### Missions and levels
-- **Missions:** `Mission` resources in `missions/` (`title`, `description`, `scene_path`). Asteroid Field → `res://main.tscn`; Corneria (test) → `res://levels/corneria_test.tscn`.
+- **Missions:** `Mission` resources in `missions/` (`title`, `description`, `scene_path`). Asteroid Field → `res://main.tscn`; Corneria → `res://levels/corneria.tscn`.
 - **Shared base:** every mission scene inherits `levels/level_base.tscn` (root script `Level`). It keeps flat node names (`Ship`, `Falco`...). Changes to the base reach every mission unless overridden.
 - **Asteroid Field (`main.tscn`):** `PlayBoundary` radius 1000 m (turn back at 1200 m; just past the 900 m field and the 1000 m destroyer arrival). `GreatFox` at (0, 30, 1800), yaw -25°, straight behind `IntroStart`; a boosting player is turned back about 200 m short of it. Waves and patrols stay inside the boundary.
 - **`Level` exports:** `restart_delay` (3 s), `spawn_enemies` (off = no waves), `music` (a `LevelMusic`; empty = silence), `intro_line`, `intro_line_delay`. Override `_build_world()` to generate a world (`main.gd` scatters asteroids there).
 
-### Planet terrain (Corneria test)
-- **`Terrain`** (`world/terrain.gd`): 4 × 4 km, seed 1984, 25 m cells → 160 × 160 cells in 8 × 8 chunks, 51,200 flat-shaded triangles, built in about 0.4 s.
-  - **Height:** `base_height` 8 + hills ±70 (900 m wide) + ridged mountains up to 320 (none within 450 m of the centre) + boundary ring up to 520 (from 72% to 90% of the half-width), sinking below sea level at the very edge.
-  - **Colour per face:** sand (< 6 m above water), rock (normal.y < 0.78), snow (> 260 m), light/dark grass patches; ±5% brightness jitter. Vertex colours, converted to linear, drawn with `toon_vertex.gdshader`.
+### Planet terrain (Corneria)
+- **The Corneria map** (`models/corneria/`, built by `source/build_corneria.py` in Blender): 8 × 8 km, north = −Z. Sea and sea stacks south; a bay with six stone arches (openings ~80 × 100 m); a suspension bridge (30 m deck) over the river mouth; Corneria City (~170 blocks, towers to 340 m with the spire, red warning lights over 100 m); a 130 m plateau with a lake (surface 120 m) and a waterfall; hills, ridges, mesas, a canyon and coastal cliffs in the west; the military base (west) reached by a road through a graded valley; a harbour town with a lighthouse (east coast); irregular mountains on three sides; ~6,000 trees.
+  - **Exports:** `corneria_map.tres` (a `TerrainMap`: 321 × 321 heights, per-cell paint 0 auto / 1 paved / 2 high water, `high_water_level` 120, per-cell structure heights) and `corneria_props.glb` (no sea: Terrain makes it). Re-export after editing the script; never hand-edit them.
+  - **`Props`** (`MapProps` on the glb instance): toon materials, `water_material` on `Corneria_Water`, trimesh collision (World layer) for `solid_nodes` (all but streets, road, trees).
+  - **Cost:** level loads in ~0.9 s headless; ~650 FPS uncapped at 1280 × 720 with 12 enemies over the city (same as the old 4 km test map).
+- **`Terrain`** (`world/terrain.gd`): with `map` set (Corneria), its heights and size; otherwise noise: 4 × 4 km, seed 1984. 25 m cells in 8 × 8 chunks (204,800 flat-shaded triangles on Corneria, 51,200 for the noise map).
+  - **Noise height:** `base_height` 8 + hills ±70 (900 m wide) + ridged mountains up to 320 (none within 450 m of the centre) + boundary ring up to 520 (from 72% to 90% of the half-width), sinking below sea level at the very edge.
+  - **Colour per face:** sand (< 6 m above water), rock (normal.y < 0.78), snow (> 260 m), light/dark grass patches; map cells painted paved get `paved_color`; ±5% brightness jitter. Vertex colours, converted to linear, drawn with `toon_vertex.gdshader`.
   - **Collision:** a `ConcavePolygonShape3D` per chunk from the same triangles (World layer); water and the 30 km far-ground plane have thin solid slabs. Crashes are the normal 30 damage + bounce.
-  - **API:** `height_at(x, z)` (exact, `-INF` off the map), `surface_height(x, z)` (ground or water, whichever is higher).
-- **Lakes:** one opaque plane at `sea_level` 0; about 12% of the playable area. `water.gdshader`.
-- **`Clouds`** (`world/clouds.gd`): 60 clusters of 5–9 blobs at 220 / 430 m (±30), none within 350 m of the centre; fade up to 85% when the camera is inside or within 40 m.
+  - **API:** `height_at(x, z)` (exact, `-INF` off the map), `surface_height(x, z)` (ground or water, incl. a map's high water), `clearance_height(x, z)` (also the map's structure height on that cell). AI, spawner and turn-back use `clearance_height`; camera and wingman slots use `surface_height`.
+- **Water:** one opaque plane at `sea_level` 0 (`water.gdshader`); `water_to_horizon` (Corneria) extends it to the horizon. The plateau lake is part of the props.
+- **`Clouds`** (`world/clouds.gd`): defaults 60 clusters of 5–9 blobs at 220 / 430 m (±30) within 1700 m, none within 350 m of the centre; Corneria: 170 at 330 / 560 m within 3600 m. Fade up to 85% when the camera is inside or within 40 m.
 - **Environment:** `planet_environment.tres` (procedural day sky, sky ground colour = horizon, fog density 0.00035 in the horizon colour, `fog_sky_affect` 0). Sun pitched higher, shadows to 600 m.
 - **Camera:** `ChaseCamera.ground_clearance` 3 m above `surface_height()`.
-- **Start:** ships and intro markers 250 m up (ground at the centre is about 8 m).
+- **Start:** 120 m over the sea at (−450, 120, 3400), heading north; intro start 300 m further south.
 - **Enemies on Corneria:** the base level's waves, no destroyers (`destroyer_every = 0` on its `EnemySpawner`).
-- **AI ground avoidance** (`AIPilot`, *Ground* group; only with a `Terrain`): goals raised to `ground_clearance` 25 m (not an engaged target's lead point); flight path checked at 7 points over `ground_lookahead_time` 2 s, steep climb if any is below the clearance (`_ground_danger`). Measured: 1 enemy and 0 wingman ground scrapes in six 3-minute runs (before: enemies spawned and stayed underground).
+- **AI ground avoidance** (`AIPilot`, *Ground* group; only with a `Terrain`): goals raised to `ground_clearance` 25 m above `clearance_height()` (not an engaged target's lead point); flight path checked at 7 points over `ground_lookahead_time` 2 s, steep climb if any is below the clearance (`_ground_danger`). The AI flies over the city, not down its streets. Measured on Corneria (3 × 3 min around the city): 0 wingman and 1 enemy ground scrapes, no building hits; wingmen hop over buildings when you fly a street (72–88% in formation).
 - **Wingmen near the ground:** `slot_position()` raises the slot to `formation_ground_clearance` 6 m over the ground under it and `formation_ground_lookahead` 1 s ahead. Near the slot, wingmen use 6 m / 1 s for their own check, and it doesn't drop formation flight. With the leader 15 m up: 99% in formation, about 0.1 scrapes a minute.
 - **Enemy patrols:** roam points at least `patrol_min_altitude` 60 m up and `patrol_boundary_margin` 150 m inside the boundary.
 - **Spawner (planet):** wave centre at least `spawn_altitude` 80 m up (each fighter at least 40 m over its own ground) and `spawn_boundary_margin` 250 m inside the boundary.
-- **`PlayBoundary`** (`world/play_boundary.gd`): `radius` 1450 m (horizontal), `turn_back_margin` 200 m (negative = warning only). HUD: "RETURN TO THE COMBAT AREA" past the radius, "TURNING BACK" during the automatic turn.
+- **`PlayBoundary`** (`world/play_boundary.gd`): Corneria `radius` 3300 m (horizontal) around (0, 0, 500), `turn_back_margin` 200 m (negative = warning only). HUD: "RETURN TO THE COMBAT AREA" past the radius, "TURNING BACK" during the automatic turn.
 - **Turn back (`Ship`, *Boundary* group):** past radius + margin the ship steers itself home (`turning_back`; roll ignored), pulling up hard if the ground is within `turn_back_clearance` 60 m; control returns within `turn_back_done_deg` 25° of the way home. About 3 s. A level, low run straight at a steep ridge can still clip it.
-- **`GreatFox`** (`world/great_fox.tscn`): on Corneria, scenery at (-300, 800, 2100), yaw 70°, about 2.1 km out, behind the intro approach. No collision or groups; `bob_height` 3 m, `bob_period` 14 s. Boosting straight at it, the turn-back stops you about 250 m short. Keep it beyond the boundary + turn-back margin. Also on the Asteroid Field (see Missions and levels).
+- **`GreatFox`** (`world/great_fox.tscn`): on Corneria, scenery at (500, 700, 4500) over the sea, yaw 70°, about 730 m outside the boundary, behind the intro approach. No collision or groups; `bob_height` 3 m, `bob_period` 14 s. Boosting straight at it, the turn-back stops you about 257 m short. Keep it beyond the boundary + turn-back margin. Also on the Asteroid Field (see Missions and levels).
 
 ---
 

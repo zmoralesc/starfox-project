@@ -7,7 +7,7 @@
 [ext_resource type="PackedScene" path="res://ui/settings_menu.tscn" id="5_settings"]
 [ext_resource type="Script" path="res://ui/mission_select.gd" id="6_missions"]
 [ext_resource type="Resource" path="res://missions/asteroid_field.tres" id="7_asteroid_field"]
-[ext_resource type="Resource" path="res://missions/corneria_test.tres" id="8_corneria_test"]
+[ext_resource type="Resource" path="res://missions/corneria.tres" id="8_corneria"]
 [ext_resource type="Script" path="res://missions/mission.gd" id="9_mission"]
 
 [node name="TitleScreen" type="Node3D"]
@@ -88,4 +88,4 @@ grow_horizontal = 2
 grow_vertical = 2
 theme = ExtResource("3_theme")
 script = ExtResource("6_missions")
-missions = Array[ExtResource("9_mission")]([ExtResource("7_asteroid_field"), ExtResource("8_corneria_test")])
+missions = Array[ExtResource("9_mission")]([ExtResource("7_asteroid_field"), ExtResource("8_corneria")])

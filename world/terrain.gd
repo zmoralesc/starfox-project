@@ -9,13 +9,20 @@ extends Node3D
 ## at sea level fills the lakes, and a far ground plane fills the horizon
 ## beyond the map. Water and far ground are solid too, so you crash into them.
 ##
+## With a `map` (a TerrainMap exported from Blender) the landscape comes from
+## there instead of the noise, along with paved cells, a lake above sea level
+## and the heights of the structures standing on the map.
+##
 ## height_at() gives the ground height anywhere, exactly matching the mesh and
-## its collision; surface_height() also counts the water. Ground-aware systems
-## (the chase camera now, AI and spawns later) find the terrain through the
-## "terrain" group.
+## its collision; surface_height() also counts the water; clearance_height()
+## also counts the map's structures. Ground-aware systems (chase camera, AI,
+## spawns) find the terrain through the "terrain" group.
 
 ## Noise seed: same seed, same landscape.
 @export var terrain_seed := 1984
+## A hand-made landscape. When set, the map's own size and heights are used and
+## the Shape settings below are ignored (except `chunks` and `sea_level`).
+@export var map: TerrainMap
 
 @export_group("Shape")
 ## Width and depth of the map (it's square, centred on the origin).
@@ -55,6 +62,8 @@ extends Node3D
 @export var grass_dark_color := Color(0.3, 0.52, 0.24)
 @export var rock_color := Color(0.5, 0.47, 0.44)
 @export var snow_color := Color(0.94, 0.96, 1.0)
+## Cells the map marks as paved (towns, the base apron).
+@export var paved_color := Color(0.55, 0.55, 0.58)
 ## Faces less than this far above sea level are sand (beaches and lake beds).
 @export var sand_height := 6.0
 ## Faces higher than this above sea level are snow (unless too steep).
@@ -67,6 +76,9 @@ extends Node3D
 @export_group("Water and far ground")
 ## Material for the lake surface (effects/water.gdshader).
 @export var water_material: Material
+## Water reaches the horizon instead of stopping at the map's edge (for a map
+## with a coast: sea beyond it rather than the far ground).
+@export var water_to_horizon := false
 ## Colour of the flat ground beyond the map's edge.
 @export var far_ground_color := Color(0.3, 0.5, 0.25)
 ## How far the far ground extends, in metres.
@@ -91,7 +103,10 @@ func _enter_tree() -> void:
 
 func _ready() -> void:
 	_setup_noise()
-	_generate_heights()
+	if map:
+		_load_map()
+	else:
+		_generate_heights()
 	var body := StaticBody3D.new()
 	body.name = "Ground"
 	body.collision_layer = Fighter.LAYER_WORLD
@@ -127,11 +142,48 @@ func height_at(x: float, z: float) -> float:
 
 ## Height of whatever you'd hit flying straight down: ground or water.
 func surface_height(x: float, z: float) -> float:
-	return maxf(height_at(x, z), sea_level)
+	var surface := maxf(height_at(x, z), sea_level)
+	if map and _map_cell(map.paint, x, z) == TerrainMap.PAINT_HIGH_WATER:
+		surface = maxf(surface, map.high_water_level)
+	return surface
+
+
+## Height to stay above: ground, water, or the top of any structure on the map
+## (per map cell, so a whole cell counts as tall as the tallest thing on it).
+## What the AI flies over; the camera uses surface_height() so it doesn't jump
+## onto rooftops when you fly between buildings.
+func clearance_height(x: float, z: float) -> float:
+	var surface := surface_height(x, z)
+	if map:
+		surface = maxf(surface, _map_cell(map.structures, x, z))
+	return surface
 
 
 func _height(i: int, j: int) -> float:
 	return _heights[j * _points + i]
+
+
+## The value a per-cell map array holds for the cell under x/z; 0 outside the map.
+func _map_cell(values: Variant, x: float, z: float) -> float:
+	var cells := _points - 1
+	var i := int(floor((x + size * 0.5) / _cell))
+	var j := int(floor((z + size * 0.5) / _cell))
+	if i < 0 or j < 0 or i >= cells or j >= cells:
+		return 0.0
+	return values[j * cells + i]
+
+
+func _load_map() -> void:
+	size = map.size
+	_points = map.points
+	_cell = size / (_points - 1)
+	_heights = map.heights
+	var cells := _points - 1
+	if _heights.size() != _points * _points or map.paint.size() != cells * cells \
+			or map.structures.size() != cells * cells:
+		push_error("Terrain: map arrays don't match its %d points per side" % _points)
+	if cells % chunks != 0:
+		push_error("Terrain: the map's %d cells per side don't divide into %d chunks" % [cells, chunks])
 
 
 func _setup_noise() -> void:
@@ -206,9 +258,10 @@ func _build_chunks(body: StaticBody3D) -> void:
 					var p10 := _point(i + 1, j)
 					var p01 := _point(i, j + 1)
 					var p11 := _point(i + 1, j + 1)
+					var paved: bool = map != null and map.paint[j * (_points - 1) + i] == TerrainMap.PAINT_PAVED
 					# Split along the (0,0)-(1,1) diagonal, matching height_at().
-					_add_face(st, faces, rng, p00, p10, p11)
-					_add_face(st, faces, rng, p00, p11, p01)
+					_add_face(st, faces, rng, p00, p10, p11, paved)
+					_add_face(st, faces, rng, p00, p11, p01, paved)
 			var mesh_instance := MeshInstance3D.new()
 			mesh_instance.mesh = st.commit()
 			mesh_instance.material_override = material
@@ -225,9 +278,10 @@ func _point(i: int, j: int) -> Vector3:
 	return Vector3(-half + i * _cell, _height(i, j), -half + j * _cell)
 
 
-## One flat-shaded triangle facing up, coloured by its height and steepness.
+## One flat-shaded triangle facing up, coloured by its height and steepness
+## (or paved_color).
 func _add_face(st: SurfaceTool, faces: PackedVector3Array, rng: RandomNumberGenerator,
-		a: Vector3, b: Vector3, c: Vector3) -> void:
+		a: Vector3, b: Vector3, c: Vector3, paved := false) -> void:
 	# Godot draws clockwise-wound faces (seen from the front): for an
 	# upward-facing triangle, (b - a) x (c - a) must point down.
 	if (b - a).cross(c - a).y > 0.0:
@@ -236,7 +290,7 @@ func _add_face(st: SurfaceTool, faces: PackedVector3Array, rng: RandomNumberGene
 		c = swap
 	var normal := (c - a).cross(b - a).normalized()
 	var centre := (a + b + c) / 3.0
-	var color := _face_color(centre, normal)
+	var color := paved_color if paved else _face_color(centre, normal)
 	color = color * (1.0 + rng.randf_range(-shade_jitter, shade_jitter))
 	color.a = 1.0
 	# Vertex colours reach the shader as-is (no sRGB conversion), so convert
@@ -261,8 +315,9 @@ func _face_color(centre: Vector3, normal: Vector3) -> Color:
 
 
 func _build_water(body: StaticBody3D) -> void:
+	var extent := far_ground_size if water_to_horizon else size
 	var plane := PlaneMesh.new()
-	plane.size = Vector2(size, size)
+	plane.size = Vector2(extent, extent)
 	var water := MeshInstance3D.new()
 	water.name = "Water"
 	water.mesh = plane
@@ -270,7 +325,7 @@ func _build_water(body: StaticBody3D) -> void:
 	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	water.position.y = sea_level
 	add_child(water)
-	body.add_child(_slab(Vector2(size, size), sea_level))
+	body.add_child(_slab(Vector2(extent, extent), sea_level))
 
 
 func _build_far_ground(body: StaticBody3D) -> void:

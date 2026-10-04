@@ -37,8 +37,8 @@ const GROUND_SAMPLES := 6
 @export var aim_scatter := 0.0
 
 @export_group("Ground")
-## On planet missions, keep at least this high above the ground or water. Our
-## flight path is checked ground_lookahead_time ahead; if it dips lower, we
+## On planet missions, keep at least this high above the ground, water or
+## buildings (Terrain.clearance_height()). Our flight path is checked ground_lookahead_time ahead; if it dips lower, we
 ## pull up. Goals are raised to this height too, except a target we are
 ## shooting at (the path check still stops us diving into the ground after it).
 @export var ground_clearance := 25.0
@@ -280,7 +280,7 @@ func _avoid_ground(goal: Vector3) -> Vector3:
 	var deficit := 0.0
 	for i in GROUND_SAMPLES + 1:
 		var p := global_position + forward * (look * i / GROUND_SAMPLES)
-		deficit = maxf(deficit, _terrain.surface_height(p.x, p.z) + clearance - p.y)
+		deficit = maxf(deficit, _terrain.clearance_height(p.x, p.z) + clearance - p.y)
 	if deficit <= 0.0:
 		return goal
 	_ground_danger = true
@@ -301,12 +301,12 @@ func _ground_lookahead() -> float:
 	return ground_lookahead_time
 
 
-## `point` raised to at least `clearance` above the ground or water below it.
+## `point` raised to at least `clearance` above the ground, water or buildings below it.
 ## Unchanged where there is no terrain.
 func _above_ground(point: Vector3, clearance: float) -> Vector3:
 	if _terrain == null:
 		return point
-	point.y = maxf(point.y, _terrain.surface_height(point.x, point.z) + clearance)
+	point.y = maxf(point.y, _terrain.clearance_height(point.x, point.z) + clearance)
 	return point
 
 

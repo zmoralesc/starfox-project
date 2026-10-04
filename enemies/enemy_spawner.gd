@@ -25,7 +25,7 @@ extends Node
 @export var max_fighters := 12
 
 @export_group("Planet missions")
-## Waves appear at least this high above the ground or water (the group's
+## Waves appear at least this high above the ground, water or buildings (the group's
 ## centre; each fighter at least half this over the ground under it).
 @export var spawn_altitude := 80.0
 ## ...and at least this far inside the play boundary (if the mission has one).
@@ -90,14 +90,14 @@ func _spawn_wave() -> void:
 		center = boundary.clamp_inside(center, spawn_boundary_margin)
 	var terrain := get_tree().get_first_node_in_group("terrain") as Terrain
 	if terrain:
-		center.y = maxf(center.y, terrain.surface_height(center.x, center.z) + spawn_altitude)
+		center.y = maxf(center.y, terrain.clearance_height(center.x, center.z) + spawn_altitude)
 	var parent := get_parent()
 	for i in count:
 		var enemy := enemy_scene.instantiate() as EnemyFighter
 		enemy.position = center + Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * 40.0
 		if terrain:
 			# Each one clear of the ground under it, which can rise within the group.
-			enemy.position.y = maxf(enemy.position.y, terrain.surface_height(enemy.position.x, enemy.position.z) + spawn_altitude * 0.5)
+			enemy.position.y = maxf(enemy.position.y, terrain.clearance_height(enemy.position.x, enemy.position.z) + spawn_altitude * 0.5)
 		enemy.rotation.y = randf() * TAU
 		parent.add_child(enemy)
 		enemy.patrol_center = center

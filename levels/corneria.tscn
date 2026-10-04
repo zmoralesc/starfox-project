@@ -9,6 +9,9 @@
 [ext_resource type="Shader" path="res://effects/toon.gdshader" id="7_toon"]
 [ext_resource type="Script" path="res://world/play_boundary.gd" id="8_boundary"]
 [ext_resource type="PackedScene" path="res://world/great_fox.tscn" id="9_great_fox"]
+[ext_resource type="Resource" path="res://models/corneria/corneria_map.tres" id="10_map"]
+[ext_resource type="PackedScene" path="res://models/corneria/corneria_props.glb" id="11_props"]
+[ext_resource type="Script" path="res://world/map_props.gd" id="12_map_props"]
 
 [sub_resource type="ShaderMaterial" id="Mat_ground"]
 shader = ExtResource("5_toon_vertex")
@@ -27,7 +30,7 @@ shader_parameter/mid_tone = 0.88
 shader_parameter/glint = 0.0
 shader_parameter/rim = 0.3
 
-[node name="CorneriaTest" instance=ExtResource("1_base")]
+[node name="Corneria" instance=ExtResource("1_base")]
 intro_line = "Corneria below. Let's take a look around."
 
 [node name="WorldEnvironment" parent="."]
@@ -39,37 +42,49 @@ light_energy = 1.4
 directional_shadow_max_distance = 600.0
 
 [node name="Ship" parent="."]
-position = Vector3(0, 250, 0)
+position = Vector3(-450, 120, 3400)
 
 [node name="Falco" parent="."]
-position = Vector3(-10, 248.5, 2)
+position = Vector3(-460, 118.5, 3402)
 
 [node name="Slippy" parent="."]
-position = Vector3(0, 260, -10)
+position = Vector3(-450, 130, 3390)
 
 [node name="Krystal" parent="."]
-position = Vector3(10, 248.5, 2)
+position = Vector3(-440, 118.5, 3402)
 
 [node name="IntroStart" parent="."]
-position = Vector3(0, 250, 300)
+position = Vector3(-450, 120, 3700)
 
 [node name="IntroCameraSpot" parent="."]
-position = Vector3(30, 254, 0)
+position = Vector3(-420, 124, 3400)
 
 [node name="Terrain" type="Node3D" parent="."]
 script = ExtResource("3_terrain")
+map = ExtResource("10_map")
 material = SubResource("Mat_ground")
+water_material = SubResource("Mat_water")
+water_to_horizon = true
+
+[node name="Props" parent="." instance=ExtResource("11_props")]
+script = ExtResource("12_map_props")
 water_material = SubResource("Mat_water")
 
 [node name="Clouds" type="Node3D" parent="."]
 script = ExtResource("4_clouds")
+count = 170
+spread = 3600.0
+clear_radius = 0.0
+layers = PackedFloat32Array(330, 560)
 material = SubResource("Mat_cloud")
 
 [node name="EnemySpawner" parent="."]
 destroyer_every = 0
 
 [node name="PlayBoundary" type="Node3D" parent="."]
+position = Vector3(0, 0, 500)
 script = ExtResource("8_boundary")
+radius = 3300.0
 
 [node name="GreatFox" parent="." instance=ExtResource("9_great_fox")]
-transform = Transform3D(0.34202015, 0, 0.9396926, 0, 1, 0, -0.9396926, 0, 0.34202015, -300, 800, 2100)
+transform = Transform3D(0.34202015, 0, 0.9396926, 0, 1, 0, -0.9396926, 0, 0.34202015, 500, 700, 4500)

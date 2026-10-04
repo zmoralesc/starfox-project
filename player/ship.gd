@@ -244,8 +244,8 @@ func _update_turn_back() -> void:
 	var local := global_basis.inverse() * (goal - global_position).normalized()
 	if _terrain:
 		var ahead := global_position + forward * TURN_BACK_GOAL_DISTANCE * 0.5
-		var ground := maxf(_terrain.surface_height(global_position.x, global_position.z),
-			maxf(_terrain.surface_height(goal.x, goal.z), _terrain.surface_height(ahead.x, ahead.z)))
+		var ground := maxf(_terrain.clearance_height(global_position.x, global_position.z),
+			maxf(_terrain.clearance_height(goal.x, goal.z), _terrain.clearance_height(ahead.x, ahead.z)))
 		if global_position.y < ground + turn_back_clearance:
 			# Ground close: pull up hard while still turning. A flat turn could
 			# carry us into the slope we were flying at.

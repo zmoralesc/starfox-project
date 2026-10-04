@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="Mission" format=3]
+
+[ext_resource type="Script" path="res://missions/mission.gd" id="1_mission"]
+
+[resource]
+script = ExtResource("1_mission")
+title = "Corneria"
+description = "Enemy fighters over Corneria: in from the sea through the stone arches, over Corneria City, its river and mountains."
+scene_path = "res://levels/corneria.tscn"
