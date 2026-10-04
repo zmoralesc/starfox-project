@@ -1,0 +1,65 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://ui/pause_menu.gd" id="1_pause"]
+[ext_resource type="Theme" path="res://ui/menu_theme.tres" id="2_theme"]
+[ext_resource type="PackedScene" path="res://ui/settings_menu.tscn" id="3_settings"]
+
+[node name="PauseMenu" type="CanvasLayer"]
+process_mode = 3
+layer = 10
+script = ExtResource("1_pause")
+
+[node name="Dim" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0.01, 0.03, 0.6)
+
+[node name="Center" type="CenterContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Menu" type="VBoxContainer" parent="Center"]
+layout_mode = 2
+theme = ExtResource("2_theme")
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="Center/Menu"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.95, 1, 1)
+theme_override_font_sizes/font_size = 48
+text = "PAUSED"
+horizontal_alignment = 1
+
+[node name="Spacer" type="Control" parent="Center/Menu"]
+custom_minimum_size = Vector2(0, 24)
+layout_mode = 2
+
+[node name="ResumeButton" type="Button" parent="Center/Menu"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 52)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Resume"
+
+[node name="SettingsButton" type="Button" parent="Center/Menu"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 52)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Settings"
+
+[node name="QuitButton" type="Button" parent="Center/Menu"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 52)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Quit to Title"
+
+[node name="SettingsMenu" parent="." instance=ExtResource("3_settings")]
+unique_name_in_owner = true

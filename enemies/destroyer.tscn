@@ -1,0 +1,349 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://enemies/destroyer.gd" id="1_destroyer"]
+[ext_resource type="Script" path="res://enemies/destroyer_part.gd" id="2_part"]
+[ext_resource type="Script" path="res://enemies/destroyer_hangar.gd" id="3_hangar"]
+[ext_resource type="PackedScene" path="res://enemies/destroyer_turret.tscn" id="4_turret"]
+[ext_resource type="Shader" path="res://effects/toon.gdshader" id="toon_shader"]
+
+[sub_resource type="ShaderMaterial" id="Mat_hull"]
+shader = ExtResource("toon_shader")
+shader_parameter/albedo = Color(0.46, 0.47, 0.5, 1)
+
+[sub_resource type="ShaderMaterial" id="Mat_dark"]
+shader = ExtResource("toon_shader")
+shader_parameter/albedo = Color(0.2, 0.2, 0.23, 1)
+
+[sub_resource type="StandardMaterial3D" id="Mat_window"]
+albedo_color = Color(0.8, 0.95, 1, 1)
+emission_enabled = true
+emission = Color(0.7, 0.9, 1, 1)
+emission_energy_multiplier = 3.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_thrust"]
+albedo_color = Color(0.6, 0.8, 1, 1)
+emission_enabled = true
+emission = Color(0.4, 0.65, 1, 1)
+emission_energy_multiplier = 8.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_bay"]
+albedo_color = Color(1, 0.75, 0.4, 1)
+emission_enabled = true
+emission = Color(1, 0.65, 0.3, 1)
+emission_energy_multiplier = 1.5
+
+[sub_resource type="PrismMesh" id="Mesh_hull_lower"]
+material = SubResource("Mat_hull")
+size = Vector3(110, 250, 20)
+
+[sub_resource type="PrismMesh" id="Mesh_hull_upper"]
+material = SubResource("Mat_hull")
+size = Vector3(70, 180, 14)
+
+[sub_resource type="ConvexPolygonShape3D" id="Shape_hull_lower"]
+points = PackedVector3Array(0, -10, -125, 0, 10, -125, -55, -10, 125, -55, 10, 125, 55, -10, 125, 55, 10, 125)
+
+[sub_resource type="ConvexPolygonShape3D" id="Shape_hull_upper"]
+points = PackedVector3Array(0, 10, -55, 0, 24, -55, -35, 10, 125, -35, 24, 125, 35, 10, 125, 35, 24, 125)
+
+[sub_resource type="BoxMesh" id="Mesh_tower"]
+material = SubResource("Mat_hull")
+size = Vector3(10, 16, 12)
+
+[sub_resource type="BoxShape3D" id="Shape_tower"]
+size = Vector3(10, 16, 12)
+
+[sub_resource type="BoxMesh" id="Mesh_bridge"]
+material = SubResource("Mat_dark")
+size = Vector3(40, 7, 12)
+
+[sub_resource type="BoxShape3D" id="Shape_bridge"]
+size = Vector3(40, 7, 12)
+
+[sub_resource type="BoxMesh" id="Mesh_windows"]
+material = SubResource("Mat_window")
+size = Vector3(34, 1.2, 0.4)
+
+[sub_resource type="SphereMesh" id="Mesh_globe"]
+material = SubResource("Mat_hull")
+radius = 3.0
+height = 6.0
+radial_segments = 16
+rings = 8
+
+[sub_resource type="CylinderMesh" id="Mesh_thruster"]
+material = SubResource("Mat_dark")
+top_radius = 9.0
+bottom_radius = 9.0
+height = 18.0
+radial_segments = 20
+rings = 1
+
+[sub_resource type="CylinderShape3D" id="Shape_thruster"]
+height = 18.0
+radius = 9.0
+
+[sub_resource type="SphereMesh" id="Mesh_thrust_glow"]
+material = SubResource("Mat_thrust")
+radius = 8.0
+height = 16.0
+radial_segments = 20
+rings = 10
+
+[sub_resource type="BoxMesh" id="Mesh_housing"]
+material = SubResource("Mat_hull")
+size = Vector3(10, 16, 34)
+
+[sub_resource type="BoxShape3D" id="Shape_housing"]
+size = Vector3(10, 16, 34)
+
+[sub_resource type="BoxMesh" id="Mesh_bay"]
+material = SubResource("Mat_bay")
+size = Vector3(0.1, 11, 24)
+
+[sub_resource type="BoxMesh" id="Mesh_door"]
+material = SubResource("Mat_dark")
+size = Vector3(1.2, 12, 26)
+
+[sub_resource type="BoxShape3D" id="Shape_door"]
+size = Vector3(1.2, 12, 26)
+
+[node name="Destroyer" type="AnimatableBody3D"]
+collision_mask = 0
+script = ExtResource("1_destroyer")
+
+[node name="HullLower" type="MeshInstance3D" parent="."]
+rotation = Vector3(-1.5708, 0, 0)
+mesh = SubResource("Mesh_hull_lower")
+
+[node name="HullUpper" type="MeshInstance3D" parent="."]
+position = Vector3(0, 17, 35)
+rotation = Vector3(-1.5708, 0, 0)
+mesh = SubResource("Mesh_hull_upper")
+
+[node name="ShapeHullLower" type="CollisionShape3D" parent="."]
+shape = SubResource("Shape_hull_lower")
+
+[node name="ShapeHullUpper" type="CollisionShape3D" parent="."]
+shape = SubResource("Shape_hull_upper")
+
+[node name="Tower" type="MeshInstance3D" parent="."]
+position = Vector3(0, 32, 90)
+mesh = SubResource("Mesh_tower")
+
+[node name="ShapeTower" type="CollisionShape3D" parent="."]
+position = Vector3(0, 32, 90)
+shape = SubResource("Shape_tower")
+
+[node name="GlobeL" type="MeshInstance3D" parent="."]
+position = Vector3(-12, 50, 92)
+mesh = SubResource("Mesh_globe")
+
+[node name="GlobeR" type="MeshInstance3D" parent="."]
+position = Vector3(12, 50, 92)
+mesh = SubResource("Mesh_globe")
+
+[node name="Bridge" type="StaticBody3D" parent="."]
+position = Vector3(0, 43.5, 90)
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("2_part")
+kind = 0
+max_health = 70
+radius = 18.0
+score = 3
+display_name = "BRIDGE"
+
+[node name="Mesh" type="MeshInstance3D" parent="Bridge"]
+mesh = SubResource("Mesh_bridge")
+
+[node name="Windows" type="MeshInstance3D" parent="Bridge"]
+position = Vector3(0, 0.5, -6.1)
+mesh = SubResource("Mesh_windows")
+
+[node name="Shape" type="CollisionShape3D" parent="Bridge"]
+shape = SubResource("Shape_bridge")
+
+[node name="ThrusterL" type="StaticBody3D" parent="."]
+position = Vector3(-32, 0, 133)
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("2_part")
+kind = 1
+max_health = 46
+radius = 10.0
+score = 2
+display_name = "THRUSTER"
+
+[node name="Mesh" type="MeshInstance3D" parent="ThrusterL"]
+rotation = Vector3(1.5708, 0, 0)
+mesh = SubResource("Mesh_thruster")
+
+[node name="Glow" type="MeshInstance3D" parent="ThrusterL"]
+position = Vector3(0, 0, 9.5)
+scale = Vector3(1, 1, 0.3)
+mesh = SubResource("Mesh_thrust_glow")
+
+[node name="Light" type="OmniLight3D" parent="ThrusterL"]
+position = Vector3(0, 0, 14)
+light_color = Color(0.45, 0.65, 1, 1)
+light_energy = 4.0
+omni_range = 40.0
+
+[node name="Shape" type="CollisionShape3D" parent="ThrusterL"]
+rotation = Vector3(1.5708, 0, 0)
+shape = SubResource("Shape_thruster")
+
+[node name="ThrusterC" type="StaticBody3D" parent="."]
+position = Vector3(0, 2, 133)
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("2_part")
+kind = 1
+max_health = 46
+radius = 10.0
+score = 2
+display_name = "THRUSTER"
+
+[node name="Mesh" type="MeshInstance3D" parent="ThrusterC"]
+rotation = Vector3(1.5708, 0, 0)
+mesh = SubResource("Mesh_thruster")
+
+[node name="Glow" type="MeshInstance3D" parent="ThrusterC"]
+position = Vector3(0, 0, 9.5)
+scale = Vector3(1, 1, 0.3)
+mesh = SubResource("Mesh_thrust_glow")
+
+[node name="Light" type="OmniLight3D" parent="ThrusterC"]
+position = Vector3(0, 0, 14)
+light_color = Color(0.45, 0.65, 1, 1)
+light_energy = 4.0
+omni_range = 40.0
+
+[node name="Shape" type="CollisionShape3D" parent="ThrusterC"]
+rotation = Vector3(1.5708, 0, 0)
+shape = SubResource("Shape_thruster")
+
+[node name="ThrusterR" type="StaticBody3D" parent="."]
+position = Vector3(32, 0, 133)
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("2_part")
+kind = 1
+max_health = 46
+radius = 10.0
+score = 2
+display_name = "THRUSTER"
+
+[node name="Mesh" type="MeshInstance3D" parent="ThrusterR"]
+rotation = Vector3(1.5708, 0, 0)
+mesh = SubResource("Mesh_thruster")
+
+[node name="Glow" type="MeshInstance3D" parent="ThrusterR"]
+position = Vector3(0, 0, 9.5)
+scale = Vector3(1, 1, 0.3)
+mesh = SubResource("Mesh_thrust_glow")
+
+[node name="Light" type="OmniLight3D" parent="ThrusterR"]
+position = Vector3(0, 0, 14)
+light_color = Color(0.45, 0.65, 1, 1)
+light_energy = 4.0
+omni_range = 40.0
+
+[node name="Shape" type="CollisionShape3D" parent="ThrusterR"]
+rotation = Vector3(1.5708, 0, 0)
+shape = SubResource("Shape_thruster")
+
+[node name="HousingL" type="MeshInstance3D" parent="."]
+position = Vector3(-38, 0, 40)
+mesh = SubResource("Mesh_housing")
+
+[node name="ShapeHousingL" type="CollisionShape3D" parent="."]
+position = Vector3(-38, 0, 40)
+shape = SubResource("Shape_housing")
+
+[node name="BayGlowL" type="MeshInstance3D" parent="."]
+position = Vector3(-43.06, 0, 40)
+mesh = SubResource("Mesh_bay")
+
+[node name="LaunchL" type="Marker3D" parent="."]
+position = Vector3(-38, 0, 40)
+rotation = Vector3(0, 1.5708, 0)
+
+[node name="HangarL" type="StaticBody3D" parent="." node_paths=PackedStringArray("launch_point", "bay_glow")]
+position = Vector3(-43.7, 0, 40)
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("3_hangar")
+launch_point = NodePath("../LaunchL")
+bay_glow = NodePath("../BayGlowL")
+kind = 3
+max_health = 29
+radius = 10.0
+score = 2
+display_name = "HANGAR"
+
+[node name="Mesh" type="MeshInstance3D" parent="HangarL"]
+mesh = SubResource("Mesh_door")
+
+[node name="Shape" type="CollisionShape3D" parent="HangarL"]
+shape = SubResource("Shape_door")
+
+[node name="HousingR" type="MeshInstance3D" parent="."]
+position = Vector3(38, 0, 40)
+mesh = SubResource("Mesh_housing")
+
+[node name="ShapeHousingR" type="CollisionShape3D" parent="."]
+position = Vector3(38, 0, 40)
+shape = SubResource("Shape_housing")
+
+[node name="BayGlowR" type="MeshInstance3D" parent="."]
+position = Vector3(43.06, 0, 40)
+mesh = SubResource("Mesh_bay")
+
+[node name="LaunchR" type="Marker3D" parent="."]
+position = Vector3(38, 0, 40)
+rotation = Vector3(0, -1.5708, 0)
+
+[node name="HangarR" type="StaticBody3D" parent="." node_paths=PackedStringArray("launch_point", "bay_glow")]
+position = Vector3(43.7, 0, 40)
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("3_hangar")
+launch_point = NodePath("../LaunchR")
+bay_glow = NodePath("../BayGlowR")
+kind = 3
+max_health = 29
+radius = 10.0
+score = 2
+display_name = "HANGAR"
+
+[node name="Mesh" type="MeshInstance3D" parent="HangarR"]
+mesh = SubResource("Mesh_door")
+
+[node name="Shape" type="CollisionShape3D" parent="HangarR"]
+shape = SubResource("Shape_door")
+
+[node name="TurretBowL" parent="." instance=ExtResource("4_turret")]
+position = Vector3(-4, 10, -85)
+
+[node name="TurretBowR" parent="." instance=ExtResource("4_turret")]
+position = Vector3(4, 10, -85)
+
+[node name="TurretFwdL" parent="." instance=ExtResource("4_turret")]
+position = Vector3(-13, 10, -20)
+
+[node name="TurretFwdR" parent="." instance=ExtResource("4_turret")]
+position = Vector3(13, 10, -20)
+
+[node name="TurretMidL" parent="." instance=ExtResource("4_turret")]
+position = Vector3(-22, 10, 20)
+
+[node name="TurretMidR" parent="." instance=ExtResource("4_turret")]
+position = Vector3(22, 10, 20)
+
+[node name="TurretAftL" parent="." instance=ExtResource("4_turret")]
+position = Vector3(-30, 10, 60)
+
+[node name="TurretAftR" parent="." instance=ExtResource("4_turret")]
+position = Vector3(30, 10, 60)

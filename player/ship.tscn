@@ -1,0 +1,97 @@
+[gd_scene format=3 uid="uid://0vify4kni37l"]
+
+[ext_resource type="Script" uid="uid://8rcloj4ena3p" path="res://player/ship.gd" id="1_ship"]
+[ext_resource type="Script" uid="uid://bg5kbaelp516l" path="res://effects/shield_effect.gd" id="2_shield"]
+[ext_resource type="Shader" uid="uid://b5itggc83li8o" path="res://effects/shield.gdshader" id="3_shield_shader"]
+[ext_resource type="PackedScene" uid="uid://ba44p1058bmqy" path="res://models/arwing_assault/scene.gltf" id="arwing_model"]
+[ext_resource type="Resource" path="res://comms/speakers/fox.tres" id="fox_speaker"]
+[ext_resource type="AudioStream" uid="uid://bafoi3ntxjjje" path="res://audio/sfx/explosion_medium.mp3" id="sfx_explosion"]
+[ext_resource type="AudioStream" uid="uid://cdss2q2d7xicb" path="res://audio/sfx/laser.mp3" id="sfx_laser"]
+[ext_resource type="AudioStream" uid="uid://bw7352g4sqs8m" path="res://audio/sfx/thrusters.mp3" id="sfx_thrusters"]
+[ext_resource type="Script" uid="uid://c7ltkt2mp8ftg" path="res://player/ship_model.gd" id="ship_model"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_hull"]
+size = Vector3(6.2, 1.2, 6.5)
+
+[sub_resource type="StandardMaterial3D" id="Mat_engine_glow"]
+albedo_color = Color(0.5, 0.75, 1, 1)
+emission_enabled = true
+emission = Color(0.35, 0.65, 1, 1)
+emission_energy_multiplier = 6.0
+
+[sub_resource type="SphereMesh" id="Mesh_engine_glow"]
+material = SubResource("Mat_engine_glow")
+radius = 0.26
+height = 0.52
+radial_segments = 12
+rings = 6
+
+[sub_resource type="ShaderMaterial" id="Mat_shield"]
+render_priority = 0
+shader = ExtResource("3_shield_shader")
+shader_parameter/shield_color = Color(0.3, 0.6, 1, 1)
+shader_parameter/intensity = 0.0
+shader_parameter/hit_direction = Vector3(0, 0, -1)
+shader_parameter/ripple = 0.0
+shader_parameter/coverage = 0.0
+
+[sub_resource type="SphereMesh" id="Mesh_shield"]
+radius = 1.0
+height = 2.0
+radial_segments = 48
+rings = 24
+
+[node name="Ship" type="CharacterBody3D" unique_id=1937489092]
+collision_layer = 2
+collision_mask = 5
+motion_mode = 1
+script = ExtResource("1_ship")
+laser_speed = 1200.0
+fire_interval = 0.1
+parallel_fire = true
+muzzle_flash_size = 0.6
+explosion_sound = ExtResource("sfx_explosion")
+speaker = ExtResource("fox_speaker")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1333826076]
+shape = SubResource("BoxShape3D_hull")
+
+[node name="Model" type="Node3D" parent="." unique_id=1531258106]
+
+[node name="Arwing" parent="Model" unique_id=798441016 instance=ExtResource("arwing_model")]
+transform = Transform3D(0, 0, -0.0055, 0, 0.0055, 0, 0.0055, 0, 0, 0, -0.3, -0.5)
+script = ExtResource("ship_model")
+
+[node name="MuzzleL" type="Marker3D" parent="Model" unique_id=574490376]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.87, 0.326545, -1.4282837)
+
+[node name="MuzzleR" type="Marker3D" parent="Model" unique_id=793489537]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.87, 0.326545, -1.4282837)
+
+[node name="Glow" type="MeshInstance3D" parent="Model" unique_id=319916097]
+transform = Transform3D(0.71, 0, 0, 0, 1.295, 0, 0, 0, 0.4, 0, -0.25, 0.8)
+cast_shadow = 0
+mesh = SubResource("Mesh_engine_glow")
+
+[node name="EngineLight" type="OmniLight3D" parent="Model" unique_id=1153663872]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.2, 2)
+light_color = Color(0.4, 0.65, 1, 1)
+light_energy = 1.5
+
+[node name="Shield" type="MeshInstance3D" parent="Model" unique_id=485081166]
+transform = Transform3D(4, 0, 0, 0, 2.4, 0, 0, 0, 5, 0, 0.1, -0.8)
+material_override = SubResource("Mat_shield")
+mesh = SubResource("Mesh_shield")
+script = ExtResource("2_shield")
+
+[node name="FireSound" type="AudioStreamPlayer3D" parent="." unique_id=425809014]
+stream = ExtResource("sfx_laser")
+volume_db = -10.0
+max_distance = 600.0
+max_polyphony = 4
+
+[node name="EngineSound" type="AudioStreamPlayer3D" parent="." unique_id=1653980633]
+stream = ExtResource("sfx_thrusters")
+volume_db = -8.0
+autoplay = true
+max_distance = 300.0

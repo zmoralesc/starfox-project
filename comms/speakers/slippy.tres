@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Pilot" format=3]
+
+[ext_resource type="Script" path="res://comms/pilot.gd" id="1_pilot"]
+
+[resource]
+script = ExtResource("1_pilot")
+display_name = "Slippy"
+color = Color(0.3, 0.85, 0.35, 1)
+beep_pitch = 0.8
+accent_color = Color(0.3, 0.85, 0.35, 1)
+acknowledgements = PackedStringArray("Right away!", "Understood!")
+destroyer_callout = "Capital ship on approach!"
+celebrations = PackedStringArray("Another one bites the dust!", "That's how it's done!", "Got 'em! Who's next?")
+praise = PackedStringArray("Great shot, Fox!", "That's how you do it!")

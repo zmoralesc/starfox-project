@@ -1,0 +1,27 @@
+[gd_resource type="Environment" format=3 uid="uid://dpieqrte8oysp"]
+
+[ext_resource type="Shader" uid="uid://dgjiexki6og3y" path="res://world/space_sky.gdshader" id="1_sky"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_sky"]
+shader = ExtResource("1_sky")
+shader_parameter/space_color = Color(0.004, 0.005, 0.012, 1)
+shader_parameter/nebula_color_a = Color(0.1, 0.03, 0.18, 1)
+shader_parameter/nebula_color_b = Color(0.02, 0.08, 0.16, 1)
+shader_parameter/nebula_strength = 0.8
+shader_parameter/star_brightness = 3.0
+shader_parameter/star_density = 0.30000001425
+
+[sub_resource type="Sky" id="Sky_space"]
+sky_material = SubResource("ShaderMaterial_sky")
+
+[resource]
+background_mode = 2
+sky = SubResource("Sky_space")
+ambient_light_source = 2
+ambient_light_color = Color(0.32, 0.36, 0.5, 1)
+ambient_light_energy = 0.35
+reflected_light_source = 2
+tonemap_mode = 2
+glow_enabled = true
+glow_intensity = 0.9
+glow_bloom = 0.05

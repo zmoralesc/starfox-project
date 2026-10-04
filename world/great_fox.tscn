@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/great_fox.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://models/great_fox/Great_Fox_III.gltf" id="2_model"]
+
+[node name="GreatFox" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="Model" parent="." instance=ExtResource("2_model")]
+transform = Transform3D(-0.73164064, -0.17593402, 0.6585964, -7.450581e-09, 0.9661222, 0.2580849, -0.6816906, 0.1888254, -0.70685434, 264.92645, 86.475914, -334.02325)

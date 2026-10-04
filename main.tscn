@@ -1,0 +1,22 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://levels/level_base.tscn" id="1_base"]
+[ext_resource type="Script" path="res://main.gd" id="2_main"]
+[ext_resource type="Script" path="res://world/space_dust.gd" id="3_dust"]
+[ext_resource type="Script" path="res://world/play_boundary.gd" id="4_boundary"]
+[ext_resource type="PackedScene" path="res://world/great_fox.tscn" id="5_great_fox"]
+
+[node name="Main" instance=ExtResource("1_base")]
+script = ExtResource("2_main")
+
+[node name="SpaceDust" type="MultiMeshInstance3D" parent="."]
+script = ExtResource("3_dust")
+
+[node name="Asteroids" type="Node3D" parent="."]
+
+[node name="PlayBoundary" type="Node3D" parent="."]
+script = ExtResource("4_boundary")
+radius = 1000.0
+
+[node name="GreatFox" parent="." instance=ExtResource("5_great_fox")]
+transform = Transform3D(0.906308, 0, -0.422618, 0, 1, 0, 0.422618, 0, 0.906308, 0, 30, 1800)

@@ -1,0 +1,11 @@
+Model Information:
+* title:	Arwing (Assault)
+* source:	https://sketchfab.com/3d-models/arwing-assault-bf6717fb6d654382a54760164df9844d
+* author:	DanielBeltranSantiago (https://sketchfab.com/DanielBeltranSantiago)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Arwing (Assault)" (https://sketchfab.com/3d-models/arwing-assault-bf6717fb6d654382a54760164df9844d) by DanielBeltranSantiago (https://sketchfab.com/DanielBeltranSantiago) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

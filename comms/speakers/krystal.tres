@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Pilot" format=3]
+
+[ext_resource type="Script" path="res://comms/pilot.gd" id="1_pilot"]
+
+[resource]
+script = ExtResource("1_pilot")
+display_name = "Krystal"
+color = Color(1, 0.45, 0.75, 1)
+beep_pitch = 1.35
+accent_color = Color(1, 0.45, 0.75, 1)
+acknowledgements = PackedStringArray("Yessir!", "Yes, captain!")
+destroyer_callout = "Capital ship on the way!"
+celebrations = PackedStringArray("Woo! Did you see that?", "Got 'em! Too easy.", "Enemy ship down!")
+praise = PackedStringArray("That's my Fox!", "Impressive work!")

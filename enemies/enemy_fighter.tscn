@@ -1,0 +1,126 @@
+[gd_scene format=3 uid="uid://cv3q32ae318xb"]
+
+[ext_resource type="Script" uid="uid://xdfk7hjinqtb" path="res://enemies/enemy_fighter.gd" id="1_enemy"]
+[ext_resource type="PackedScene" path="res://weapons/enemy_laser.tscn" id="2_laser"]
+[ext_resource type="Shader" path="res://effects/toon.gdshader" id="toon_shader"]
+[ext_resource type="AudioStream" path="res://audio/sfx/laser.mp3" id="sfx_laser"]
+[ext_resource type="AudioStream" path="res://audio/sfx/explosion_medium.mp3" id="sfx_explosion"]
+[ext_resource type="AudioStream" path="res://audio/sfx/thrusters.mp3" id="sfx_thrusters"]
+[ext_resource type="Script" path="res://enemies/hurtbox.gd" id="hurtbox_script"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_hurtbox"]
+size = Vector3(5.5, 5.5, 5.5)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_hull"]
+size = Vector3(4.4, 4.4, 2.4)
+
+[sub_resource type="ShaderMaterial" id="Mat_hull"]
+shader = ExtResource("toon_shader")
+shader_parameter/albedo = Color(0.32, 0.33, 0.36, 1)
+
+[sub_resource type="SphereMesh" id="Mesh_cockpit"]
+material = SubResource("Mat_hull")
+radius = 1.1
+height = 2.2
+radial_segments = 16
+rings = 8
+
+[sub_resource type="StandardMaterial3D" id="Mat_eye"]
+albedo_color = Color(1, 0.2, 0.15, 1)
+emission_enabled = true
+emission = Color(1, 0.15, 0.1, 1)
+emission_energy_multiplier = 5.0
+
+[sub_resource type="SphereMesh" id="Mesh_eye"]
+material = SubResource("Mat_eye")
+radius = 0.4
+height = 0.8
+radial_segments = 12
+rings = 6
+
+[sub_resource type="CylinderMesh" id="Mesh_strut"]
+material = SubResource("Mat_hull")
+top_radius = 0.25
+bottom_radius = 0.25
+height = 3.6
+radial_segments = 8
+rings = 1
+
+[sub_resource type="ShaderMaterial" id="Mat_panel"]
+shader = ExtResource("toon_shader")
+shader_parameter/albedo = Color(0.1, 0.1, 0.12, 1)
+
+[sub_resource type="CylinderMesh" id="Mesh_panel"]
+material = SubResource("Mat_panel")
+top_radius = 2.2
+bottom_radius = 2.2
+height = 0.15
+radial_segments = 6
+rings = 1
+
+[node name="EnemyFighter" type="CharacterBody3D" unique_id=931552552]
+collision_layer = 4
+motion_mode = 1
+script = ExtResource("1_enemy")
+attack_range = 350.0
+fire_tolerance_deg = 2.5
+lead_turns = true
+aim_scatter = 2.0
+pursuit_distance = 70.0
+cruise_speed = 50.0
+max_speed = 70.0
+boost_speed = 85.0
+pitch_rate = 1.3
+laser_scene = ExtResource("2_laser")
+laser_speed = 250.0
+explosion_sound = ExtResource("sfx_explosion")
+fire_interval = 0.35
+spread_deg = 2.5
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=551544969]
+shape = SubResource("BoxShape3D_hull")
+
+[node name="Model" type="Node3D" parent="." unique_id=764475653]
+
+[node name="Cockpit" type="MeshInstance3D" parent="Model" unique_id=968954642]
+mesh = SubResource("Mesh_cockpit")
+
+[node name="Eye" type="MeshInstance3D" parent="Model" unique_id=38608590]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 0.4, 0, 0, -0.95)
+mesh = SubResource("Mesh_eye")
+
+[node name="Strut" type="MeshInstance3D" parent="Model" unique_id=688262056]
+transform = Transform3D(-3.6199901e-06, -1, 0, 1, -3.6199901e-06, 0, 0, 0, 1, 0, 0, 0)
+mesh = SubResource("Mesh_strut")
+
+[node name="PanelL" type="MeshInstance3D" parent="Model" unique_id=1415033982]
+transform = Transform3D(-3.6199901e-06, -1, 0, 1, -3.6199901e-06, 0, 0, 0, 1, -1.9, 0, 0)
+mesh = SubResource("Mesh_panel")
+
+[node name="PanelR" type="MeshInstance3D" parent="Model" unique_id=49935428]
+transform = Transform3D(-3.6199901e-06, -1, 0, 1, -3.6199901e-06, 0, 0, 0, 1, 1.9, 0, 0)
+mesh = SubResource("Mesh_panel")
+
+[node name="MuzzleL" type="Marker3D" parent="Model" unique_id=1365832206]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.6, -0.5, -1.2)
+
+[node name="MuzzleR" type="Marker3D" parent="Model" unique_id=91485567]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.6, -0.5, -1.2)
+
+[node name="FireSound" type="AudioStreamPlayer3D" parent="."]
+stream = ExtResource("sfx_laser")
+volume_db = -8.0
+max_distance = 500.0
+max_polyphony = 3
+
+[node name="EngineSound" type="AudioStreamPlayer3D" parent="."]
+stream = ExtResource("sfx_thrusters")
+volume_db = -6.0
+max_distance = 300.0
+autoplay = true
+
+[node name="Hurtbox" type="Area3D" parent="."]
+script = ExtResource("hurtbox_script")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Hurtbox"]
+shape = SubResource("BoxShape3D_hurtbox")

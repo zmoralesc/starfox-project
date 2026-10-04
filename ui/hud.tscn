@@ -1,0 +1,17 @@
+[gd_scene format=3 uid="uid://b8yo1ft5f3e8v"]
+
+[ext_resource type="Script" uid="uid://dssrm22ta26j1" path="res://ui/hud.gd" id="1_hud"]
+
+[node name="HUD" type="CanvasLayer" unique_id=598982991]
+
+[node name="Overlay" type="Control" parent="." unique_id=1887334108]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_hud")
+radar_radius = 100.0
+enemy_marker_radius = 320.0

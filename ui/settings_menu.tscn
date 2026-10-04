@@ -1,0 +1,167 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://ui/settings_menu.gd" id="1_settings"]
+[ext_resource type="Theme" path="res://ui/menu_theme.tres" id="2_theme"]
+
+[node name="SettingsMenu" type="Control"]
+process_mode = 3
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_settings")
+
+[node name="Dim" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0.01, 0.03, 0.75)
+
+[node name="MainPage" type="CenterContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Menu" type="VBoxContainer" parent="MainPage"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="MainPage/Menu"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 48
+text = "SETTINGS"
+horizontal_alignment = 1
+
+[node name="Spacer" type="Control" parent="MainPage/Menu"]
+custom_minimum_size = Vector2(0, 16)
+layout_mode = 2
+
+[node name="Options" type="GridContainer" parent="MainPage/Menu"]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/h_separation = 28
+theme_override_constants/v_separation = 14
+columns = 2
+
+[node name="FullscreenLabel" type="Label" parent="MainPage/Menu/Options"]
+layout_mode = 2
+text = "Fullscreen"
+
+[node name="FullscreenButton" type="Button" parent="MainPage/Menu/Options"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 48)
+layout_mode = 2
+text = "Off"
+
+[node name="ResolutionLabel" type="Label" parent="MainPage/Menu/Options"]
+layout_mode = 2
+text = "Resolution"
+
+[node name="ResolutionOption" type="OptionButton" parent="MainPage/Menu/Options"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 48)
+layout_mode = 2
+alignment = 1
+
+[node name="ResolutionHint" type="Label" parent="MainPage/Menu"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.95, 1, 0.5)
+theme_override_font_sizes/font_size = 14
+text = "In fullscreen, the 3D view renders at this resolution and is scaled to fit."
+horizontal_alignment = 1
+
+[node name="Spacer2" type="Control" parent="MainPage/Menu"]
+custom_minimum_size = Vector2(0, 16)
+layout_mode = 2
+
+[node name="ControlsButton" type="Button" parent="MainPage/Menu"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 52)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Controls"
+
+[node name="BackButton" type="Button" parent="MainPage/Menu"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 52)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Back"
+
+[node name="ControlsPage" type="MarginContainer" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 24
+
+[node name="Layout" type="VBoxContainer" parent="ControlsPage"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="ControlsPage/Layout"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 40
+text = "CONTROLS"
+horizontal_alignment = 1
+
+[node name="Header" type="HBoxContainer" parent="ControlsPage/Layout"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="Scroll" type="ScrollContainer" parent="ControlsPage/Layout"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+follow_focus = true
+
+[node name="Rows" type="VBoxContainer" parent="ControlsPage/Layout/Scroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="StatusLabel" type="Label" parent="ControlsPage/Layout"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.95, 1, 0.7)
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+
+[node name="Buttons" type="HBoxContainer" parent="ControlsPage/Layout"]
+layout_mode = 2
+theme_override_constants/separation = 20
+alignment = 1
+
+[node name="ResetButton" type="Button" parent="ControlsPage/Layout/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 48)
+layout_mode = 2
+text = "Reset to Defaults"
+
+[node name="ControlsBackButton" type="Button" parent="ControlsPage/Layout/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 48)
+layout_mode = 2
+text = "Back"
