@@ -50,7 +50,7 @@ The team's ace pilot, Falco is brash and cocky, but he has undoubtedly matured g
 
 #### Dialogue
 
-Sharp-tongued and cocky, with a dry sense of humor. Doesn't need to insult someone in every other sentence to sound like Falco.
+Sharp-tongued and cocky. Doesn't need to insult someone in every other sentence to sound like Falco. Avoid making him out to be an asshole.
 
 #### Relationships
 
