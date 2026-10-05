@@ -201,8 +201,8 @@ func _die() -> void:
 	shields = 0.0
 	is_firing = false
 	fire_target = null
+	Explosion.spawn(get_parent(), global_position, explosion, explosion_size, velocity)
 	velocity = Vector3.ZERO
-	Impact.spawn(get_parent(), global_position, Color(1.0, 0.6, 0.25), 6.0)
 	SoundFX.play_at(get_parent(), explosion_sound, global_position)
 	# The ship stays in the scene (hidden), so its engine would keep humming.
 	if _engine_sound:

@@ -1,13 +1,10 @@
-[gd_resource type="Resource" script_class="Pilot" format=3]
+[gd_resource type="Resource" script_class="Pilot" format=3 uid="uid://bogh4qlctbwfy"]
 
-[ext_resource type="Script" path="res://comms/pilot.gd" id="1_pilot"]
+[ext_resource type="Script" uid="uid://csn0dgd4lxvmi" path="res://comms/pilot.gd" id="1_pilot"]
 
 [resource]
 script = ExtResource("1_pilot")
+accent_color = Color(0.3, 0.85, 0.35, 1)
 display_name = "Slippy"
 color = Color(0.3, 0.85, 0.35, 1)
-beep_pitch = 0.8
-accent_color = Color(0.3, 0.85, 0.35, 1)
-acknowledgements = PackedStringArray("Right away!", "Understood!")
-celebrations = PackedStringArray("Another one bites the dust!", "That's how it's done!", "Got 'em! Who's next?")
-praise = PackedStringArray("Great shot, Fox!", "That's how you do it!")
+beep_pitch = 1.15

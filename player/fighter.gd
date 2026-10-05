@@ -57,6 +57,11 @@ const LAYER_HURTBOX := 8
 ## of the bolt's impacts.
 @export var muzzle_flash_size := 0.0
 
+@export_group("Explosion")
+## How the ship blows up (effects/explosions/), and how big (fireball radius, m).
+@export var explosion: ExplosionStyle = preload("res://effects/explosions/fighter.tres")
+@export var explosion_size := 5.0
+
 @export_group("Sounds")
 ## Played where the ship blows up (one-shot, see SoundFX).
 @export var explosion_sound: AudioStream

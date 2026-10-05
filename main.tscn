@@ -12,7 +12,7 @@
 script = ExtResource("2_main")
 intro_advisor_line = "Stay sharp, team. I'm reading multiple enemy squadrons approaching our position."
 asteroid_count = 640
-field_radius = 1800.0
+field_radius = 3800.0
 field_flatten = 0.25
 
 [node name="SpaceDust" type="MultiMeshInstance3D" parent="."]
@@ -22,22 +22,22 @@ script = ExtResource("3_dust")
 
 [node name="PlayBoundary" type="Node3D" parent="."]
 script = ExtResource("4_boundary")
-radius = 2000.0
+radius = 4000.0
 
 [node name="GreatFox" parent="." instance=ExtResource("5_great_fox")]
-transform = Transform3D(0.906308, 0, -0.422618, 0, 1, 0, 0.422618, 0, 0.906308, 0, 30, 3600)
+transform = Transform3D(0.906308, 0, -0.422618, 0, 1, 0, 0.422618, 0, 0.906308, 0, 30, 5000)
 
 [node name="ChaseCamera" parent="."]
-far = 7000.0
+far = 10000.0
 
 [node name="EnemySpawner" parent="."]
-zone_radius = 2000.0
+zone_radius = 3000.0
 
 [node name="IntroStart" parent="."]
-position = Vector3(60, 30, 1450)
+position = Vector3(60, 30, 3700)
 
 [node name="IntroCameraSpot" parent="."]
-position = Vector3(90, 34, 1150)
+position = Vector3(90, 34, 3400)
 
 [node name="SpaceStation" parent="." instance=ExtResource("6_station")]
 transform = Transform3D(-0.819152, 0, 0.573576, 0, 1, 0, -0.573576, 0, -0.819152, 0, 0, 0)

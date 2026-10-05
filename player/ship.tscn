@@ -53,6 +53,7 @@ laser_speed = 1200.0
 fire_interval = 0.1
 parallel_fire = true
 muzzle_flash_size = 0.6
+explosion_size = 6.0
 explosion_sound = ExtResource("sfx_explosion")
 speaker = ExtResource("fox_speaker")
 

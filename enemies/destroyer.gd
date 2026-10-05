@@ -85,11 +85,14 @@ static var _clip_copies := {}
 ## The chain of blasts along the hull when it dies: up to this high above the
 ## hull's base (m)...
 @export var death_blast_height := 60.0
-## ...each this big (random in min..max, Impact size).
+## ...each this big (random in min..max, fireball radius in m)...
 @export var death_blast_size := Vector2(44.0, 90.0)
+## ...in this style.
+@export var death_blast_style: ExplosionStyle = preload("res://effects/explosions/destroyer_chain.tres")
 ## Then one big blast here (local space) of this size.
 @export var final_blast_position := Vector3(0.0, 30.0, 90.0)
 @export var final_blast_size := 210.0
+@export var final_blast_style: ExplosionStyle = preload("res://effects/explosions/destroyer_final.tres")
 
 ## Set by the EnemySpawner; used for the global fighter limit.
 var spawner: EnemySpawner
@@ -370,7 +373,7 @@ func _die() -> void:
 	for i in 14:
 		var spot := _random_hull_point()
 		var local := Vector3(spot.x, randf_range(0.0, death_blast_height), spot.y)
-		Impact.spawn(get_tree().current_scene, global_transform * local, Color(1.0, 0.55, 0.2),
+		Explosion.spawn(get_tree().current_scene, global_transform * local, death_blast_style,
 			randf_range(death_blast_size.x, death_blast_size.y))
 		# Every other blast, lower and slower than a fighter's: it's a big ship.
 		if i % 2 == 0:
@@ -378,7 +381,7 @@ func _die() -> void:
 		await get_tree().create_timer(0.22, false).timeout
 		if not is_inside_tree():
 			return
-	Impact.spawn(get_tree().current_scene, global_transform * final_blast_position, Color(1.0, 0.75, 0.4), final_blast_size)
+	Explosion.spawn(get_tree().current_scene, global_transform * final_blast_position, final_blast_style, final_blast_size)
 	SoundFX.play_at(get_tree().current_scene, explosion_sound, global_transform * final_blast_position, 4.0, 0.5)
 	var tween := create_tween()
 	tween.tween_method(_set_visibility, 1.0, 0.0, fade_out_time)

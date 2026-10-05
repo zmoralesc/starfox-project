@@ -9,6 +9,9 @@ const VARIANT_COUNT := 8
 static var _meshes: Array[ArrayMesh] = []
 
 @export var radius := 10.0
+## How it bursts (fireball radius = radius × explosion_scale).
+@export var explosion: ExplosionStyle = preload("res://effects/explosions/asteroid.tres")
+@export var explosion_scale := 0.6
 ## The crosshair doesn't turn red over rocks: they're everywhere in the field
 ## and would drown out the enemies.
 @export var highlight_on_crosshair := false
@@ -69,7 +72,7 @@ func shatter() -> void:
 
 
 func _explode() -> void:
-	Impact.spawn(get_parent(), global_position, Color(1.0, 0.55, 0.2), radius * 0.6)
+	Explosion.spawn(get_parent(), global_position, explosion, radius * explosion_scale)
 	destroyed.emit()
 	queue_free()
 

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ExplosionStyle" format=3]
+
+[ext_resource type="Script" path="res://effects/explosion_style.gd" id="1_style"]
+
+[resource]
+script = ExtResource("1_style")
+puff_count = 10
+puff_lifetime = 1.8
+smoke_count = 6
+smoke_lifetime = 3.5
+spark_count = 30
+debris_count = 8
+shockwave_size = 2.2
+shockwave_time = 0.7
+light_energy = 8.0
+inherit_velocity = 0.0

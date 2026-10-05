@@ -83,6 +83,13 @@ extends Node3D
 @export var far_ground_color := Color(0.3, 0.5, 0.25)
 ## How far the far ground extends, in metres.
 @export var far_ground_size := 30000.0
+## The water shader colours by depth, but only near land: from this far out
+## (m) the sea floor it sees fades to `open_sea_depth`, fully at the second
+## value. Otherwise a map's artificial edge (Corneria's border sinks in a
+## straight ramp to -6 m) draws straight depth bands kilometres long.
+@export var water_depth_fade := Vector2(150.0, 600.0)
+## Depth the water shader assumes for open sea (and beyond the map).
+@export var open_sea_depth := 100.0
 
 ## Grid points per side, the grid spacing, and the heights (row-major, z rows).
 var _points := 0
@@ -326,6 +333,71 @@ func _build_water(body: StaticBody3D) -> void:
 	water.position.y = sea_level
 	add_child(water)
 	body.add_child(_slab(Vector2(extent, extent), sea_level))
+	_feed_water(water_material)
+
+
+## Gives the water shader (effects/water.gdshader) the ground heights, so it can
+## colour the water by depth and put foam on the shores. The material is shared
+## with the map's lakes and rivers (MapProps), so they get it too.
+func _feed_water(water: Material) -> void:
+	var shader_material := water as ShaderMaterial
+	if shader_material == null:
+		return
+	var image := Image.create_from_data(_points, _points, false, Image.FORMAT_RF, _sea_floor().to_byte_array())
+	# Half floats: linear filtering of full floats isn't supported everywhere.
+	image.convert(Image.FORMAT_RH)
+	var half := size * 0.5
+	shader_material.set_shader_parameter("ground_heights", ImageTexture.create_from_image(image))
+	shader_material.set_shader_parameter("ground_grid", Vector4(-half, -half, _cell, _points))
+	shader_material.set_shader_parameter("has_ground", true)
+	shader_material.set_shader_parameter("open_depth", open_sea_depth)
+
+
+## The ground heights as the water shader should see them: as they are near
+## land, sinking to open_sea_depth further out (water_depth_fade), so depth
+## bands follow the coasts. Distance to land per grid point comes from a
+## two-pass chamfer distance transform (straight steps 1, diagonal √2 cells).
+func _sea_floor() -> PackedFloat32Array:
+	var diagonal := sqrt(2.0)
+	var n := _points
+	var far := float(n * 2)
+	var dist := PackedFloat32Array()
+	dist.resize(n * n)
+	for k in n * n:
+		dist[k] = 0.0 if _heights[k] > sea_level else far
+	# Forward pass (from the top left), then backward (from the bottom right).
+	for j in n:
+		for i in n:
+			var k := j * n + i
+			var d := dist[k]
+			if i > 0:
+				d = minf(d, dist[k - 1] + 1.0)
+			if j > 0:
+				d = minf(d, dist[k - n] + 1.0)
+				if i > 0:
+					d = minf(d, dist[k - n - 1] + diagonal)
+				if i < n - 1:
+					d = minf(d, dist[k - n + 1] + diagonal)
+			dist[k] = d
+	for j in range(n - 1, -1, -1):
+		for i in range(n - 1, -1, -1):
+			var k := j * n + i
+			var d := dist[k]
+			if i < n - 1:
+				d = minf(d, dist[k + 1] + 1.0)
+			if j < n - 1:
+				d = minf(d, dist[k + n] + 1.0)
+				if i < n - 1:
+					d = minf(d, dist[k + n + 1] + diagonal)
+				if i > 0:
+					d = minf(d, dist[k + n - 1] + diagonal)
+			dist[k] = d
+	var floor_heights := _heights.duplicate()
+	var open_floor := sea_level - open_sea_depth
+	for k in n * n:
+		var fade := smoothstep(water_depth_fade.x, water_depth_fade.y, dist[k] * _cell)
+		floor_heights[k] = lerpf(_heights[k], minf(_heights[k], open_floor), fade)
+	return floor_heights
 
 
 func _build_far_ground(body: StaticBody3D) -> void:

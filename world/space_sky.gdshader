@@ -45,6 +45,10 @@ uniform float city_light_strength = 0.8;
 uniform float planet_brightness = 1.0;
 // Light on the night side (0 = black).
 uniform float night_brightness : hint_range(0.0, 0.2) = 0.025;
+// The sunlit side only (night side, city lights and atmosphere untouched):
+// a brightness multiplier, and saturation (1 = the colours above, 0 = grey).
+uniform float day_brightness : hint_range(0.0, 3.0) = 1.0;
+uniform float day_saturation : hint_range(0.0, 2.0) = 1.0;
 group_uniforms;
 
 float hash13(vec3 p) {
@@ -53,15 +57,27 @@ float hash13(vec3 p) {
 	return fract((p.x + p.y) * p.z);
 }
 
+// Integer hash for a noise grid corner (whole-number coordinates). Not
+// hash13: a float hash rounds the same corner differently in neighbouring
+// cells at larger coordinates (the fine cloud octaves), which cut seams into
+// the planet's clouds.
+float corner_hash(vec3 p) {
+	uvec3 q = uvec3(ivec3(floor(p + 0.5)));
+	uint n = q.x * 1597334673u ^ q.y * 3812015801u ^ q.z * 2798796415u;
+	n = (n ^ (n >> 15u)) * 2246822519u;
+	n ^= n >> 13u;
+	return float(n) * (1.0 / 4294967295.0);
+}
+
 float value_noise(vec3 p) {
 	vec3 i = floor(p);
 	vec3 f = fract(p);
 	f = f * f * (3.0 - 2.0 * f);
 	return mix(
-		mix(mix(hash13(i + vec3(0, 0, 0)), hash13(i + vec3(1, 0, 0)), f.x),
-			mix(hash13(i + vec3(0, 1, 0)), hash13(i + vec3(1, 1, 0)), f.x), f.y),
-		mix(mix(hash13(i + vec3(0, 0, 1)), hash13(i + vec3(1, 0, 1)), f.x),
-			mix(hash13(i + vec3(0, 1, 1)), hash13(i + vec3(1, 1, 1)), f.x), f.y),
+		mix(mix(corner_hash(i + vec3(0, 0, 0)), corner_hash(i + vec3(1, 0, 0)), f.x),
+			mix(corner_hash(i + vec3(0, 1, 0)), corner_hash(i + vec3(1, 1, 0)), f.x), f.y),
+		mix(mix(corner_hash(i + vec3(0, 0, 1)), corner_hash(i + vec3(1, 0, 1)), f.x),
+			mix(corner_hash(i + vec3(0, 1, 1)), corner_hash(i + vec3(1, 1, 1)), f.x), f.y),
 		f.z);
 }
 
@@ -123,7 +139,9 @@ vec3 planet_surface(vec3 dir, vec3 n, vec3 sun, bool has_sun) {
 	// Daylight with a soft terminator; without a sun the planet is evenly lit.
 	float ndl = has_sun ? dot(n, sun) : 1.0;
 	float day = smoothstep(-0.03, 0.12, ndl);
-	vec3 col = albedo * (night_brightness + day * (1.0 - night_brightness)) * planet_brightness;
+	float grey = dot(albedo, vec3(0.2126, 0.7152, 0.0722));
+	vec3 day_albedo = mix(vec3(grey), albedo, day_saturation) * day_brightness;
+	vec3 col = (albedo * night_brightness + day_albedo * day * (1.0 - night_brightness)) * planet_brightness;
 
 	// Sun glint on open water.
 	vec3 to_eye = -dir;

@@ -7,7 +7,7 @@ uniform vec4 albedo : source_color = vec4(0.8, 0.8, 0.8, 1.0);
 uniform sampler2D albedo_texture : source_color, hint_default_white, filter_linear_mipmap_anisotropic, repeat_enable;
 // Glow, added on top of the lighting: emission colour × emission texture × energy.
 uniform vec4 emission : source_color = vec4(0.0, 0.0, 0.0, 1.0);
-uniform sampler2D emission_texture : source_color, hint_default_black, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D emission_texture : source_color, hint_default_white, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float emission_energy : hint_range(0.0, 16.0) = 1.0;
 
 #ifdef TOON_CLIP

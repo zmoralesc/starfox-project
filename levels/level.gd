@@ -17,6 +17,15 @@ extends Node3D
 ## The soundtrack (lead + loop). Empty = no music. Keeps playing across
 ## restarts after a death.
 @export var music: LevelMusic
+## Explosion styles set off once, invisibly small, when the mission loads, so
+## the first real one doesn't stutter while its materials and shaders are built.
+@export var prewarm_explosions: Array[ExplosionStyle] = [
+	preload("res://effects/explosions/fighter.tres"),
+	preload("res://effects/explosions/asteroid.tres"),
+	preload("res://effects/explosions/destroyer_part.tres"),
+	preload("res://effects/explosions/destroyer_chain.tres"),
+	preload("res://effects/explosions/destroyer_final.tres"),
+]
 
 @export_group("Intro line")
 ## What the leader says over the comms as the level starts.
@@ -40,6 +49,8 @@ var _intro_line_said := false
 
 func _ready() -> void:
 	_build_world()
+	for style in prewarm_explosions:
+		Explosion.prewarm(self, style)
 	Music.play(music)
 	($Ship as Ship).died.connect(_on_player_died)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED

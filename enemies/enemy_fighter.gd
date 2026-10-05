@@ -21,6 +21,9 @@ enum State { PATROL, CHASE, EVADE, SEEK }
 @export var highlight_on_crosshair := true
 ## The Attack order can pick this fighter.
 @export var attack_target := true
+## What's left after it's destroyed: its model keeps flying, smoking, then
+## explodes again (Wreck). Empty = it just vanishes in the first explosion.
+@export var wreck_scene: PackedScene = preload("res://effects/wreck.tscn")
 
 @export_group("Senses")
 ## Half-angle (degrees) of the forward view cone used to spot the player on patrol.
@@ -96,9 +99,14 @@ func take_hit(damage: int, _at: Vector3) -> void:
 	health -= damage
 	if health > 0:
 		return
-	Impact.spawn(get_parent(), global_position, Color(1.0, 0.6, 0.25), 5.0)
+	Explosion.spawn(get_parent(), global_position, explosion, explosion_size, velocity)
 	SoundFX.play_at(get_parent(), explosion_sound, global_position, 0.0, randf_range(0.9, 1.1))
 	get_tree().call_group("hud", "add_score", 1)
+	# The fighter still goes at once (everything tracking it sees it gone);
+	# only its model lives on, as a wreck.
+	var model := get_node_or_null("Model") as Node3D
+	if wreck_scene and model:
+		Wreck.spawn(wreck_scene, get_parent(), self, model, velocity, explosion_sound)
 	destroyed.emit()
 	queue_free()
 

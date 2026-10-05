@@ -19,6 +19,9 @@ static var _charred: ShaderMaterial
 ## Used for aim assist, wingman fire tolerance and HUD markers.
 @export var radius := 4.0
 @export var score := 1
+## How it blows up (fireball radius = radius × explosion_scale).
+@export var explosion: ExplosionStyle = preload("res://effects/explosions/destroyer_part.tres")
+@export var explosion_scale := 1.2
 @export var display_name := "PART"
 ## The crosshair turns red over this part (while intact).
 @export var highlight_on_crosshair := true
@@ -52,7 +55,7 @@ func _break() -> void:
 	is_destroyed = true
 	health = 0
 	remove_from_group("targets")
-	Impact.spawn(get_tree().current_scene, global_position, Color(1.0, 0.55, 0.2), radius * 1.2)
+	Explosion.spawn(get_tree().current_scene, global_position, explosion, radius * explosion_scale)
 	get_tree().call_group("hud", "add_score", score)
 	_on_broken()
 	destroyed.emit()

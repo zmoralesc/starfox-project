@@ -19,8 +19,6 @@ shader_parameter/glint = 0.0
 
 [sub_resource type="ShaderMaterial" id="Mat_water"]
 shader = ExtResource("6_water")
-shader_parameter/glint = 1.0
-shader_parameter/glint_size = 64.0
 
 [sub_resource type="ShaderMaterial" id="Mat_cloud"]
 shader = ExtResource("7_toon")
