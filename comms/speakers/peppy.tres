@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="Advisor" format=3]
+
+[ext_resource type="Script" path="res://comms/advisor.gd" id="1_advisor"]
+
+[resource]
+script = ExtResource("1_advisor")
+display_name = "Peppy"
+color = Color(0.95, 0.27, 0.22, 1)
+beep_pitch = 0.85
+destroyer_warnings = PackedStringArray("Heads up, team! Enemy destroyer coming in!", "I'm reading a destroyer on approach. Stay sharp!", "Another capital ship inbound!")
+destroyer_hints = PackedStringArray("Take out its bridge and all three engines, and it's going down!")
+destroyer_reminders = PackedStringArray("Same as before: bridge and all three engines!", "You know the drill. Bridge and engines!", "Knock out the bridge and every engine!")
+bridge_down = PackedStringArray("Bridge is down! Now finish off those engines!", "Good shooting! Go for the engines!")
+last_thruster = PackedStringArray("One engine left!", "Just one more engine!")
+thrusters_down = PackedStringArray("Engines are out! Hit the bridge!", "It's dead in space! Now the bridge!")
+destroyer_killed = PackedStringArray("That's how it's done, team!", "Great work, everyone!", "And there it goes. Brilliant work, team.")

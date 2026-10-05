@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="Star Fox: Ascent"
+config/name="star_fox_project"
 run/main_scene="res://ui/title_screen.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"

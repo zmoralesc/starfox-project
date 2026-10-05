@@ -23,6 +23,11 @@ extends Node3D
 @export var intro_line := "We're approaching the combat zone."
 ## Seconds into the intro fly-by before the line starts.
 @export var intro_line_delay := 0.5
+## What mission control (Peppy, the MissionControl's advisor) says once the
+## player has control, after the intro. Empty = nothing.
+@export_multiline var intro_advisor_line := ""
+## Seconds after the player gets control before that line.
+@export var intro_advisor_delay := 2.0
 
 ## Set when restarting after death, so the player goes straight back in.
 static var _skip_intro_once := false
@@ -59,6 +64,8 @@ func _begin_play() -> void:
 		_spawner.start()
 	# If the intro was skipped before the line started, say it now.
 	_say_intro_line()
+	if intro_advisor_line != "":
+		get_tree().create_timer(intro_advisor_delay, false).timeout.connect(_say_intro_advisor_line)
 
 
 func _say_intro_line() -> void:
@@ -68,7 +75,18 @@ func _say_intro_line() -> void:
 	var comms := Comms.find(get_tree())
 	var leader := $Ship as Ship
 	if comms and leader.speaker:
-		comms.say(leader.speaker, intro_line)
+		# HIGH so that if it's still on screen when the advisor's line comes
+		# (intro skipped), that line queues behind it rather than cutting it
+		# off (a HIGH line interrupts a LOW one). Nothing else is talking yet.
+		comms.say(leader.speaker, intro_line, Comms.Priority.HIGH)
+
+
+func _say_intro_advisor_line() -> void:
+	if not is_inside_tree():
+		return
+	var mission_control := get_tree().get_first_node_in_group("mission_control") as MissionControl
+	if mission_control:
+		mission_control.say(intro_advisor_line)
 
 
 func _on_player_died() -> void:

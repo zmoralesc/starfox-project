@@ -62,6 +62,8 @@ const STATIC_SHADER := preload("res://comms/static.gdshader")
 @export var line_height := 2.0
 ## Static strength in the square while the speaker has no portrait (0 = none).
 @export_range(0.0, 1.0) var empty_portrait_static := 0.3
+## Backdrop behind a portrait: the speaker's colour darkened by this much.
+@export_range(0.0, 1.0) var portrait_backdrop_darken := 0.72
 
 
 class Line:
@@ -188,6 +190,12 @@ func _set_content(line: Line) -> void:
 	_set_border(_portrait_frame, color, 2)
 	_set_border(_box, Color(color, 0.5), 1)
 	_portrait.texture = line.speaker.portrait if line.speaker else null
+	# Portraits are drawn on a transparent background: give them a solid
+	# backdrop in a dark shade of the speaker's colour.
+	var backdrop := Color(0.0, 0.02, 0.04, 0.65)
+	if _portrait.texture:
+		backdrop = Color(color.darkened(portrait_backdrop_darken), 0.95)
+	(_portrait_frame.get_theme_stylebox("panel") as StyleBoxFlat).bg_color = backdrop
 	_name.text = line.speaker.display_name.to_upper() if line.speaker else ""
 	_name.add_theme_color_override("font_color", color)
 	_static_material.set_shader_parameter("tint", color)
@@ -330,6 +338,8 @@ func _build() -> void:
 	_portrait.position = Vector2(2.0, 2.0)
 	_portrait.size = Vector2.ONE * (PORTRAIT_SIZE - 4.0)
 	_portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Portraits are 256 px, shown at about a third of that: sample mipmaps.
+	_portrait.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	_portrait_frame.add_child(_portrait)
 	# The square changes height while opening and closing: clip what's inside.
 	_portrait_frame.clip_contents = true

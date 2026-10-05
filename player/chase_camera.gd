@@ -1,7 +1,7 @@
 class_name ChaseCamera
 extends Camera3D
 ## Third-person chase camera. Trails the ship's orientation with a little lag
-## so turns feel weighty, and pulls back / widens FOV while boosting.
+## so turns feel weighty, and pulls back / widens FOV above cruise speed.
 
 @export var target: Ship
 @export var offset := Vector3(0.0, 2.6, 11.0)
@@ -9,9 +9,11 @@ extends Camera3D
 ## How tightly the camera follows the ship's rotation. Higher = stiffer.
 @export var follow_sharpness := 7.0
 ## Extra distance per unit of speed above cruise.
-@export var boost_pullback := 0.05
+@export var speed_pullback := 0.05
+## FOV at cruise speed and below...
 @export var base_fov := 70.0
-@export var boost_fov := 84.0
+## ...widening to this at the ship's max_speed (full throttle).
+@export var top_speed_fov := 84.0
 ## On planet missions, the camera stays at least this high above the ground
 ## (or water), so flying low never puts it underground.
 @export var ground_clearance := 3.0
@@ -40,7 +42,9 @@ func _physics_process(delta: float) -> void:
 	if target == null:
 		return
 	_follow(1.0 - exp(-follow_sharpness * delta))
-	var target_fov := boost_fov if target.boosting else base_fov
+	var speed_range := maxf(target.max_speed - target.cruise_speed, 1.0)
+	var fast := clampf((target.speed - target.cruise_speed) / speed_range, 0.0, 1.0)
+	var target_fov := lerpf(base_fov, top_speed_fov, fast)
 	fov = lerpf(fov, target_fov, 1.0 - exp(-4.0 * delta))
 	
 	if _shake > 0.0:
@@ -79,5 +83,5 @@ func _follow(weight: float) -> void:
 
 ## The camera offset including the extra pull-back when flying above cruise speed.
 func _current_offset() -> Vector3:
-	var pullback := maxf(target.speed - target.cruise_speed, 0.0) * boost_pullback
+	var pullback := maxf(target.speed - target.cruise_speed, 0.0) * speed_pullback
 	return offset + Vector3(0.0, 0.0, pullback)

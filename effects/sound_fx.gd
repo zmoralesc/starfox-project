@@ -9,17 +9,18 @@ extends AudioStreamPlayer3D
 const CLEANUP_MARGIN := 1.0
 
 
+## `size` and `reach`: unit_size and max_distance (AudioStreamPlayer3D). The defaults suit
+## explosions: they carry, heard well across the fight, silent past 1200 m.
 static func play_at(parent: Node, stream: AudioStream, at: Vector3, volume_db := 0.0,
-		pitch := 1.0) -> void:
+		pitch := 1.0, size := 25.0, reach := 1200.0) -> void:
 	if stream == null or parent == null:
 		return
 	var player := SoundFX.new()
 	player.stream = stream
 	player.volume_db = volume_db
 	player.pitch_scale = pitch
-	# Explosions carry: heard well across the fight, silent past 1200 m.
-	player.unit_size = 25.0
-	player.max_distance = 1200.0
+	player.unit_size = size
+	player.max_distance = reach
 	parent.add_child(player)
 	player.global_position = at
 	player.finished.connect(player.queue_free)

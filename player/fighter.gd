@@ -17,16 +17,17 @@ const LAYER_ENEMY := 4
 const LAYER_HURTBOX := 8
 
 @export_group("Speed")
+## Speed with no throttle input. The player's ship overrides these in ship.tscn.
 @export var cruise_speed := 45.0
 @export var min_speed := 20.0
+## Top speed in normal flight (the player's full throttle).
 @export var max_speed := 75.0
+## Absolute top speed: no target speed goes above it. The AI sprints at it
+## (enemies evading or closing in, wingmen catching up with the formation).
 @export var boost_speed := 130.0
 @export var acceleration := 35.0
+## Acceleration while above max_speed or heading there.
 @export var boost_acceleration := 90.0
-## Seconds of boost available from a full tank.
-@export var boost_duration := 2.5
-## Seconds to refill an empty tank (only refills while boost is released).
-@export var boost_recharge_time := 4.0
 
 @export_group("Handling")
 @export var pitch_rate := 1.5
@@ -78,8 +79,6 @@ const LAYER_HURTBOX := 8
 @export var speaker: CommsSpeaker
 
 var speed := 0.0
-var boost_energy := 1.0
-var boosting := false
 ## Point the guns aim at (see parallel_fire).
 var aim_point := Vector3.ZERO
 
@@ -177,10 +176,6 @@ func _get_target_speed() -> float:
 	return cruise_speed
 
 
-func _wants_boost() -> bool:
-	return false
-
-
 func _wants_fire() -> bool:
 	return false
 
@@ -202,8 +197,8 @@ func _get_pitch_rate() -> float:
 	return pitch_rate
 
 
-## How fast speed changes towards the target speed (m/s²). `fast`: boosting,
-## or above or heading above max_speed.
+## How fast speed changes towards the target speed (m/s²). `fast`: above or
+## heading above max_speed.
 func _get_acceleration(fast: bool) -> float:
 	return boost_acceleration if fast else acceleration
 
@@ -227,15 +222,7 @@ func _update_rotation(delta: float) -> void:
 
 func _update_speed(delta: float) -> void:
 	var target_speed := clampf(_get_target_speed(), min_speed, boost_speed)
-	var boost_held := _wants_boost()
-	boosting = boost_held and boost_energy > 0.0
-	if boosting:
-		target_speed = boost_speed
-		boost_energy = maxf(boost_energy - delta / boost_duration, 0.0)
-	elif not boost_held:
-		boost_energy = minf(boost_energy + delta / boost_recharge_time, 1.0)
-
-	var fast := boosting or speed > max_speed or target_speed > max_speed
+	var fast := speed > max_speed or target_speed > max_speed
 	var accel := _get_acceleration(fast)
 	speed = move_toward(speed, target_speed, accel * delta)
 

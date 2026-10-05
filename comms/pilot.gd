@@ -14,8 +14,6 @@ extends CommsSpeaker
 @export_group("Lines")
 ## Lines picked from to confirm an order (never the same one twice in a row).
 @export var acknowledgements: PackedStringArray = []
-## Said when a destroyer arrives (if this pilot is the one picked to call it).
-@export_multiline var destroyer_callout := ""
 ## Lines this pilot may say after shooting down an enemy fighter...
 @export_multiline var celebrations: PackedStringArray = []
 ## ...with this chance per kill (never while on Form Up).

@@ -12,19 +12,19 @@ This guide assumes you know Godot 4 basics: scenes, nodes, signals and GDScript.
 
 1. Install **Godot 4.7** (standard build, not .NET). The project uses Jolt Physics and Forward+, both built in.
 2. Open the folder in the Godot project manager and press **F5**.
-3. Almost every asset (meshes, sky, effects) is generated in code or built from primitives. The exceptions are the sound effects in `audio/sfx/`, the player/wingman ship model in `models/arwing_assault/`, the Great Fox in `models/great_fox/`, the destroyer, enemy fighter and Corneria map in `models/destroyer/`, `models/enemy_fighter/` and `models/corneria/` (built by Blender scripts there) and the UI font in `ui/fonts/`; all are in the repo, and Godot imports them the first time the project opens.
+3. Almost every asset (meshes, sky, effects) is generated in code or built from primitives. The exceptions are the sound effects in `audio/sfx/`, the player/wingman ship model in `models/arwing_assault/`, the Great Fox in `models/great_fox/`, the destroyer, enemy fighter, Corneria map and space station in `models/destroyer/`, `models/enemy_fighter/`, `models/corneria/` and `models/space_station/` (built by Blender scripts there) and the UI font in `ui/fonts/`; all are in the repo, and Godot imports them the first time the project opens.
 
 **Controls**
 
 | Action | Keyboard / mouse | Gamepad |
 |---|---|---|
 | Steer | Mouse (moves a virtual stick), arrow keys | Left stick |
-| Throttle | W / S | Right stick up/down |
-| Roll | Q / E or A / D | LB / RB |
-| Boost | Shift | A |
-| Fire | Left mouse button / Space | Right trigger |
+| Throttle | W / S | RT / LT |
+| Roll | Q / E or A / D | Right stick left/right |
+| Fire | Left mouse button / Space | RB |
 | Wingmen: attack target | F | Y |
 | Wingmen: cover me (toggle) | C | X |
+| Wingmen: weapons free | V | A |
 | Wingmen: regroup / cancel orders | R | B |
 | Pause | Esc | Start |
 | Skip intro | Fire / Enter | A |
@@ -34,7 +34,7 @@ This guide assumes you know Godot 4 basics: scenes, nodes, signals and GDScript.
 ## 2. Project map
 
 ```
-main.tscn / main.gd        Asteroid Field mission: inherits levels/level_base.tscn, main.gd (extends Level) scatters the asteroids
+main.tscn / main.gd        Space Station mission: inherits levels/level_base.tscn, main.gd (extends Level) scatters the asteroids
 levels/
   level.gd                 Level: shared mission logic (build world, intro + line, spawner start, death/restart, mouse)
   level_base.tscn          Every shared node (ship, camera, wingmen, spawner, HUD, comms, pause, intro); missions inherit it
@@ -57,7 +57,7 @@ enemies/
   hurtbox.gd               Hurtbox: enlarged hit zone (Area3D) on enemy fighters; bolts and crosshair hit it, crashes don't
   fighter_model.gd         FighterModel: on the imported fighter model; cel-shades it, paints accent + lights per fighter type
   enemy_spawner.gd         EnemySpawner: waves, destroyer every 5th wave, global fighter cap
-  destroyer.gd / .tscn     Destroyer: capital ship (movement, fade, launches, kill rule)
+  destroyer.gd / .tscn     Destroyer: capital ship (warp arrival, movement, launches, kill rule)
   destroyer_part.gd        DestroyerPart: a destructible subsystem (bridge / thruster / turret / hangar)
   destroyer_turret.*       DestroyerTurret: hull turret (extends DestroyerPart)
   destroyer_hangar.gd      DestroyerHangar: hangar door that launches squadrons (extends DestroyerPart)
@@ -71,8 +71,9 @@ world/
   asteroid.gd              Asteroid: procedural, destructible rocks
   intro_cutscene.gd        IntroCutscene: level intro fly-by
   space_dust.gd            Speed streaks around the camera
-  space_sky.gdshader       Procedural starfield sky
-  space_environment.tres   Shared Environment (sky, glow, tonemap) used by title + Asteroid Field
+  space_sky.gdshader       Procedural starfield sky; optional distant planet (Corneria on the Space Station mission: `planet_*` uniforms)
+  space_environment.tres   Shared Environment (sky, glow, tonemap) used by the title and the base level
+  asteroid_field_environment.tres  Its copy for the Space Station mission, with the planet on (keep the two in step)
   terrain.gd               Terrain: low-poly ground (noise, or a TerrainMap), lakes, far ground, collision; height_at() / surface_height() / clearance_height()
   terrain_map.gd           TerrainMap: a hand-made landscape exported from Blender (heights, paint, structure heights)
   map_props.gd             MapProps: on an imported map props model; toon materials, water material, trimesh collision
@@ -80,11 +81,14 @@ world/
   planet_environment.tres  Day sky + horizon fog for planet missions
   play_boundary.gd         PlayBoundary: edge of a mission area; HUD warning, then the ship turns itself back
   great_fox.gd / .tscn     GreatFox: the team mothership as scenery outside a mission area (no collision; slow bob)
+  space_station.gd / .tscn SpaceStation: solid friendly scenery (Space Station mission centre): toon materials, trimesh collision, AI avoidance spheres; keeps asteroids, waves and destroyers out
 effects/
   impact.gd                Impact.spawn(...): flash for hits and explosions
   muzzle_flash.gd          MuzzleFlash.spawn(...): brief flash on a gun muzzle when a fighter fires
   shield_effect.gd         ShieldEffect: the blue shield bubble on the player ship (+ shield.gdshader)
-  toon.gdshader            Cel shading used by every lit surface (light model in toon_light.gdshaderinc); optional colour texture + glow map
+  toon.gdshader            Cel shading used by every lit surface (surface in toon_surface.gdshaderinc, light model in toon_light.gdshaderinc); optional colour texture + glow map
+  toon_clip.gdshader       toon.gdshader plus a clip plane (instance uniform clip_plane); the destroyer while it warps in
+  warp_portal.gd / .gdshader  WarpPortal: the destroyer's swirling arrival portal (opens, close(), frees itself; no collision)
   toon_material.gd         ToonMaterial.convert_tree(): cel-shaded copies of an imported model's PBR materials (keeps texture + glow; used by GreatFox)
   toon_vertex.gdshader     Same, coloured by vertex colours (the terrain)
   water.gdshader           Lake surface: flat toon blue with drifting shimmer
@@ -108,17 +112,21 @@ comms/
   comms.gd                 Comms: in-game dialogue box (portrait + typed text, beeps or recorded voice, priorities)
   static.gdshader          Static shown in the comms portrait square while the box opens, closes or switches speaker
   comms_speaker.gd         CommsSpeaker: a character's name, colour, portrait and beep pitch
-  pilot.gd                 Pilot: a CommsSpeaker that flies; adds accent colour + battle lines (acks, celebrations, praise for your kills, destroyer callout)
-  speakers/*.tres          One file per character: Fox (CommsSpeaker), Falco, Slippy, Krystal (Pilot)
+  pilot.gd                 Pilot: a CommsSpeaker that flies; adds accent colour + battle lines (acks, celebrations, praise for your kills)
+  advisor.gd               Advisor: a CommsSpeaker who doesn't fly (Peppy); adds destroyer warning, hint and progress lines
+  mission_control.gd       MissionControl: has the Advisor call out destroyers and their progress (node in level_base.tscn)
+  speakers/*.tres          One file per character: Fox (CommsSpeaker), Falco, Slippy, Krystal (Pilot), Peppy (Advisor)
 models/
   arwing_assault/          Imported Arwing (glTF, CC-BY 4.0, credit in license.txt): the player and wingman model
   great_fox/               Imported Great Fox III (glTF, textures cut to 1024 px; no licence came with it, see README.txt)
   destroyer/               The destroyer (our own model): hull, bridge, thruster and hangar-door .glb files
-    source/                build_destroyer.py (builds and exports them in Blender) + collision.txt (hull collision pieces)
+    source/                build_destroyer.py (builds and exports them in Blender) + collision.txt (hull collision pieces) + proxies.txt (AI avoidance spheres)
   enemy_fighter/           The Venomian "Mantis" enemy fighter (our own model), one .glb for every fighter type
     source/                build_enemy_fighter.py (builds and exports it in Blender)
   corneria/                The Corneria map (our own): corneria_map.tres (TerrainMap) + corneria_props.glb (everything on the ground)
     source/                build_corneria.py (builds the map in Blender and exports both)
+  space_station/           The Cornerian wheel station at the centre of the Space Station mission, about 800 m across (our own): space_station.glb
+    source/                build_space_station.py (builds and exports it in Blender) + proxies.txt (AI avoidance spheres)
 ```
 
 Every script with a `class_name` (`Fighter`, `Ship`, `Wingman`, `EnemyFighter`, `WingCommand`, `Laser`, and so on) can be used as a type anywhere.
@@ -159,7 +167,7 @@ Fighter (player/fighter.gd)          flight model + guns
 
 1. `_think(delta)`: the pilot makes decisions (read input, run the AI).
 2. Rotate from `_get_stick()` / `_get_roll()`. When roll input is 0, the ship rolls towards `_get_level_up()`.
-3. Change speed towards `_get_target_speed()`, with boost from `_wants_boost()`.
+3. Change speed towards `_get_target_speed()`.
 4. `move_and_slide()`, then collision response.
 5. `_aim(delta)`: set `aim_point`, where the guns aim (twin lasers fly parallel to the line through it).
 6. Fire if `_wants_fire()` and the cooldown allows.
@@ -171,7 +179,7 @@ Fighter (player/fighter.gd)          flight model + guns
 | `_get_stick() -> Vector2` | x = yaw right, y = pitch down (screen-style), -1..1 |
 | `_get_roll() -> float` | Positive rolls left. 0 means auto-level. |
 | `_get_target_speed()` | Clamped to `[min_speed, boost_speed]` |
-| `_wants_boost()`, `_wants_fire()` | |
+| `_wants_fire()` | |
 | `_get_level_up()` | "Up" to auto-level towards (wingmen use the leader's up) |
 | `_get_pitch_rate()` | Pitch rate at full stick (default `pitch_rate`; wingmen raise it to somersault) |
 | `_get_acceleration(fast)` | Speed change rate (default `acceleration`, or `boost_acceleration` when `fast`) |
@@ -179,7 +187,7 @@ Fighter (player/fighter.gd)          flight model + guns
 For AI ships, `AIPilot._think()` calls **`_decide(delta) -> Vector3`**, which returns the world point to fly towards. It then handles steering and obstacle avoidance itself. A subclass's `_decide()` also sets `_target_speed`, `_engage` (what to shoot, if anything) and `_level_up`.
 
 Useful `AIPilot` helpers:
-- `_attack_goal(target, side)`: chases fighters from behind, and makes strafing runs (approach, then break off) on anything that doesn't move.
+- `_attack_goal(target, side)`: chases fighters from behind, and makes strafing runs (approach, then break off) on anything that doesn't move. Strafing runs need a clear view (`_clear_view()`, one World-layer ray): blocked, the pilot repositions, and pull-out points are chosen to see the target (`_viewpoint()`, `VIEW_RING` 8 directions). Avoidance ignores obstacles a structure target is mounted on (whose clearance zone holds it); not for fighters.
 - `_lead_point(target)`: where to aim so the bolts meet a moving target.
 - `_fly_to_then_attack(point, timeout)`, `_begin_attack()`.
 
@@ -212,13 +220,15 @@ Defined as constants on `Fighter`.
 | `wingmen` | `Wingman` ×3 | WingCommand, HUD |
 | `enemies` | `EnemyFighter` | HUD, Cover Me |
 | `targets` | Asteroids, enemies, intact destroyer parts | Order targeting (`WingCommand.pick_target()`) |
-| `obstacles` | Asteroids, enemies, destroyer `ObstacleProxy` spheres | AI obstacle avoidance |
+| `obstacles` | Asteroids, enemies, destroyer and space station `ObstacleProxy` spheres | AI obstacle avoidance |
 | `hud` | HUD overlay | `call_group("hud", "add_score", n)` |
 | `comms` | `Comms` | `Comms.find(get_tree())` from anything that talks |
-| `wing_command` | `WingCommand` | HUD; `EnemySpawner` calls `announce_destroyer` on it |
+| `wing_command` | `WingCommand` | HUD |
+| `mission_control` | `MissionControl` (Peppy) | `EnemySpawner` calls `announce_destroyer(destroyer)` on it |
 | `wing_command`, `enemy_spawner`, `destroyer` | singletons in the level | HUD |
 | `terrain` | `Terrain` (planet missions only; joined in `_enter_tree`) | `ChaseCamera` ground clearance, AI ground avoidance, wingman slots, `EnemySpawner`, `Ship` turn back |
 | `boundary` | `PlayBoundary` (missions with an edge; joined in `_enter_tree`) | `Ship` turn back, HUD warning, enemy patrols, `EnemySpawner` |
+| `station` | `SpaceStation` (Space Station mission; joined in `_enter_tree`) | `main.gd` asteroid placement, `EnemySpawner` (wave spawn points, destroyer destination) |
 
 ### What makes something shootable
 There's no base class for this. Lasers and the AI check for methods and properties instead:
@@ -256,6 +266,7 @@ Gameplay numbers are `@export`s grouped in the Inspector (`Speed`, `Handling`, `
 ### Player (`Ship`)
 - **Mouse steering:** the mouse moves a virtual stick, shown as the cursor ring on the HUD. It stays where you leave it; `mouse_recenter` makes it drift back to centre.
 - **Shields:** 100. Enemy bolts do 4. The shields stop every shot while they have at least 1 point; once they are knocked out (`shields_down`), the next hit destroys the ship and `died` fires. Damaged shields recharge at 10/s after 3 s without a hit. Knocked-out shields stay offline for 12 s (`shield_reboot_time`) before recharging from zero. `shields_depleted` / `shields_online` signal the transitions. The bubble effect is `effects/shield_effect.gd` + `effects/shield.gdshader` on the `Model/Shield` node.
+- **Thruster heat** (*Thrusters* exports on `Ship`): throttling up or down heats them in proportion to the throttle; `heat_time` 5.2 s at full throttle overheats them (half throttle 10.4 s). Released, they cool in `cool_time` 3 s. Overheated, the throttle is ignored (back to cruise) for `overheat_time` 3 s while the heat drains. Signals `thrusters_overheated` / `thrusters_cooled`. Player only.
 - **What wingmen engage:** `aim_target` is whatever is under the crosshair right now. `fire_target` is what you've been shooting in the last 1.5 s; wingmen in formation engage it.
 - **Cutscenes:** setting `controls_enabled = false` puts the ship on autopilot, flying straight at `autopilot_speed`.
 
@@ -279,15 +290,15 @@ Gameplay numbers are `@export`s grouped in the Inspector (`Speed`, `Handling`, `
   - **Too fast to stop gently** (closing over `overshoot_margin` 5 m/s faster than that, more than 25 m out): sails past the slot slowing at 30 m/s², then drifts back into it. 40 m behind at 120 m/s: 58 m past, back in 4.8 s, braking 34 m/s².
   - **Far ahead of the slot** (Form Up after an order left them in front of you): more than `rejoin_turn_distance` (70 m) from the slot and over 20 m ahead, a wingman somersaults back (*Somersault* exports, `_stunt` stages `PULL_UP` → `BACK` → `PULL_THROUGH`). It loops up and over at `somersault_speed` (40 m/s) and `somersault_pitch_rate` (3 rad/s, a cheat: normally 1.8), flies back upside down in a lane above the formation (at least `somersault_pass_clearance` 20 m off your line), then pulls through to come out `somersault_exit_behind` (20 m) behind its slot, beside it, and arrives as above. One already facing away turns round flat and half-rolls onto its back first. 3.9–5.9 s from 80–300 m ahead, at any leader speed, facing either way, closest pass 11.6 m. Within 70 m it slows and lets you catch up.
   - **Behind the slot but facing away** (e.g. after an attack run): turns round towards `rejoin_turn_out` (60 m) out on its side, never across your path.
-  - **Formation flight only engages** while the wingman faces within about 37–73° of your heading (`ASSIST_MIN_ALIGNMENT` / `ASSIST_FULL_ALIGNMENT`).
+  - **Formation flight only engages** while the wingman faces within about 37–73° of your heading (`ASSIST_MIN_ALIGNMENT` / `ASSIST_FULL_ALIGNMENT`), tilted by the slot's climb or dive.
   - **How it works:** the wingman turns and rolls with the leader, anticipating the leader's current turn rate (`_update_rotation` override). It also moves with the slot's real velocity plus a spring onto it. This uses `Fighter._velocity_offset()`, the one way a ship can move other than straight ahead, capped at `max_slot_correction`.
   - **Why:** the leader can bank-and-yank or roll hard without sweeping through a wingman, and formation fire stays on target.
   - **Banking:** formation flight turns the ship without the stick, so wingmen bank the model from their measured turn rate (`_turn_rates`, via the `Fighter._visual_turn_rates()` hook), rescaled to the leader's `pitch_rate` / `yaw_rate` in formation: same turn, same bank angle as the player.
   - **When it lets go:**
     - immediately on any order;
-    - quickly while dodging an obstacle or after scraping something;
+    - quickly while dodging an obstacle, pulling up from the ground or a building, or after scraping something;
     - whenever the leader is dead.
-  - **Sideways slide:** `velocity_heading_blend` points the nose partly along the direction of travel, hiding most of the slide.
+  - **Sideways slide:** `velocity_heading_blend` points the nose partly along the direction of travel, hiding most of the slide. `vertical_heading_blend` 1.0 does the same for pitch: the nose climbs and dives with the slot (vertical slide 7.6° → 2.3° on city passes).
 - **ATTACK:** peel off and go after `target` until it's destroyed, then go back to the standing order.
   - **Aiming at turning targets:** wingmen have `lead_turns` on (set in `wingman.tscn`). This adds a turn that matches how fast the target crosses their view (`AIPilot._tracking_stick()`). Without it, the plain steering trails a turning fighter by about 10°, which is outside the fire window, so they chase without shooting. Elite fighters (`enemy_fighter.tscn`) have it on too; light fighters override it off. Turning it on makes any pilot a much better shot.
   - **Sharing a target:** wingmen on one target would otherwise settle into the same spot behind it.
@@ -306,9 +317,9 @@ Gameplay numbers are `@export`s grouped in the Inspector (`Speed`, `Handling`, `
   - **Attack (F / Y):** targets what's under the crosshair, or failing that the target nearest it. Enemy fighters get twice the aiming slack. Only things whose `attack_target` is on count: never asteroids, so with a rock under the crosshair it picks the enemy nearest it. With nothing in reach, no one is ordered and the selection is kept (no message: the empty crosshair says it).
   - **Cover Me (C / X):** a standing order. Each frame, enemies in `CHASE` are threats, assigned one per covering wingman where possible. A wingman stays on its enemy until that enemy goes back to `PATROL` or dies. Between threats it waits in a trailing slot `cover_trail_distance` (35 m) behind its normal one, and doesn't fire with you. It goes straight for a threat, skipping the fan-out split that Attack orders use (`command_attack(target, false)`).
   - **Form Up (R / B):** a standing order; back into formation. The action is still called `command_cancel` so saved bindings carry over.
-  - **Weapons Free (V / Back):** a standing order (`_free_goal()`, `#region Weapons free`). See *Weapons Free* below.
+  - **Weapons Free (V / A):** a standing order (`_free_goal()`, `#region Weapons free`). See *Weapons Free* below.
 - **Weapons Free:** with no target, the wingman roams around the leader. It picks points within `free_roam_radius` (208 m, mostly ahead), in the leader's local space so they move with it.
-  - **Staying close:** outside `free_leash` (325 m) it heads back. Roam routes steer around the leader, which isn't an AI obstacle (`_steer_clear_of_leader()`).
+  - **Staying close:** outside `free_leash` (325 m) it heads back at `boost_speed` (150 m/s; its `max_speed` 80 is slower than your full throttle). With you weaving at full throttle: 150–330 m away on average, 1–33% of the time past the leash (an engagement in progress is never broken off). Roam routes steer around the leader, which isn't an AI obstacle (`_steer_clear_of_leader()`).
   - **Picking targets:** it engages enemy fighters within `free_detect_range` of itself and `free_engage_radius` of the leader. Fighters no other wingman is on come first (`_pick_free_target()`); it only doubles up when every nearby enemy is taken.
   - **Cooldown:** after shooting down an enemy fighter itself, the wingman waits `free_kill_cooldown` (2–3.5 s) before picking a new target, roaming meanwhile (`_free_cooldown`, set in `notify_kill()`). Losing a target any other way (someone else's kill, the enemy leaving) starts no cooldown.
   - **Never disengages:** once engaged, it stays on the target until it dies, however far the chase goes, then returns to roaming.
@@ -318,9 +329,9 @@ Gameplay numbers are `@export`s grouped in the Inspector (`Speed`, `Handling`, `
 - `lead_turns = true` allows an AI to steer its nose ahead of moving targets. Elite fighters and wingmen have this on; light fighters have it off.
   - **Off on this order:** formation flight and formation fire.
 - **Signals:** `selection_changed`, `order_feedback(message)` (emitted for orders that went out; nothing shows it) and `Wingman.order_changed`.
-- **Comms lines** (`acknowledgements`, `destroyer_callout`, `celebrations`, `praise`, `celebration_chance` in each character's `Pilot` file, `comms/speakers/*.tres`; spoken via `WingCommand` and `Wingman.notify_kill`):
+- **Comms lines** (`acknowledgements`, `celebrations`, `praise`, `celebration_chance` in each character's `Pilot` file, `comms/speakers/*.tres`; spoken via `WingCommand` and `Wingman.notify_kill`):
   - **Acknowledgements:** after each order, one recipient picked at random says one of its own lines (never the same as its previous one): Falco "You got it!" / "On it!", Slippy "Right away!" / "Understood!", Krystal "Yessir!" / "Yes, captain!". Low priority, so it's dropped if someone's already talking. An order that reaches nobody gets no line.
-  - **Destroyer callout:** when a destroyer spawns, a random wingman calls it out with a hint (bridge and thrusters). One line per wingman. High priority.
+  - **Destroyers** are called out by Peppy, not the wingmen (see *Peppy* under Comms).
   - **Kill celebrations:** when a wingman's shot destroys an enemy fighter (not rocks or destroyer parts), there's a `celebration_chance` (25%) it says a random line from its pilot's `celebrations`, never on Form Up. Low priority. The laser reports kills to its shooter with `notify_kill(victim)`.
   - **Praise for your kills:** when your shot destroys an enemy fighter, a random wingman has its `celebration_chance` (25%) to say one of its pilot's `praise` lines (never the same twice in a row), on any order. Low priority. `Ship.notify_kill()` → `WingCommand.praise_player_kill()`.
 - **Wingmen are invulnerable:** they have no `take_hit`.
@@ -339,30 +350,30 @@ Any hit triggers `EVADE` (outside the cooldown), through `notify_shot`. **Astero
 
 **Model (the Venomian "Mantis"):** one `.glb` (`models/enemy_fighter/`, built by `source/build_enemy_fighter.py`) for both types, about 6.2 × 5.7 m. `FighterModel` on `Model/Mantis` paints `Fighter_Accent` and `Fighter_Lights` (eye, pincer tips, wing leading edges, tip-plate fronts): elite purple + red lights (energy 10), light fighter tan + orange (energy 8, overridden in `light_fighter.tscn`). Engine glow: `Model/Glow`, one oval over the twin nozzles. Muzzles at the gun tips (±0.95, −0.42, −2.15). Hurtbox 6.6 × 3.8 × 5.2 m, centred 0.5 m forward (about the old 5.5 m cube's hit rate, slightly higher); collision box 6.2 × 2 × 5.6, same centre; `radius` 3.5.
 
-**Waves (`EnemySpawner`):** `enemy_scene` sets the level's fighter type for both waves and destroyer hangars. The base level (`levels/level_base.tscn`, so every mission) uses `light_fighter.tscn`; the script default is the elite `enemy_fighter.tscn`. 3 fighters, then one more per wave up to 8. Each wave spawns 600 m out, roughly ahead of the player and facing random directions. Every 5th wave also brings a destroyer (`destroyer_every`, 0 = never). The next wave comes 6 s after every enemy is gone, destroyer included. At most `max_fighters` (12) enemy fighters can be alive at once, counting hangar launches. Anything that should hold up the next wave must be registered with `spawner.track(node)`. Waves don't start until `start()` is called.
+**Waves (`EnemySpawner`):** `enemy_scene` sets the level's fighter type for both waves and destroyer hangars. The base level (`levels/level_base.tscn`, so every mission) uses `light_fighter.tscn`; the script default is the elite `enemy_fighter.tscn`. 3 fighters, then one more per wave up to 8. Each wave spawns 600 m out, roughly ahead of the player and facing random directions, pushed `spawn_station_margin` (100 m) clear of a space station if there is one. Every 5th wave also brings a destroyer (`destroyer_every`, 0 = never). The next wave comes 6 s after every enemy is gone, destroyer included. At most `max_fighters` (12) enemy fighters can be alive at once, counting hangar launches. Anything that should hold up the next wave must be registered with `spawner.track(node)`. Waves don't start until `start()` is called.
 
 ### Destroyer (`Destroyer`)
-- **Arrival:** appears at `zone_radius` (1000 m) from the centre, fades in over 4 s (`GeometryInstance3D.transparency` on every mesh), then crawls inward at 8 m/s and stops `stop_distance` (300 m, set in `destroyer.tscn`) from the centre. It smashes asteroids in its path with `Asteroid.shatter()`, which awards no score. Fewer working thrusters make it slower.
-- **Model:** our own, about 368 × 175 m (1.5× the old one): forked prow with an open gap, bridge tower, three thrusters, side hangars; gunmetal, crimson, amber, red-orange engines. Built in Blender by `models/destroyer/source/build_destroyer.py` (game coordinates; colours are the sRGB values the game shows), exported as four `.glb` files and cel-shaded at load (`ToonMaterial`).
-- **Hull and parts:** the hull is the `AnimatableBody3D` root, on the World layer. All damage goes through `DestroyerPart` children on the Enemy layer, and the parts ignore hits until `is_vulnerable()` (fully faded in and not dying).
+- **Arrival (warp in, `warp_in` on by default):** placed on `zone_radius` (2000 m on the Space Station mission) in a random direction, then moved out to a `WarpPortal` (`effects/warp_portal.gd`) `portal_margin` 50 m beyond that, just outside the boundary (`portal_radius` 230 m, centre `portal_height` 30 m up). The portal opens over 1.5 s (crimson flash, deep rumble); after `warp_charge_time` 1 s the ship comes through at `warp_speed` 100 m/s, hidden behind the portal plane by a clip plane (`toon_clip.gdshader`, `clip_plane` instance uniform) and with collision off; once the stern is out (8.9 s) the portal shuts and the parts can be shot (`is_damageable()`); it brakes to cruise over `warp_brake_time` 5 s, then turns solid and goes active (13.9 s: turrets, hangars). With `warp_in` off: fades in over `fade_in_time` 4 s where it was placed. Then it crawls inward at 8 m/s and stops `stop_distance` (200 m) from the centre, about 160 s after spawning, its thrusters about 610 m out. **On the Space Station mission** the centre holds the space station, so `EnemySpawner` sends it to a point `destroyer_station_clearance` (300 m) outside the station's bounding sphere (427 m) on the side it came from: it parks with its centre about 930 m from the station (closest approach between its avoidance spheres and the station's over 30 arrivals: 135 m). It smashes asteroids in its path with `Asteroid.shatter()`, which awards no score. Fewer working thrusters make it slower.
+- **Model:** our own, about 552 × 263 m (`SCALE` 1.5 in the script; was 368 × 175): forked prow with an open gap, bridge tower, three thrusters, side hangars; gunmetal, crimson, amber, red-orange engines. Surface detail from `add_detail()`: armour plates with panel lines, lit window rows, red running lights, conduits and machinery; underneath (`add_underside()`), a stepped two-tier keel (the lower tier is solid, with collision), large plates, a crimson spine with floodlights, a glowing ventral bay, keel windows and radiator fins (decoration only: no collision, clear of turrets, seeded, batched per material; hull about 25,000 triangles). Built in Blender by `models/destroyer/source/build_destroyer.py` (game coordinates; colours are the sRGB values the game shows), exported as four `.glb` files and cel-shaded at load (`ToonMaterial`).
+- **Hull and parts:** the hull is the `AnimatableBody3D` root, on the World layer. All damage goes through `DestroyerPart` children on the Enemy layer, and the parts ignore hits until `is_damageable()` (out of the portal, or faded in, and not dying), and the Attack order can't pick them before that. Turrets and hangars wait for `is_vulnerable()` (active and not dying).
 - **Kill rule:** destroying the bridge **and** all three thrusters starts a chain of explosions, then a fade-out, then `destroyed`.
 - **Turrets (`DestroyerTurret`):** a destroyed turret is disabled, charred and stays on the hull.
   - **Targeting:** the player if within `aggro_range` (450 m); otherwise the nearest wingman in range.
   - **Firing limits:** pitch is limited to −5°…80°, so there are blind spots. Each turret needs a clear line of fire past the hull and asteroids.
-- **Hangars (`DestroyerHangar`):** every `launch_interval` (40 s, first launch 15 s after fading in), the next intact hangar opens its door and launches 3 fighters, within the fighter cap.
+- **Hangars (`DestroyerHangar`):** every `launch_interval` (40 s, first launch 15 s after going active), the next intact hangar opens its door and launches 3 fighters, within the fighter cap.
   - **Launched fighters:** they fly straight out for 2 s via `EnemyFighter.begin_launch()`, with collisions off so they can leave through the hull, then patrol in front of the bay.
   - **Destroying a door** blows it off and stops launches from that side.
 - **Health and score:**
 
   | Part | Health | Score | `radius` |
   |---|---|---|---|
-  | Bridge | 70 | 3 | 27 |
-  | Each thruster | 46 | 2 | 15 |
-  | Each hangar door | 29 | 2 | 15 |
+  | Bridge | 70 | 3 | 40.5 |
+  | Each thruster | 46 | 2 | 22.5 |
+  | Each hangar door | 29 | 2 | 22.5 |
   | Each turret | 12 | 1 | 6 |
   | Killing the destroyer | | +10 | |
 
-- **AI steering:** `_build_obstacle_proxies()` fills `hull_outline` (top-down (x, z) outline, set in `destroyer.tscn`) with 16 m `ObstacleProxy` spheres every 20 × 25 m, plus `extra_proxies` (tower, superstructure, hangar housings) and one per thruster: 89 in all. The gap between the prongs is open for the player; the AI avoids it. If you change the model, re-export, paste the new `collision.txt` pieces and update `hull_outline`, `extra_proxies` and part positions.
+- **AI steering:** `_build_obstacle_proxies()` fills `hull_outline` (top-down (x, z) outline, set in `destroyer.tscn`) with 24 m `ObstacleProxy` spheres every 30 × 37.5 m, plus `extra_proxies` from the model script's `proxies.txt` (tower, superstructure, hangar housings, and layers filling the deck and keel) and one per thruster: 141 in all. The gap between the prongs is open for the player; the AI avoids it. If you change the model, re-export, paste the new `collision.txt` pieces and `proxies.txt` line, and update `hull_outline`, part positions, radii and shape sizes (all ×`SCALE`).
 - **Wingmen vs. parts** (Attack order, 4 runs): turret 3.6–4.1 s, bridge 5.9–6.4 s, centre thruster 18–33 s (it still makes them scrape the hull in most runs). The old ship: 4.1–5.2 s, 13.6–38.8 s, 38 s to never.
 
 ### Intro (`IntroCutscene`)
@@ -371,7 +382,7 @@ Any hit triggers `EVADE` (outside the cooldown), through `notify_shot`. **Astero
 3. Once the player is `handover_distance` past it, the camera flies to `ChaseCamera.chase_transform()`.
 4. Snaps the camera into place, enables controls, fades the HUD in and emits `finished`.
 
-`main.gd` keeps asteroids out of the fly-in lane (`_blocks_intro`), because ships on autopilot don't dodge. **Move the markers (`IntroStart`, `IntroCameraSpot`, in `levels/level_base.tscn`, overridden per mission) to reframe the shot.** The lane follows them automatically.
+`main.gd` keeps asteroids out of the fly-in lane (`_blocks_intro`), because ships on autopilot don't dodge. **Move the markers (`IntroStart`, `IntroCameraSpot`, in `levels/level_base.tscn`, overridden per mission) to reframe the shot.** The lane follows them automatically. On the Space Station mission they are overridden in `main.tscn` to fly in towards the space station.
 
 ### Comms (`Comms`)
 The dialogue box, bottom left: a portrait square (faint static until portraits exist) with the speaker's name under it, and the line typing out in a box to its right.
@@ -385,23 +396,24 @@ The dialogue box, bottom left: a portrait square (faint static until portraits e
 - **Audio:**
   - **Voice:** a line with a `voice` stream plays it instead of beeping, and stays up until the recording's length has passed. This is timed rather than read from the player, so a dead audio device can't stick a line on screen.
   - **Beeps:** otherwise every `beep_every`-th letter (2) beeps at the speaker's `beep_pitch`. The beep is generated in code (`_make_beep()`).
-- **Portraits:** set `portrait` on a speaker resource. The square crops to fill. Without one it shows faint static (`empty_portrait_static` 0.3).
+- **Portraits:** set `portrait` on a speaker resource (none yet: they will be hand-drawn). The square crops to fill, over a backdrop of the speaker's colour darkened by `portrait_backdrop_darken` (0.72), so transparent backgrounds work; turn mipmaps on in the image's import settings (the square samples them). Without a portrait it shows faint static (`empty_portrait_static` 0.3).
+- **Peppy** (`comms/speakers/peppy.tres`, an `Advisor`; red, beep pitch 0.85) doesn't fly: `MissionControl` (in `level_base.tscn`, group `mission_control`) has him speak, all at HIGH priority. Destroyer arrival: a `destroyer_warnings` line, then `destroyer_hints` for the mission's first destroyer or `destroyer_reminders` after. Progress: `bridge_down` (thrusters remain), `last_thruster` (one left), `thrusters_down` (bridge remains), `destroyer_killed` (when the hull finally blows, about 5 s after the last part). Lists never repeat their last line.
 - **Layering:** it's its own `CanvasLayer` (layer 5, above the HUD, below the pause menu), so it shows during cutscenes while the HUD is hidden. It pauses with the game.
 
 ### UI
 - **HUD:** drawn in code in `ui/hud.gd` (`_draw()`, redrawn every frame). There are no Control nodes per element. To add an element, write a `_draw_*` helper and call it from `_draw()`.
-- **Gauges** (`_draw_gauges()`, top right): two bars with no labels or numbers. Shields are green on top; while they're down, the bar turns red and fills as they reboot. Boost is blue underneath. Score is still counted in `hud.score` but not shown.
+- **Gauges** (`_draw_gauges()`, top right): two bars (`BAR_WIDTH` 220 × `BAR_HEIGHT` 12 px, `BAR_GAP` 10 apart), no labels or numbers; an icon left of each in the bar's current colour (`_draw_gauge_icon()`, `GAUGE_ICON_SIZE` 7 px half-size, `GAUGE_ICON_GAP` 7): a filled shield (`SHIELD_ICON`; filled so it isn't the outlined Cover Me icon) and a flame with a see-through core (`FLAME_ICON` minus `FLAME_HOLE`, filled as two halves from `_split_ring()`). Each is baked once, white, into a cached texture (`_gauge_icon_texture()`, like the wingman markers) and tinted when drawn, so the blinking flame fades evenly. Shields on top: green; while the shields are down, it turns red and fills as they reboot. Thrusters underneath: blue (`COLOR_THRUSTERS`), full when cool, emptied by throttling (`1 - thruster_heat`); empty = overheated. During the lockout it refills in red, blinking slowly (`OVERHEAT_BLINK_PERIOD` 1 s fade cycle down to `OVERHEAT_BLINK_MIN_ALPHA` 0.2); full again = throttle back. Score is still counted in `hud.score` but not shown.
 - **Enemy brackets** (`_draw_enemies()`): only within `enemy_marker_radius` 320 px (set in `hud.tscn`) of the crosshair (popping in and out, no fade), and never while something on the World layer (terrain, asteroid, destroyer) hides the enemy from the camera (`hide_hidden_enemies`, one ray per enemy per physics tick). Clouds don't block (no collision). HUD exports, *Enemy markers* group.
-- **Radar** (`_draw_radar()`, top left): shows enemy fighters and wingmen within `radar_range` (500 m). Its on-screen size is `radar_radius` (80 px in the base layout); both are exports on the HUD node in `levels/level_base.tscn`. Enemies further away sit on the rim as small dim dots in their direction. It's the only way to find off-screen enemies: they get no edge arrows (the destroyer and Attack targets still do).
+- **Radar** (`_draw_radar()`, top left): shows enemy fighters, wingmen and the destroyer within `radar_range` (500 m). The destroyer is a red silhouette of its hull outline, 20 px long at any range (`RADAR_DESTROYER_LENGTH`), turned to its heading, with a short above / below line (`RADAR_DESTROYER_TICK` 6 px); out of range it sits on the rim, smaller and dimmer (`_draw_radar_destroyer()`). Its on-screen size is `radar_radius` (80 px in the base layout); both are exports on the HUD node in `levels/level_base.tscn`. Enemies further away sit on the rim in their direction as smaller, dimmer ▲ / ▼ / ■ icons (above / below / level; `RADAR_FAR_SCALE` 0.65, `RADAR_FAR_ALPHA` 0.6). It's the main way to find off-screen enemies: they get an edge arrow only within `sense_range` 150 m ("pilot senses": full `sense_opacity` 0.85 inside `sense_full_range` 50 m, fading out by 150 m; *Pilot senses* exports). The destroyer and Attack targets always get one.
   - **Orientation:** positions are in the ship's local space, so ahead is up and the radar turns and rolls with you.
   - **Enemy symbols:** ▲ above you, ▼ below, ■ level (`_radar_height()`: within `RADAR_LEVEL_DEG` or `RADAR_LEVEL_METRES`).
   - **Wingmen:** dots in their colours, with a height tick. They're kept at least `RADAR_WINGMAN_MIN` px from the centre so the formation stays readable.
 - **Hit direction** (`_draw_hit_direction()`): a red arc around the screen centre on the side an enemy shot came from, fading over `Ship.shot_flash_time` (0.8 s). Set by `Ship.notify_shot(origin)`, which lasers call before `take_hit()`.
 - **Wing panel** (`_draw_wing_panel()`, bottom right): laid out like the D-pad, with Falco left, Slippy top, Krystal right and ALL below.
-  - **Each card** (104 × 38): call sign, with an icon for the current order on the right in the order's colour (`_draw_order_icon()`): Form Up three dots in a V (green), Attack a crosshair (orange), Cover Me a shield (blue), Weapons Free a burst (red). There's deliberately no live status (attacking, roaming...): the player can see that. Selected cards light up in the wingman's colour, and on keyboard the select key shows in the corner.
+  - **Each card** (base layout 56 × 56 squares, 5 px apart, ALL 56 × 20, names 13 px, all scaled by `WING_PANEL_SCALE` 1.15 to about 64 × 64; translucent backgrounds with `CARD_CORNER_RADIUS` 6 px (scaled) rounded corners and no outline, one reused `StyleBoxFlat`): an icon for the current order on top, in the order's colour (`_draw_order_icon()`), with the call sign centred under it: Form Up three dots in a V (green), Attack a crosshair (orange), Cover Me a shield (blue), Weapons Free a burst (red). There's deliberately no live status (attacking, roaming...): the player can see that. The one exception: on Form Up, the icon fades slowly out and in while the wingman is still joining and not yet firing with you (`Wingman.joins_leader_fire()` false for over `JOIN_BLINK_DELAY` 0.4 s, so brief drops in hard turns don't flicker it; a `JOIN_BLINK_PERIOD` 1.2 s cycle down to `JOIN_BLINK_MIN_ALPHA` 0 (invisible), timed by `_joining_for`). Selected cards are tinted in the wingman's colour, and on keyboard the select key shows in the corner.
   - **The middle:** who the next order would go to.
 - **Wingman markers:**
-  - **Triangles:** a solid downward triangle over each wingman in its own colour, with its initial in bold white (`WINGMAN_MARKER_SIZE` 36 × 29 px, letter size `WINGMAN_INITIAL_SIZE` 15, 21 when selected; cached as textures, see `_wingman_marker()`; bold through a `FontVariation` with `variation_embolden`); 1.4× bigger and bracketed when selected.
+  - **Triangles:** a solid downward triangle over each wingman in its own colour, with its initial in bold white (`WINGMAN_MARKER_SIZE` 36 × 29 px, letter size `WINGMAN_INITIAL_SIZE` 15; cached as textures, see `_wingman_marker()`; bold through a `FontVariation` with `variation_embolden`). They look the same whether or not the wingman is selected (selection shows on the wing panel only).
   - **Targets:** only targets of an **Attack** order get an orange diamond listing who's on it (initials and distance). Targets picked by Cover Me or Weapons Free aren't marked.
 - **Pause menu:** runs with `process_mode = ALWAYS`. It sets `get_tree().paused` and also pauses automatically when the window loses focus.
 - **`SceneFader` autoload:** `SceneFader.change_scene(path)` fades out, swaps scenes and fades in. It's currently only used by the title screen when a mission is picked.
@@ -409,10 +421,10 @@ The dialogue box, bottom left: a portrait square (faint static until portraits e
 - **Mission selector** (`ui/mission_select.gd`, node `MissionSelect` in `title_screen.tscn`): Start opens it. One button per `Mission` in its `missions` array, the highlighted one's description underneath, Back (Esc / B) returns to the title menu.
 
 ### Missions and levels
-- **Missions:** `Mission` resources in `missions/` (`title`, `description`, `scene_path`). Asteroid Field → `res://main.tscn`; Corneria → `res://levels/corneria.tscn`.
+- **Missions:** `Mission` resources in `missions/` (`title`, `description`, `scene_path`). Space Station mission → `res://main.tscn`; Corneria → `res://levels/corneria.tscn`.
 - **Shared base:** every mission scene inherits `levels/level_base.tscn` (root script `Level`). It keeps flat node names (`Ship`, `Falco`...). Changes to the base reach every mission unless overridden.
-- **Asteroid Field (`main.tscn`):** `PlayBoundary` radius 1000 m (turn back at 1200 m; just past the 900 m field and the 1000 m destroyer arrival). `GreatFox` at (0, 30, 1800), yaw -25°, straight behind `IntroStart`; a boosting player is turned back about 200 m short of it. Waves and patrols stay inside the boundary.
-- **`Level` exports:** `restart_delay` (3 s), `spawn_enemies` (off = no waves), `music` (a `LevelMusic`; empty = silence), `intro_line`, `intro_line_delay`. Override `_build_world()` to generate a world (`main.gd` scatters asteroids there).
+- **Space Station mission (`main.tscn`):** `PlayBoundary` radius 2000 m (turn back at 2200 m; just past the 1800 m field). Doubled from 1000 m, with the field: `asteroid_count` 640, `field_radius` 1800, `field_flatten` 0.25 (was 160 / 900 / 0.5: same density and thickness), `EnemySpawner.zone_radius` 2000, `ChaseCamera.far` 7000 (base 5000). `GreatFox` at (0, 30, 3600), yaw -25°, behind `IntroStart`, well past the turn-back. Waves and patrols stay inside the boundary. `SpaceStation` at the origin, yaw 215° (bow and hangar towards the intro); the intro markers are overridden here (`IntroStart` (60, 30, 1450), `IntroCameraSpot` (90, 34, 1150)) so the formation flies in towards it and has it dead ahead at handover. `main.gd` `station_clearance` 40 m (asteroids from the station). `WorldEnvironment` uses `asteroid_field_environment.tres`: Corneria in the sky, `planet_direction` (-0.62, -0.42, -0.66), `planet_angular_radius` 17°.
+- **`Level` exports:** `restart_delay` (3 s), `spawn_enemies` (off = no waves), `music` (a `LevelMusic`; empty = silence), `intro_line`, `intro_line_delay`, `intro_advisor_line` (said by MissionControl's advisor, Peppy, `intro_advisor_delay` 2 s after the player gets control, so not during the intro; empty = nothing; the Space Station mission sets "Stay sharp, team. I'm reading multiple enemy squadrons approaching our position."). The intro line is HIGH priority so that, if the intro was skipped and it is still on screen, the advisor's line queues behind it instead of cutting it off. Override `_build_world()` to generate a world (`main.gd` scatters asteroids there).
 
 ### Planet terrain (Corneria)
 - **The Corneria map** (`models/corneria/`, built by `source/build_corneria.py` in Blender): 8 × 8 km, north = −Z. Sea and sea stacks south; a bay with six stone arches (openings ~80 × 100 m); a suspension bridge (30 m deck) over the river mouth; Corneria City (~170 blocks, towers to 340 m with the spire, red warning lights over 100 m); a 130 m plateau with a lake (surface 120 m) and a waterfall; hills, ridges, mesas, a canyon and coastal cliffs in the west; the military base (west) reached by a road through a graded valley; a harbour town with a lighthouse (east coast); irregular mountains on three sides; ~6,000 trees.
@@ -423,7 +435,7 @@ The dialogue box, bottom left: a portrait square (faint static until portraits e
   - **Noise height:** `base_height` 8 + hills ±70 (900 m wide) + ridged mountains up to 320 (none within 450 m of the centre) + boundary ring up to 520 (from 72% to 90% of the half-width), sinking below sea level at the very edge.
   - **Colour per face:** sand (< 6 m above water), rock (normal.y < 0.78), snow (> 260 m), light/dark grass patches; map cells painted paved get `paved_color`; ±5% brightness jitter. Vertex colours, converted to linear, drawn with `toon_vertex.gdshader`.
   - **Collision:** a `ConcavePolygonShape3D` per chunk from the same triangles (World layer); water and the 30 km far-ground plane have thin solid slabs. Crashes are the normal 30 damage + bounce.
-  - **API:** `height_at(x, z)` (exact, `-INF` off the map), `surface_height(x, z)` (ground or water, incl. a map's high water), `clearance_height(x, z)` (also the map's structure height on that cell). AI, spawner and turn-back use `clearance_height`; camera and wingman slots use `surface_height`.
+  - **API:** `height_at(x, z)` (exact, `-INF` off the map), `surface_height(x, z)` (ground or water, incl. a map's high water), `clearance_height(x, z)` (also the map's structure height on that cell). AI, spawner and turn-back use `clearance_height`; the camera uses `surface_height`; wingman slots use `surface_height`, plus a gradual lift over `clearance_height` (see below).
 - **Water:** one opaque plane at `sea_level` 0 (`water.gdshader`); `water_to_horizon` (Corneria) extends it to the horizon. The plateau lake is part of the props.
 - **`Clouds`** (`world/clouds.gd`): defaults 60 clusters of 5–9 blobs at 220 / 430 m (±30) within 1700 m, none within 350 m of the centre; Corneria: 170 at 330 / 560 m within 3600 m. Fade up to 85% when the camera is inside or within 40 m.
 - **Environment:** `planet_environment.tres` (procedural day sky, sky ground colour = horizon, fog density 0.00035 in the horizon colour, `fog_sky_affect` 0). Sun pitched higher, shadows to 600 m.
@@ -431,12 +443,13 @@ The dialogue box, bottom left: a portrait square (faint static until portraits e
 - **Start:** 120 m over the sea at (−450, 120, 3400), heading north; intro start 300 m further south.
 - **Enemies on Corneria:** the base level's waves, no destroyers (`destroyer_every = 0` on its `EnemySpawner`).
 - **AI ground avoidance** (`AIPilot`, *Ground* group; only with a `Terrain`): goals raised to `ground_clearance` 25 m above `clearance_height()` (not an engaged target's lead point); flight path checked at 7 points over `ground_lookahead_time` 2 s, steep climb if any is below the clearance (`_ground_danger`). The AI flies over the city, not down its streets. Measured on Corneria (3 × 3 min around the city): 0 wingman and 1 enemy ground scrapes, no building hits; wingmen hop over buildings when you fly a street (72–88% in formation).
-- **Wingmen near the ground:** `slot_position()` raises the slot to `formation_ground_clearance` 6 m over the ground under it and `formation_ground_lookahead` 1 s ahead. Near the slot, wingmen use 6 m / 1 s for their own check, and it doesn't drop formation flight. With the leader 15 m up: 99% in formation, about 0.1 scrapes a minute.
-- **Enemy patrols:** roam points at least `patrol_min_altitude` 60 m up and `patrol_boundary_margin` 150 m inside the boundary.
+- **Wingmen near the ground:** `slot_position()` raises the slot to `formation_ground_clearance` 6 m over the ground under it and `formation_ground_lookahead` 1 s ahead. Near the slot, wingmen use 6 m / 1 s for their own check; if it fires (`_ground_danger`), formation flight lets go. In formation that check looks along the slot's path, ignoring its descent (`_ground_probe_direction()`). With the leader 15 m up: about 98% in formation, about 0.1 scrapes a minute.
+- **Wingmen and buildings:** on top of that, `_structure_lift` aims the slot 6 m over the `clearance_height()` of its path for the next `structure_lookahead` 4 s (and `structure_side_margin` 8 m to either side), less `structure_climb_rate` 10 m/s × the time beyond `structure_ready_time` 2 s (so the ramp is done 2 s before the building). Only structures count, not a hill ahead (`_structure_excess()`). It moves like a climbing ship: `structure_lift_gain` 3 m/s per metre left, `structure_lift_accel` 25 m/s², at most `structure_lift_rise_speed` 40 m/s up and `structure_lift_fall_speed` 10 m/s down (`structure_lift_clear_fall_speed` 30 m/s with nothing ahead; braking to land softly), holding `structure_lift_hold` 1.5 s before descending. Wingmen hop over the rooftops beside you in smooth curves, never through a street canyon or under an arch. Scripted low city passes: vertical acceleration 193–242 → 13–15 m/s², formation flight dropped 198–261 → 1–4 times per 20 passes, no scrapes. Where the slot would need lifting more than `tuck_lift_threshold` 25 m (towers of 100–240 m beside a street), wingmen **tuck in** on your recorded flight path (`_trail`) instead, `tuck_spacing` 20 m × (`wing_index` + 1) behind you, sliding over `tuck_slide_time` 1.5 s and staying `tuck_hold` 2 s after the last tall building; tucked in, they skip the cell-based ground check, keep formation through grazes and hold their fire. Low street passes: time 30+ m above the slot 48–58% → 0.1–0.9%, average distance 57–81 → 25–28 m.
+- **Enemy patrols:** roam points at least `patrol_min_altitude` 60 m up and `patrol_boundary_margin` 150 m inside the boundary, and moved out of obstacles (`_clear_of_obstacles()`: never inside the space station or a big rock).
 - **Spawner (planet):** wave centre at least `spawn_altitude` 80 m up (each fighter at least 40 m over its own ground) and `spawn_boundary_margin` 250 m inside the boundary.
 - **`PlayBoundary`** (`world/play_boundary.gd`): Corneria `radius` 3300 m (horizontal) around (0, 0, 500), `turn_back_margin` 200 m (negative = warning only). HUD: "RETURN TO THE COMBAT AREA" past the radius, "TURNING BACK" during the automatic turn.
 - **Turn back (`Ship`, *Boundary* group):** past radius + margin the ship steers itself home (`turning_back`; roll ignored), pulling up hard if the ground is within `turn_back_clearance` 60 m; control returns within `turn_back_done_deg` 25° of the way home. About 3 s. A level, low run straight at a steep ridge can still clip it.
-- **`GreatFox`** (`world/great_fox.tscn`): on Corneria, scenery at (500, 700, 4500) over the sea, yaw 70°, about 730 m outside the boundary, behind the intro approach. No collision or groups; `bob_height` 3 m, `bob_period` 14 s. Boosting straight at it, the turn-back stops you about 257 m short. Keep it beyond the boundary + turn-back margin. Also on the Asteroid Field (see Missions and levels).
+- **`GreatFox`** (`world/great_fox.tscn`): on Corneria, scenery at (500, 700, 4500) over the sea, yaw 70°, about 730 m outside the boundary, behind the intro approach. No collision or groups; `bob_height` 3 m, `bob_period` 14 s. At full throttle straight at it, the turn-back stops you about 160 m short (farthest 3,644 m from the boundary centre; with the old 2.5 s boost it was 257 m short at 3,549 m). Keep it beyond the boundary + turn-back margin. Also on the Space Station mission (see Missions and levels).
 
 ---
 
@@ -469,7 +482,7 @@ Players with an older `settings.cfg` get the new action's defaults.
 
 **Add a HUD element.** Add a `_draw_*` function in `hud.gd`. Use `cam.unproject_position()` for world-space markers (check `cam.is_position_behind()` first), and `_draw_edge_arrow()` for markers off screen.
 
-**Change the ship model.** The art is the imported Arwing (`models/arwing_assault/`, CC-BY 4.0: credit the author) instanced as `Model/Arwing` in `player/ship.tscn` (the wingmen inherit it through `wing/wingman.tscn`): scale 0.0055, rotated -90° around Y so the nose points along -Z. Its `ShipModel` script turns flat-colour materials into toon ones and paints `accent_material` (`Material.004`, the fin panels) in each ship's colour. Muzzles sit at the forward roots of the blue fins, (±0.87, 0.44, -0.42). To swap models, keep `Model`, `Model/MuzzleL`, `Model/MuzzleR` and `Model/Shield`, keep -Z as forward, and put `ship_model.gd` on the new instance. Step by step: GUIDE section 10.
+**Change the ship model.** The art is the imported Arwing (`models/arwing_assault/`, CC-BY 4.0: credit the author) instanced as `Model/Arwing` in `player/ship.tscn` (the wingmen inherit it through `wing/wingman.tscn`): scale 0.0055, rotated -90° around Y so the nose points along -Z. Its `ShipModel` script turns flat-colour materials into toon ones and, with `show_band` on (currently off, for a test of HUD markers alone), paints a band in each ship's colour across the fins (`band_materials` `Material.002` + `Material.004`, `player/arwing_band.gdshader`: a shell `band_radius` 2.3 m around `band_hub` (1.0, 0.3, -0.1), mirrored; `band_width` 0.4 m, white `pinstripe_width` 0.06 m edges). Muzzles sit at the forward roots of the blue fins, (±0.87, 0.44, -0.42). To swap models, keep `Model`, `Model/MuzzleL`, `Model/MuzzleR` and `Model/Shield`, keep -Z as forward, and put `ship_model.gd` on the new instance. Step by step: GUIDE section 10.
 
 **Add a model or material (cel-shaded look).**
 - **Lit surfaces:** use a `ShaderMaterial` with `effects/toon.gdshader` and set its `albedo`. The other uniforms tune the bands, glint and rim per material. Textured models: set `albedo_texture` (and `emission`, `emission_texture`, `emission_energy` for glow), or convert an imported model with `ToonMaterial.convert_tree(node)`.
@@ -519,7 +532,7 @@ Two tips:
 - **Physics interpolation is off.** Ships and the camera update at 60 Hz, so there may be slight judder on high-refresh monitors.
 - **Wingmen and enemies only see the player.** Enemies never target wingmen, and nothing damages wingmen. (Destroyer turrets shoot at wingmen only when the player is out of range, purely for show.)
 - **The destroyer moves itself** with `sync_to_physics` off. Leave it off, or transforms set outside the physics step get overwritten.
-- **AI and big obstacles:** obstacle avoidance treats everything as a sphere, so large non-spherical things need covering with `ObstacleProxy` spheres (see `Destroyer._build_obstacle_proxies()`). While attacking, the AI ignores obstacles at or beyond its target, and after scraping a surface it steers off along the normal for `recover_duration`.
+- **AI and big obstacles:** obstacle avoidance treats everything as a sphere, so large non-spherical things need covering with `ObstacleProxy` spheres (see `Destroyer._build_obstacle_proxies()`). While attacking, the AI ignores obstacles at or beyond its target, and after scraping a surface it steers off along the normal for `recover_duration` (the sum of every surface hit, mixed with the previous direction while still recovering, so it can't flip between a wall and a ledge in a corner).
 - **Toon shadow floor is sun-only.** `toon.gdshader` gives shadowed sides a minimum brightness, but only for directional lights. If a non-directional light got it too, it would light whole lighting clusters, showing up as blocky squares.
 - **Outlines vanish against space.** Ink lines are near-black, so silhouettes against the sky blend in. Lines show where objects overlap and on creases. Lines fade out between 220 and 520 m so distant ships stay readable.
 - **Asteroid layout is seeded** (`main.gd → field_seed`), so the field is the same every run apart from the intro lane.

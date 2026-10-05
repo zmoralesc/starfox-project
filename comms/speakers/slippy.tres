@@ -9,6 +9,5 @@ color = Color(0.3, 0.85, 0.35, 1)
 beep_pitch = 0.8
 accent_color = Color(0.3, 0.85, 0.35, 1)
 acknowledgements = PackedStringArray("Right away!", "Understood!")
-destroyer_callout = "Capital ship on approach!"
 celebrations = PackedStringArray("Another one bites the dust!", "That's how it's done!", "Got 'em! Who's next?")
 praise = PackedStringArray("Great shot, Fox!", "That's how you do it!")

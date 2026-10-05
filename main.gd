@@ -1,9 +1,12 @@
 extends Level
-## The Asteroid Field mission: scatters the asteroid field. Everything else
+## The Space Station mission: scatters the asteroid field round the station. Everything else
 ## (intro, restart, spawner, mouse) is shared level logic in Level.
 
 @export var asteroid_count := 160
 @export var field_radius := 900.0
+## Vertical squash of the field (1 = round). Halve it when doubling
+## field_radius to keep the field as thick as before.
+@export var field_flatten := 0.5
 ## No asteroids spawn this close to the starting position.
 @export var safe_radius := 80.0
 @export var field_seed := 1977
@@ -11,11 +14,17 @@ extends Level
 ## Asteroids are kept this far from the intro fly-in path, so the formation
 ## (which flies itself during the intro) never hits one.
 @export var intro_lane_radius := 60.0
+## Asteroids are kept at least this far from the space station (its AI
+## avoidance spheres), so there's room to fly between a rock and the station.
+@export var station_clearance := 40.0
 
 @onready var _asteroids: Node3D = $Asteroids
 
+var _station: SpaceStation
+
 
 func _build_world() -> void:
+	_station = get_tree().get_first_node_in_group("station") as SpaceStation
 	_spawn_asteroids()
 
 
@@ -26,10 +35,11 @@ func _spawn_asteroids() -> void:
 		var asteroid := Asteroid.new()
 		asteroid.radius = lerpf(3.0, 28.0, pow(rng.randf(), 2.5))
 		for attempt in 20:
-			var dir := Vector3(rng.randfn(), rng.randfn() * 0.5, rng.randfn()).normalized()
+			var dir := Vector3(rng.randfn(), rng.randfn() * field_flatten, rng.randfn()).normalized()
 			var distance := maxf(field_radius * pow(rng.randf(), 1.0 / 3.0), safe_radius)
 			asteroid.position = dir * distance
-			if not _blocks_intro(asteroid.position, asteroid.radius):
+			if not _blocks_intro(asteroid.position, asteroid.radius) \
+					and not (_station and _station.overlaps(asteroid.position, asteroid.radius * 1.3, station_clearance)):
 				break
 		_asteroids.add_child(asteroid)
 

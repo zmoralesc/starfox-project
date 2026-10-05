@@ -10,6 +10,11 @@ enum AttackPhase { APPROACH, BREAK }
 
 ## Points checked along the flight path for ground (see _avoid_ground).
 const GROUND_SAMPLES := 6
+## Attacking a structure: directions tried around it for a pull-out point with
+## a clear view (_viewpoint()), and how far short of it (beyond its radius) the
+## line-of-sight check stops, so the surface it's mounted on doesn't count.
+const VIEW_RING := 8
+const VIEW_MARGIN := 3.0
 
 @export_group("AI")
 ## How hard the AI yanks the stick towards its goal.
@@ -78,7 +83,16 @@ func _think(delta: float) -> void:
 	# Just scraped something: pull away from its surface for a moment
 	# instead of grinding along it towards a goal on the other side.
 	if get_slide_collision_count() > 0:
-		_recover_direction = get_slide_collision(0).get_normal()
+		var normal := Vector3.ZERO
+		for i in get_slide_collision_count():
+			normal += get_slide_collision(i).get_normal()
+		# Still pulling away from an earlier hit: add that surface in. Wedged in
+		# a corner (a wall and a ledge above), we then pull out between the two
+		# instead of turning towards one, then the other, every frame, and
+		# going nowhere.
+		if _recover_time > 0.0:
+			normal += _recover_direction
+		_recover_direction = normal.normalized() if normal.length_squared() > 0.0001 else Vector3.UP
 		_recover_time = recover_duration
 	if _recover_time > 0.0:
 		_recover_time -= delta
@@ -179,8 +193,11 @@ func _attack_goal(target: Node3D, side: float) -> Vector3:
 		return _lead_point(target)
 
 	_target_speed = max_speed
-	if dist < r + break_distance:
-		return _start_break(target_pos, r + break_out_distance, side)
+	# A structure (a destroyer part) can be shot only from where it can be
+	# seen: if the hull it's on is in the way, reposition rather than press on.
+	var view_margin := r + VIEW_MARGIN
+	if dist < r + break_distance or not _clear_view(global_position, target_pos, view_margin):
+		return _start_break(target_pos, r + break_out_distance, side, view_margin)
 	return _lead_point(target)
 
 
@@ -190,14 +207,55 @@ func _pursuit_offset() -> float:
 	return 0.0
 
 
-func _start_break(from: Vector3, distance: float, side: float) -> Vector3:
+## Pulls out of an attack run on whatever is at `from`. With `view_margin` > 0
+## (attacking a structure), the point we pull out to must have a clear view of
+## it (see _viewpoint()), so the next run doesn't start behind the hull it's
+## mounted on.
+func _start_break(from: Vector3, distance: float, side: float, view_margin := 0.0) -> Vector3:
 	# Pull out sideways and towards world up (not our own up, which may point
 	# down if we're banked), so we climb away from whatever the target sits on.
 	var away := (global_basis.x * side + Vector3.UP * 0.5 - global_basis.z * 0.5).normalized()
-	_fly_to_then_attack(_clear_of_obstacles(from + away * distance), 4.0)
+	var point := _clear_of_obstacles(from + away * distance)
+	if view_margin > 0.0 and not _clear_view(point, from, view_margin):
+		point = _viewpoint(from, distance, away, view_margin)
+	_fly_to_then_attack(point, 4.0)
 	_engage = null
 	_target_speed = max_speed
 	return _waypoint
+
+
+## A point `distance` from `target_pos` that can see it (_clear_view()), in the
+## direction closest to `preferred`: tried around a ring level with the target,
+## a ring above it and straight above. Falls back to `preferred` if none can.
+func _viewpoint(target_pos: Vector3, distance: float, preferred: Vector3, margin: float) -> Vector3:
+	var best := _clear_of_obstacles(target_pos + preferred * distance)
+	var best_dot := -INF
+	var directions: Array[Vector3] = [Vector3.UP]
+	for i in VIEW_RING:
+		var flat := Vector3.FORWARD.rotated(Vector3.UP, TAU * i / VIEW_RING)
+		directions.append(flat)
+		directions.append((flat + Vector3.UP * 0.7).normalized())
+	for dir in directions:
+		var facing := dir.dot(preferred)
+		if facing <= best_dot:
+			continue
+		var point := _clear_of_obstacles(target_pos + dir * distance)
+		if _clear_view(point, target_pos, margin):
+			best = point
+			best_dot = facing
+	return best
+
+
+## True if nothing solid (World layer: terrain, asteroids, a destroyer's hull)
+## lies between `from` and `target_pos`, stopping `margin` short of the target
+## so the surface it's mounted on doesn't count.
+func _clear_view(from: Vector3, target_pos: Vector3, margin: float) -> bool:
+	var offset := from - target_pos
+	if offset.length() <= margin:
+		return true
+	var to := target_pos + offset.normalized() * margin
+	var query := PhysicsRayQueryParameters3D.create(from, to, Fighter.LAYER_WORLD)
+	return get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 
 ## Moves a waypoint out of any obstacle it ended up inside, and above the ground.
@@ -243,6 +301,11 @@ func _avoid_obstacles(goal: Vector3) -> Vector3:
 	# mounted on (e.g. a destroyer's bridge tower) keeps pushing us off our aim.
 	if is_instance_valid(_engage):
 		look = minf(look, global_position.distance_to(_engage.global_position) - radius_of(_engage))
+	# Attacking a structure (a destroyer turret, say): an obstacle whose
+	# clearance zone holds the target is what it's mounted on, so it doesn't
+	# count either; avoiding it would keep us from ever lining up a shot (the
+	# break-off takes us away). Not for fighters: a rock beside one still counts.
+	var structure: Node3D = _engage if is_instance_valid(_engage) and not _engage is Fighter else null
 	var nearest := INF
 	var result := goal
 	for node in get_tree().get_nodes_in_group("obstacles"):
@@ -255,6 +318,8 @@ func _avoid_obstacles(goal: Vector3) -> Vector3:
 		if t < 0.0 or t > look or t >= nearest:
 			continue
 		var clearance := radius_of(obstacle) * 1.3 + avoid_margin
+		if structure and obstacle.global_position.distance_to(structure.global_position) < clearance:
+			continue
 		var miss := rel - forward * t  # from our path to the obstacle's centre
 		if miss.length() >= clearance:
 			continue
@@ -278,8 +343,9 @@ func _avoid_ground(goal: Vector3) -> Vector3:
 	var forward := -global_basis.z
 	var look := maxf(speed, cruise_speed) * _ground_lookahead()
 	var deficit := 0.0
+	var probe := _ground_probe_direction()
 	for i in GROUND_SAMPLES + 1:
-		var p := global_position + forward * (look * i / GROUND_SAMPLES)
+		var p := global_position + probe * (look * i / GROUND_SAMPLES)
 		deficit = maxf(deficit, _terrain.clearance_height(p.x, p.z) + clearance - p.y)
 	if deficit <= 0.0:
 		return goal
@@ -299,6 +365,11 @@ func _ground_clearance() -> float:
 
 func _ground_lookahead() -> float:
 	return ground_lookahead_time
+
+
+## Which way our flight path runs for the ground check: along the nose.
+func _ground_probe_direction() -> Vector3:
+	return -global_basis.z
 
 
 ## `point` raised to at least `clearance` above the ground, water or buildings below it.

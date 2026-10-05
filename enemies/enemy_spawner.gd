@@ -1,7 +1,8 @@
 class_name EnemySpawner
 extends Node
 ## Sends enemy fighters in waves. Each wave appears some distance from the
-## player; every few waves a destroyer also arrives from the edge of the zone.
+## player; every few waves a destroyer also arrives (through a warp portal
+## beyond the edge of the zone: Destroyer.warp_in).
 ## The next wave comes a few seconds after every enemy (destroyer included)
 ## is gone. Also enforces a cap on how many enemy fighters can exist at once,
 ## counting both wave fighters and ones launched from destroyer hangars.
@@ -19,10 +20,20 @@ extends Node
 @export var wave_delay := 6.0
 ## A destroyer arrives on every Nth wave (5, 10, 15...). 0 = never.
 @export var destroyer_every := 5
-## Edge of the play area, where destroyers appear. The zone is centred on the origin.
+## Edge of the play area, centred on the origin. Destroyers arrive from a
+## random direction on it (warping in just beyond it: Destroyer.portal_margin).
 @export var zone_radius := 1000.0
 ## Most enemy fighters allowed alive at once.
 @export var max_fighters := 12
+
+@export_group("Space station")
+## Waves appear at least this far from the space station (if the mission has
+## one): the group's centre, which then scatters up to 40 m each way.
+@export var spawn_station_margin := 100.0
+## A destroyer heads for a point this far outside the station's bounding
+## sphere instead of the zone's centre, and stops stop_distance short of it,
+## so its bow (375 m ahead of its centre) stays clear of the station.
+@export var destroyer_station_clearance := 300.0
 
 @export_group("Planet missions")
 ## Waves appear at least this high above the ground, water or buildings (the group's
@@ -91,6 +102,9 @@ func _spawn_wave() -> void:
 	var terrain := get_tree().get_first_node_in_group("terrain") as Terrain
 	if terrain:
 		center.y = maxf(center.y, terrain.clearance_height(center.x, center.z) + spawn_altitude)
+	var station := get_tree().get_first_node_in_group("station") as SpaceStation
+	if station:
+		center = station.push_clear(center, spawn_station_margin)
 	var parent := get_parent()
 	for i in count:
 		var enemy := enemy_scene.instantiate() as EnemyFighter
@@ -115,9 +129,18 @@ func _spawn_destroyer() -> void:
 	destroyer.spawner = self
 	destroyer.fighter_scene = enemy_scene
 	get_parent().add_child(destroyer)
-	destroyer.arrive(Vector3.ZERO)
+	# Heading for the zone's centre, it would park in a station there: stop
+	# short of the station on the side it came from instead.
+	var destination := Vector3.ZERO
+	var station := get_tree().get_first_node_in_group("station") as SpaceStation
+	if station:
+		var from_station := destroyer.position - station.global_position
+		from_station.y = 0.0
+		destination = station.global_position \
+			+ from_station.normalized() * (station.bounding_radius() + destroyer_station_clearance)
+	destroyer.arrive(destination)
 	track(destroyer)
-	get_tree().call_group("wing_command", "announce_destroyer")
+	get_tree().call_group("mission_control", "announce_destroyer", destroyer)
 
 
 func _on_enemy_destroyed() -> void:

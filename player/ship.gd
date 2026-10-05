@@ -5,6 +5,8 @@ extends Fighter
 signal died
 signal shields_depleted
 signal shields_online
+signal thrusters_overheated
+signal thrusters_cooled
 
 ## How far ahead (metres) the automatic turn back aims (see _update_turn_back).
 const TURN_BACK_GOAL_DISTANCE := 150.0
@@ -34,6 +36,19 @@ const TURN_BACK_GOAL_DISTANCE := 150.0
 @export var shield_reboot_time := 12.0
 ## Seconds the HUD's hit-direction marker takes to fade after a shot hits you.
 @export var shot_flash_time := 0.8
+
+@export_group("Thrusters")
+## Throttling up or down heats the thrusters, in proportion to how far the
+## throttle is pushed. At full heat they overheat: the throttle stops working
+## (the ship eases back to cruise speed) until they've cooled right down.
+##
+## Seconds of full throttle (up or down) from cold to overheated.
+@export var heat_time := 5.2
+## Seconds to cool from full heat to cold while the throttle is released.
+@export var cool_time := 3.0
+## After overheating, seconds before the throttle works again (the heat drains
+## to zero meanwhile).
+@export var overheat_time := 3.0
 
 @export_group("Boundary")
 ## Flying too far past the mission's PlayBoundary, the ship turns itself back
@@ -96,8 +111,15 @@ var fire_target: Node3D
 ## True while the ship is turning itself back into the play area (see
 ## PlayBoundary). The player has no steering meanwhile. Read by the HUD.
 var turning_back := false
+## Thruster temperature, 0 (cold) to 1 (overheating). Read by the HUD.
+var thruster_heat := 0.0
+## True from overheating until the thrusters have cooled down; the throttle is
+## ignored meanwhile. Read by the HUD.
+var overheated := false
 
 var _pad_active := false
+## Throttle in use this tick (-1..1): the input, or 0 while overheated.
+var _throttle := 0.0
 var _fire_target_timer := 0.0
 var _since_crash := 0.0
 ## Crash recovery: seconds left steering away, the heading to swing to, and
@@ -202,6 +224,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _think(delta: float) -> void:
 	_since_crash += delta
 	_update_shields(delta)
+	_update_thrusters(delta)
 	if not controls_enabled:
 		stick = Vector2.ZERO
 		_pad_active = false
@@ -277,14 +300,31 @@ func _get_roll() -> float:
 func _get_target_speed() -> float:
 	if not controls_enabled:
 		return autopilot_speed
-	var throttle := Input.get_axis("throttle_down", "throttle_up")
-	if throttle > 0.0:
-		return lerpf(cruise_speed, max_speed, throttle)
-	return lerpf(cruise_speed, min_speed, -throttle)
+	if _throttle > 0.0:
+		return lerpf(cruise_speed, max_speed, _throttle)
+	return lerpf(cruise_speed, min_speed, -_throttle)
 
 
-func _wants_boost() -> bool:
-	return controls_enabled and Input.is_action_pressed("boost")
+## Reads the throttle and heats or cools the thrusters (see the Thrusters
+## group). Overheated, the throttle is ignored while the heat drains away
+## over overheat_time; then it works again.
+func _update_thrusters(delta: float) -> void:
+	if overheated:
+		_throttle = 0.0
+		thruster_heat = move_toward(thruster_heat, 0.0, delta / maxf(overheat_time, 0.01))
+		if thruster_heat <= 0.0:
+			overheated = false
+			thrusters_cooled.emit()
+		return
+	_throttle = Input.get_axis("throttle_down", "throttle_up") if controls_enabled else 0.0
+	if _throttle == 0.0:
+		thruster_heat = move_toward(thruster_heat, 0.0, delta / maxf(cool_time, 0.01))
+		return
+	thruster_heat = minf(thruster_heat + absf(_throttle) * delta / maxf(heat_time, 0.01), 1.0)
+	if thruster_heat >= 1.0:
+		overheated = true
+		_throttle = 0.0
+		thrusters_overheated.emit()
 
 
 func _wants_fire() -> bool:

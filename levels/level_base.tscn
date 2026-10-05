@@ -16,6 +16,8 @@
 [ext_resource type="Resource" path="res://comms/speakers/falco.tres" id="15_falco"]
 [ext_resource type="Resource" path="res://comms/speakers/slippy.tres" id="16_slippy"]
 [ext_resource type="Resource" path="res://comms/speakers/krystal.tres" id="17_krystal"]
+[ext_resource type="Script" path="res://comms/mission_control.gd" id="18_mission_control"]
+[ext_resource type="Resource" path="res://comms/speakers/peppy.tres" id="19_peppy"]
 
 [node name="Level" type="Node3D"]
 script = ExtResource("1_main")
@@ -94,3 +96,7 @@ camera = NodePath("../ChaseCamera")
 hud = NodePath("../HUD")
 start_point = NodePath("../IntroStart")
 camera_spot = NodePath("../IntroCameraSpot")
+
+[node name="MissionControl" type="Node" parent="."]
+script = ExtResource("18_mission_control")
+advisor = ExtResource("19_peppy")

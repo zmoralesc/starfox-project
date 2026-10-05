@@ -22,8 +22,11 @@ static var _charred: ShaderMaterial
 @export var display_name := "PART"
 ## The crosshair turns red over this part (while intact).
 @export var highlight_on_crosshair := true
-## The Attack order can pick this part (while intact).
-@export var attack_target := true
+## The Attack order can pick this part (while intact, and only once the
+## destroyer can be damaged: not while it's still warping in).
+@export var attack_target := true:
+	get:
+		return attack_target and (destroyer == null or destroyer.is_damageable())
 
 var health := 0
 var is_destroyed := false
@@ -38,7 +41,7 @@ func _ready() -> void:
 
 
 func take_hit(damage: int, _at: Vector3) -> void:
-	if is_destroyed or destroyer == null or not destroyer.is_vulnerable():
+	if is_destroyed or destroyer == null or not destroyer.is_damageable():
 		return
 	health -= damage
 	if health <= 0:

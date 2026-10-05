@@ -35,10 +35,6 @@ var selected: Array[Wingman] = []
 const SELECT_ACTIONS := {&"select_wingman_1": 0, &"select_wingman_2": 1, &"select_wingman_3": 2}
 
 
-## Call sign of whoever called out the last destroyer. Static, so it carries
-## over level restarts in the same session.
-static var _last_destroyer_caller := ""
-
 ## Wingman -> the acknowledgement it used last.
 var _last_ack := {}
 ## The last line said to praise one of the player's kills.
@@ -197,22 +193,6 @@ func _acknowledge(wingman: Wingman) -> void:
 	var line: String = options.pick_random()
 	if comms.say(pilot, line):
 		_last_ack[wingman] = line
-
-
-## A destroyer has arrived: a random wingman calls it out, with the hint on
-## how to kill it (never the same wingman as last time). High priority, so it
-## cuts off chatter.
-func announce_destroyer() -> void:
-	var comms := Comms.find(get_tree())
-	var speakers := wingmen().filter(func(w: Wingman) -> bool:
-		return w.pilot != null and w.pilot.destroyer_callout != "")
-	if comms == null or speakers.is_empty():
-		return
-	if speakers.size() > 1:
-		speakers = speakers.filter(func(w: Wingman) -> bool: return w.call_sign != _last_destroyer_caller)
-	var wingman: Wingman = speakers.pick_random()
-	_last_destroyer_caller = wingman.call_sign
-	comms.say(wingman.pilot, wingman.pilot.destroyer_callout, Comms.Priority.HIGH)
 
 
 ## The player shot down an enemy fighter: a random wingman may compliment it,

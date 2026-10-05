@@ -2,7 +2,7 @@ extends MultiMeshInstance3D
 ## Tiny specks that wrap around the camera and streak along the ship's velocity,
 ## so there's always a sense of speed even in empty space.
 
-@export var count := 350
+@export var count := 280
 ## Half-size of the box of dust kept around the camera.
 @export var extent := 70.0
 ## How much the specks stretch per unit of speed.

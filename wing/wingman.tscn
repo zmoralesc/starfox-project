@@ -7,6 +7,7 @@
 script = ExtResource("2_wingman")
 collision_mask = 1
 lead_turns = true
+cruise_speed = 45.0
 max_speed = 80.0
 boost_speed = 150.0
 pitch_rate = 1.8

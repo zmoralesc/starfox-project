@@ -7,28 +7,85 @@ extends Control
 
 const COLOR_IDLE := Color(0.45, 1.0, 0.55, 0.9)
 const COLOR_TARGET := Color(1.0, 0.3, 0.25, 1.0)
-const COLOR_BOOST := Color(0.4, 0.8, 1.0, 0.9)
+const COLOR_COVER := Color(0.4, 0.8, 1.0, 0.9)
 const COLOR_ORDER := Color(1.0, 0.7, 0.15, 1.0)
 const COLOR_WING := Color(0.95, 0.75, 0.3, 0.7)
 const COLOR_ENEMY := Color(1.0, 0.25, 0.2, 0.85)
 const COLOR_SHIELD := Color(0.35, 0.95, 0.45, 0.95)
 const COLOR_SHIELD_DOWN := Color(1.0, 0.3, 0.2, 0.95)
+## Thruster bar: full when the thrusters are cool, emptied by throttling.
+const COLOR_THRUSTERS := Color(0.4, 0.8, 1.0, 0.9)
+## After an overheat the thruster bar refills in red, fading slowly out and
+## in once every this many seconds (from full brightness)...
+const OVERHEAT_BLINK_PERIOD := 1.0
+## ...down to this opacity.
+const OVERHEAT_BLINK_MIN_ALPHA := 0.2
+## On Form Up, a wingman's order icon blinks slowly while it is still joining
+## (not yet firing with you: Wingman.joins_leader_fire()). Only after this many
+## seconds, so the moments it drops out of position in a hard turn don't
+## flicker the icon...
+const JOIN_BLINK_DELAY := 0.4
+## ...fading out and back in once every this many seconds...
+const JOIN_BLINK_PERIOD := 1.2
+## ...down to this fraction of its normal opacity (0 = gone at the low point).
+const JOIN_BLINK_MIN_ALPHA := 0.0
 ## Within this many degrees above or below you, an enemy shows as level.
 const RADAR_LEVEL_DEG := 15.0
 ## ...or within this many metres, for enemies close by.
 const RADAR_LEVEL_METRES := 10.0
 ## Wingmen closer than this to the centre (pixels) are pushed out to it.
 const RADAR_WINGMAN_MIN := 9.0
-## Radius of the dots on the radar rim for enemies beyond radar_range.
-const RADAR_FAR_DOT := 3.0
+## Enemies beyond radar_range sit on the rim as the same ▲ / ▼ / ■ icons,
+## this much smaller and at this opacity.
+const RADAR_FAR_SCALE := 0.65
+const RADAR_FAR_ALPHA := 0.6
+## The destroyer on the radar: its hull outline, this long (pixels) whatever
+## the range (to scale it would cover the radar), turned to its heading. Its
+## above / below tick (a line, like the wingmen's) is this long.
+const RADAR_DESTROYER_LENGTH := 20.0
+const RADAR_DESTROYER_TICK := 6.0
 const BAR_WIDTH := 220.0
-const BAR_HEIGHT := 8.0
+const BAR_HEIGHT := 12.0
+## Space between the shield and thruster bars.
+const BAR_GAP := 10.0
+## Half-size (px) of the icons left of the bars (shield, flame), and the gap
+## between an icon and its bar.
+const GAUGE_ICON_SIZE := 7.0
+const GAUGE_ICON_GAP := 7.0
+## Outlines of those icons, in units of GAUGE_ICON_SIZE around their centre
+## (y down). Shield: filled, so it doesn't read as the outlined Cover Me icon.
+const SHIELD_ICON: Array[Vector2] = [
+	Vector2(-0.8, -0.9), Vector2(0.8, -0.9), Vector2(0.8, 0.05), Vector2(0.68, 0.45),
+	Vector2(0.4, 0.75), Vector2(0.0, 1.0), Vector2(-0.4, 0.75), Vector2(-0.68, 0.45),
+	Vector2(-0.8, 0.05),
+]
+## Thrusters: a flame, tip up, with a smaller tongue on the left (index 0 is
+## the tip, then down the right side to the bottom at FLAME_BOTTOM and up the
+## left)...
+const FLAME_ICON: Array[Vector2] = [
+	Vector2(0.12, -1.0), Vector2(0.38, -0.6), Vector2(0.62, -0.18), Vector2(0.7, 0.25),
+	Vector2(0.6, 0.65), Vector2(0.32, 0.93), Vector2(0.0, 1.0), Vector2(-0.32, 0.93),
+	Vector2(-0.6, 0.65), Vector2(-0.7, 0.25), Vector2(-0.62, -0.12), Vector2(-0.5, -0.6),
+	Vector2(-0.28, -0.28), Vector2(-0.1, -0.55),
+]
+## ...with a see-through core cut out of it (same order: top first, bottom at
+## FLAME_HOLE_BOTTOM).
+const FLAME_HOLE: Array[Vector2] = [
+	Vector2(0.02, -0.15), Vector2(0.28, 0.25), Vector2(0.34, 0.55), Vector2(0.18, 0.8),
+	Vector2(0.0, 0.85), Vector2(-0.18, 0.8), Vector2(-0.34, 0.55), Vector2(-0.26, 0.25),
+]
+const FLAME_BOTTOM := 6
+const FLAME_HOLE_BOTTOM := 4
 ## Half-size of the order icons on the wing panel cards, in pixels.
 const ORDER_ICON_SIZE := 8.0
+## Size of the whole wing panel (cards, gaps, icons, text) relative to its
+## base layout: 56 px cards, 13 px names.
+const WING_PANEL_SCALE := 1.15
+## Corner radius (px) of the wing panel cards' backgrounds.
+const CARD_CORNER_RADIUS := 6
 ## Width and height of the triangle over each wingman, in pixels.
 const WINGMAN_MARKER_SIZE := Vector2(36.0, 29.0)
-## Size of the initial inside it (21 when selected). Independent of the
-## triangle size.
+## Size of the initial inside it. Independent of the triangle size.
 const WINGMAN_INITIAL_SIZE := 15
 ## Hit-direction marker: distance from the screen centre (fraction of the
 ## smaller screen side), half the arc's angle, and its thickness.
@@ -52,6 +109,19 @@ const HIT_MARKER_WIDTH := 6.0
 ## Clouds don't count: they have no collision.
 @export var hide_hidden_enemies := true
 
+@export_group("Pilot senses")
+## Off-screen enemy fighters closer than this (m) get a faint arrow at the edge
+## of the screen, Fox sensing them before he sees them. Kept short so finding
+## enemies is still the radar's job (radar_range is 500 m); only the ones
+## about to matter show.
+@export var sense_range := 150.0
+## Within this distance the arrow is at full strength (sense_opacity); it fades
+## out from here to sense_range.
+@export var sense_full_range := 50.0
+@export_range(0.0, 1.0) var sense_opacity := 0.85
+## Length of the arrows, in pixels of the base layout.
+@export var sense_arrow_length := 16.0
+
 ## Points from kills. Not shown at the moment; kept for a mission-end screen.
 var score := 0
 
@@ -63,13 +133,23 @@ var _font: Font
 ## Bold version of _font, for the wingman initials.
 var _bold_font: FontVariation
 ## One-shot SubViewports holding the wingman markers (see _wingman_marker()), keyed by
-## initial, colour and selection. Cleared when the window is resized.
+## initial and colour, and the gauge icons (_gauge_icon_texture()). Cleared when the window is resized.
 var _marker_cache := {}
 
 var _crosshair_pos := Vector2.ZERO
 ## Enemy fighters the camera can't see right now (something solid in between),
 ## updated each physics tick by _update_hidden_enemies().
 var _hidden_enemies := {}
+## Seconds each wingman has been joining on Form Up (0 once it fires with you),
+## keyed by Wingman. Drives the order icon blink (JOIN_BLINK_DELAY).
+var _joining_for := {}
+## Seconds since the thrusters overheated (0 while they work): times the
+## thruster bar's blink.
+var _overheated_for := 0.0
+## Background of the wing panel cards (_draw_card_frame() sets its colour).
+var _card_style := StyleBoxFlat.new()
+## The flame icon's fill as two hole-free halves (see _split_ring()).
+var _flame_halves: Array = []
 
 
 func _ready() -> void:
@@ -80,6 +160,8 @@ func _ready() -> void:
 	_bold_font.base_font = _font
 	_bold_font.variation_embolden = 0.9
 	get_viewport().size_changed.connect(_clear_marker_cache)
+	_card_style.set_corner_radius_all(roundi(CARD_CORNER_RADIUS * WING_PANEL_SCALE))
+	_flame_halves = _split_ring(FLAME_ICON, FLAME_HOLE, FLAME_BOTTOM, FLAME_HOLE_BOTTOM)
 
 
 
@@ -87,7 +169,7 @@ func add_score(points: int) -> void:
 	score += points
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if not is_instance_valid(_destroyer):
 		_destroyer = get_tree().get_first_node_in_group("destroyer") as Destroyer
 	if not is_instance_valid(_boundary):
@@ -96,6 +178,12 @@ func _process(_delta: float) -> void:
 		_ship = get_tree().get_first_node_in_group("player") as Ship
 	if not is_instance_valid(_wing):
 		_wing = get_tree().get_first_node_in_group("wing_command") as WingCommand
+	if is_instance_valid(_wing):
+		for wingman in _wing.wingmen():
+			var joining := wingman.order == Wingman.Order.FORM_UP and not wingman.joins_leader_fire()
+			_joining_for[wingman] = _joining_for.get(wingman, 0.0) + delta if joining else 0.0
+	if is_instance_valid(_ship):
+		_overheated_for = _overheated_for + delta if _ship.overheated else 0.0
 	queue_redraw()
 
 
@@ -147,8 +235,8 @@ func _draw() -> void:
 
 
 ## Destroyer: inbound warning, brackets on intact parts (bridge and thrusters,
-## which must die to kill it, are brightest), edge arrow. A wingman also calls
-## it out over the comms (WingCommand.announce_destroyer).
+## which must die to kill it, are brightest), edge arrow. Peppy also calls
+## it out over the comms (MissionControl.announce_destroyer).
 func _draw_destroyer(cam: Camera3D, destroyer: Destroyer) -> void:
 	if destroyer.age < 6.0 and fmod(destroyer.age, 0.8) < 0.5:
 		draw_string(_font, Vector2(0.0, 120.0), "WARNING: DESTROYER INBOUND",
@@ -160,8 +248,8 @@ func _draw_destroyer(cam: Camera3D, destroyer: Destroyer) -> void:
 		center_visible = visible_rect.has_point(cam.unproject_position(destroyer.global_position))
 	if not center_visible:
 		_draw_edge_arrow(cam, destroyer.global_position, COLOR_ORDER, 22.0)
-	if not destroyer.is_vulnerable():
-		return  # still fading in (or dying): nothing to shoot yet
+	if not destroyer.is_damageable():
+		return  # still arriving (or dying): nothing to shoot yet
 	for part in destroyer.all_parts():
 		if part.is_destroyed or cam.is_position_behind(part.global_position):
 			continue
@@ -183,19 +271,29 @@ func _draw_destroyer(cam: Camera3D, destroyer: Destroyer) -> void:
 ## behaviour shows in how they fly). Only near the crosshair (fading out with
 ## distance from it), to line up a shot, and never on enemies hidden behind
 ## terrain, rocks or the destroyer: brackets shouldn't see through cover
-## (clouds don't count). Off-screen enemies get no arrow: finding them is the
-## radar's job.
+## (clouds don't count). Off-screen enemies only get an arrow when very close
+## (see sense_range): finding them is the radar's job.
 func _draw_enemies(cam: Camera3D) -> void:
 	var visible_rect := Rect2(Vector2.ZERO, size).grow(-24.0)
 	for enemy: EnemyFighter in get_tree().get_nodes_in_group("enemies"):
 		var pos := enemy.global_position
-		if cam.is_position_behind(pos):
+		var on_screen := not cam.is_position_behind(pos) and visible_rect.has_point(cam.unproject_position(pos))
+		if not on_screen:
+			_draw_sense_arrow(cam, pos)
 			continue
 		var p := cam.unproject_position(pos)
-		if not visible_rect.has_point(p):
-			continue
 		if not _hidden_enemies.has(enemy) and p.distance_to(_crosshair_pos) <= enemy_marker_radius:
 			_draw_brackets(p, 10.0, COLOR_ENEMY)
+
+
+## "Pilot senses": an edge arrow towards an off-screen enemy at `pos`, only
+## within sense_range of the ship, fading out with distance.
+func _draw_sense_arrow(cam: Camera3D, pos: Vector3) -> void:
+	var distance := _ship.global_position.distance_to(pos)
+	if distance >= sense_range:
+		return
+	var strength := 1.0 - smoothstep(sense_full_range, sense_range, distance)
+	_draw_edge_arrow(cam, pos, Color(COLOR_ENEMY, COLOR_ENEMY.a * sense_opacity * strength), sense_arrow_length)
 
 
 ## Which enemy fighters something solid hides from the camera: one ray per
@@ -236,45 +334,36 @@ func _draw_hit_direction(cam: Camera3D) -> void:
 
 
 ## A solid downward triangle over each wingman in its own colour, with its
-## initial in white, so you can find them when they split off. Selected
-## wingmen get a bigger triangle and a bracket. The triangle and letter are
-## drawn once into a texture per wingman and state (_wingman_marker()); each
-## frame only places that texture.
+## initial in white, so you can find them when they split off. It looks the
+## same whether or not the wingman is selected (the wing panel shows that).
+## The triangle and letter are drawn once into a texture per wingman
+## (_wingman_marker()); each frame only places that texture.
 func _draw_wingmen(cam: Camera3D) -> void:
 	for wingman: Wingman in get_tree().get_nodes_in_group("wingmen"):
 		var pos := wingman.global_position + cam.global_basis.y * 4.0
 		if cam.is_position_behind(pos):
 			continue
 		var p := cam.unproject_position(pos)
-		var selected := _wing != null and _wing.is_selected(wingman)
-		var marker_size := _wingman_marker_size(selected)
+		var marker_size := WINGMAN_MARKER_SIZE
 		# Tip at the point above the ship, flat side on top.
-		draw_texture_rect(_wingman_marker(wingman, selected),
+		draw_texture_rect(_wingman_marker(wingman),
 			Rect2(p - Vector2(marker_size.x * 0.5, marker_size.y), marker_size), false)
-		if selected:
-			var half_height := marker_size.y * 0.5
-			_draw_brackets(p + Vector2(0.0, -half_height), half_height + 8.0, Color(wingman.accent_color, 1.0))
-
-
-## Width and height of a wingman's triangle, in HUD pixels.
-func _wingman_marker_size(selected: bool) -> Vector2:
-	return WINGMAN_MARKER_SIZE * (1.4 if selected else 1.0)
 
 
 ## The texture of a wingman's marker, drawn the first time it's needed: a
 ## one-shot SubViewport renders the triangle and initial at the screen's real
 ## resolution (so it stays sharp when the HUD is stretched), then keeps the
 ## result.
-func _wingman_marker(wingman: Wingman, selected: bool) -> Texture2D:
+func _wingman_marker(wingman: Wingman) -> Texture2D:
 	var initial := wingman.call_sign.left(1)
 	var color := wingman.accent_color
-	var key := "%s|%s|%s" % [initial, color.to_html(), selected]
+	var key := "%s|%s" % [initial, color.to_html()]
 	if _marker_cache.has(key):
 		return (_marker_cache[key] as SubViewport).get_texture()
 
 	# Screen pixels per HUD pixel.
 	var bake_scale := maxf(get_viewport().get_final_transform().get_scale().y, 1.0)
-	var marker_size := _wingman_marker_size(selected)
+	var marker_size := WINGMAN_MARKER_SIZE
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i((marker_size * bake_scale).ceil())
 	viewport.transparent_bg = true
@@ -285,8 +374,8 @@ func _wingman_marker(wingman: Wingman, selected: bool) -> Texture2D:
 	canvas.draw.connect(func() -> void:
 		canvas.draw_colored_polygon(PackedVector2Array([
 			Vector2.ZERO, Vector2(marker_size.x, 0.0), Vector2(marker_size.x * 0.5, marker_size.y)
-		]), Color(color, 1.0 if selected else 0.85))
-		var font_size := WINGMAN_INITIAL_SIZE if not selected else roundi(WINGMAN_INITIAL_SIZE * 1.4)
+		]), Color(color, 0.85))
+		var font_size := WINGMAN_INITIAL_SIZE
 		# The initial sits in the wide upper part of the triangle.
 		var baseline := marker_size.y * 0.38 + font_size * 0.36
 		canvas.draw_string(_bold_font, Vector2(0.0, baseline), initial,
@@ -393,6 +482,9 @@ func _draw_radar() -> void:
 	]), Color(1, 1, 1, 0.8))
 
 	var to_local := _ship.global_transform.affine_inverse()
+	# The destroyer first, so fighters around it draw on top.
+	for node in get_tree().get_nodes_in_group("destroyer"):
+		_draw_radar_destroyer(node as Destroyer, center, to_local)
 	for wingman: Wingman in get_tree().get_nodes_in_group("wingmen"):
 		var local := to_local * wingman.global_position
 		if local.length() > radar_range:
@@ -413,19 +505,66 @@ func _draw_radar() -> void:
 		var local := to_local * enemy.global_position
 		var flat := Vector2(local.x, local.z)
 		if local.length() > radar_range:
-			# Out of range: a small dim dot on the rim in its direction, so
-			# you can still find a far-off wave.
+			# Out of range: a small dim icon on the rim in its direction (still
+			# showing above / below / level), so you can find a far-off wave.
 			if flat.length() > 0.01:
-				draw_circle(center + flat.normalized() * r, RADAR_FAR_DOT, Color(COLOR_ENEMY, 0.6))
+				_draw_radar_enemy(center + flat.normalized() * r, _radar_height(local), RADAR_FAR_SCALE,
+					Color(COLOR_ENEMY, RADAR_FAR_ALPHA))
 			continue
-		var p := center + flat / radar_range * r
-		match _radar_height(local):
-			1:
-				draw_colored_polygon(PackedVector2Array([p + Vector2(0, -5), p + Vector2(4.5, 3.5), p + Vector2(-4.5, 3.5)]), COLOR_ENEMY)
-			-1:
-				draw_colored_polygon(PackedVector2Array([p + Vector2(0, 5), p + Vector2(4.5, -3.5), p + Vector2(-4.5, -3.5)]), COLOR_ENEMY)
-			_:
-				draw_rect(Rect2(p - Vector2(3.5, 3.5), Vector2(7.0, 7.0)), COLOR_ENEMY)
+		_draw_radar_enemy(center + flat / radar_range * r, _radar_height(local), 1.0, COLOR_ENEMY)
+
+
+## The destroyer on the radar centred on `center`: a small silhouette of its
+## hull (hull_outline), pointing where it's heading; on the rim, smaller and
+## dimmer, while its centre is beyond radar_range (like fighters).
+func _draw_radar_destroyer(destroyer: Destroyer, center: Vector2, to_local: Transform3D) -> void:
+	if destroyer == null or destroyer.hull_outline.size() < 3:
+		return
+	var r := radar_radius
+	var local := to_local * destroyer.global_position
+	var flat := Vector2(local.x, local.z)
+	var icon_scale := 1.0
+	var color := COLOR_ENEMY
+	var p := center + flat / radar_range * r
+	if local.length() > radar_range:
+		if flat.length() < 0.01:
+			return
+		p = center + flat.normalized() * r
+		icon_scale = RADAR_FAR_SCALE
+		color = Color(COLOR_ENEMY, RADAR_FAR_ALPHA)
+	# Its x and z axes on the radar (the ship's local x / z), so the outline
+	# turns with its heading relative to you.
+	var axis_x := to_local.basis * destroyer.global_basis.x
+	var axis_z := to_local.basis * destroyer.global_basis.z
+	var ax := Vector2(axis_x.x, axis_x.z)
+	var az := Vector2(axis_z.x, axis_z.z)
+	var bounds := Rect2(destroyer.hull_outline[0], Vector2.ZERO)
+	for point in destroyer.hull_outline:
+		bounds = bounds.expand(point)
+	var k := RADAR_DESTROYER_LENGTH * icon_scale / maxf(bounds.size.y, 1.0)
+	var mid := bounds.get_center()
+	var shape := PackedVector2Array()
+	for point in destroyer.hull_outline:
+		shape.append(p + (ax * (point.x - mid.x) + az * (point.y - mid.y)) * k)
+	draw_colored_polygon(shape, color)
+	var height := _radar_height(local)
+	if height != 0:
+		var tick := RADAR_DESTROYER_TICK * icon_scale
+		var edge := (RADAR_DESTROYER_LENGTH * 0.5 + 1.0) * icon_scale  # clear of the outline at any heading
+		draw_line(p + Vector2(0.0, -edge * height), p + Vector2(0.0, -(edge + tick) * height), color, 1.5)
+
+
+## An enemy on the radar at `p`: ▲ above you (`height` 1), ▼ below (-1), ■ level
+## (0), `icon_scale` times the full size.
+func _draw_radar_enemy(p: Vector2, height: int, icon_scale: float, color: Color) -> void:
+	var s := icon_scale
+	match height:
+		1:
+			draw_colored_polygon(PackedVector2Array([p + Vector2(0, -5) * s, p + Vector2(4.5, 3.5) * s, p + Vector2(-4.5, 3.5) * s]), color)
+		-1:
+			draw_colored_polygon(PackedVector2Array([p + Vector2(0, 5) * s, p + Vector2(4.5, -3.5) * s, p + Vector2(-4.5, -3.5) * s]), color)
+		_:
+			draw_rect(Rect2(p - Vector2(3.5, 3.5) * s, Vector2(7.0, 7.0) * s), color)
 
 
 ## 1 if a position (in the ship's local space) is above you, -1 if below, 0 if
@@ -441,34 +580,50 @@ func _radar_height(local: Vector3) -> int:
 	return 0
 
 
-## Shield and boost bars, top right (the comms box has the bottom left), then
-## the wing panel. Bars only, no numbers. While the shields are down, the
+## Shield and thruster heat bars, top right (the comms box has the bottom left),
+## then the wing panel. Bars only, no numbers. While the shields are down, the
 ## shield bar turns red and fills up as they reboot.
 func _draw_gauges() -> void:
 	var origin := Vector2(size.x - 28.0 - BAR_WIDTH, 32.0)
 	if _ship.shields_down:
 		_draw_bar(origin, _ship.shield_reboot_progress(), Color(COLOR_SHIELD_DOWN, 0.6))
+		_draw_gauge_icon("shield", [SHIELD_ICON], [SHIELD_ICON], origin, COLOR_SHIELD_DOWN)
 	else:
 		_draw_bar(origin, _ship.shields / _ship.max_shields, COLOR_SHIELD)
-	_draw_bar(origin + Vector2(0.0, BAR_HEIGHT + 8.0), _ship.boost_energy, COLOR_BOOST)
+		_draw_gauge_icon("shield", [SHIELD_ICON], [SHIELD_ICON], origin, COLOR_SHIELD)
+	# Thrusters underneath: a blue bar that throttling empties (it shows how
+	# much throttle is left before they overheat). Overheated, it refills over
+	# the lockout, red and slowly blinking; the throttle works again once full.
+	var thruster_color := COLOR_THRUSTERS
+	if _ship.overheated:
+		var wave := 0.5 + 0.5 * cos(TAU * _overheated_for / OVERHEAT_BLINK_PERIOD)
+		thruster_color = Color(COLOR_SHIELD_DOWN, COLOR_SHIELD_DOWN.a * lerpf(OVERHEAT_BLINK_MIN_ALPHA, 1.0, wave))
+	var thruster_origin := origin + Vector2(0.0, BAR_HEIGHT + BAR_GAP)
+	_draw_bar(thruster_origin, 1.0 - _ship.thruster_heat, thruster_color)
+	_draw_gauge_icon("flame", _flame_halves, [FLAME_ICON, FLAME_HOLE], thruster_origin, thruster_color)
 	if _wing:
 		_draw_wing_panel()
 
 
 ## Wing panel, bottom right, laid out like the D-pad that selects the wingmen:
 ## Falco on the left, Slippy on top, Krystal on the right, ALL below. Each card
-## shows the call sign with the current order under it; selected cards light
+## shows an icon for the current order above the call sign; selected cards light
 ## up. The middle shows who the next order will go to. (What a wingman is doing
 ## right now isn't shown: you can see it.)
 func _draw_wing_panel() -> void:
-	const W := 104.0
-	const H := 38.0
-	const GAP := 6.0
-	const ALL_H := 24.0
+	# Wingman cards (and the middle) are W × H squares; ALL is W × ALL_H. All
+	# sizes are the base layout times WING_PANEL_SCALE (k).
+	const k := WING_PANEL_SCALE
+	const W := 56.0 * k
+	const H := W
+	const GAP := 5.0 * k
+	const ALL_H := 20.0 * k
 	var right := size.x - 24.0
 	var bottom := size.y - 24.0
 	var left := right - 3.0 * W - 2.0 * GAP
 	var top := bottom - ALL_H - 2.0 * H - 2.0 * GAP
+	# The icon-over-name stack is 44 px tall (base): centre it in the square.
+	var stack_offset := (H - 44.0 * k) * 0.5
 	var cells := {
 		0: Rect2(left, top + H + GAP, W, H),                 	# Falco: D-pad left
 		1: Rect2(left + W + GAP, top, W, H),                 	# Slippy: D-pad up
@@ -481,50 +636,55 @@ func _draw_wing_panel() -> void:
 			continue
 		var rect: Rect2 = cells[wingman.wing_index]
 		var key := "" if pad else _short_key(select_actions[wingman.wing_index])
-		_draw_wing_card(rect, wingman, _wing.is_selected(wingman), key)
+		_draw_wing_card(rect, wingman, _wing.is_selected(wingman), key, stack_offset)
 
 	# ALL, under the middle (D-pad down).
 	var all_rect := Rect2(left + W + GAP, top + 2.0 * (H + GAP), W, ALL_H)
 	var everyone := _wing.wingmen()
 	var all_selected := not everyone.is_empty() and _wing.selected.size() == everyone.size()
 	_draw_card_frame(all_rect, COLOR_IDLE, all_selected)
-	draw_string(_font, all_rect.position + Vector2(0.0, 17.0), "ALL", HORIZONTAL_ALIGNMENT_CENTER, W, 13,
+	draw_string(_font, all_rect.position + Vector2(0.0, 15.0 * k), "ALL", HORIZONTAL_ALIGNMENT_CENTER, W, roundi(13 * k),
 		Color(1, 1, 1, 0.95) if all_selected else Color(COLOR_IDLE, 0.8))
 	if not pad:
-		draw_string(_font, all_rect.position + Vector2(6.0, 16.0), _short_key(&"select_all"),
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 1, 1, 0.4))
+		draw_string(_font, all_rect.position + Vector2(5.0, 14.0) * k, _short_key(&"select_all"),
+			HORIZONTAL_ALIGNMENT_LEFT, -1, roundi(10 * k), Color(1, 1, 1, 0.4))
 
 	# Middle: who gets the next order.
 	var middle := Rect2(left + W + GAP, top + H + GAP, W, H)
 	var to := _wing.recipients()
 	var to_text := " ".join(PackedStringArray(to.map(func(w: Wingman) -> String: return w.call_sign.left(1))))
-	draw_string(_font, middle.position + Vector2(0.0, 15.0), "ORDERS TO", HORIZONTAL_ALIGNMENT_CENTER, W, 10,
+	draw_string(_font, middle.position + Vector2(0.0, 15.0 * k + stack_offset), "ORDERS TO", HORIZONTAL_ALIGNMENT_CENTER, W, roundi(10 * k),
 		Color(1, 1, 1, 0.45))
-	draw_string(_font, middle.position + Vector2(0.0, 31.0), to_text if to_text != "" else "NOBODY",
-		HORIZONTAL_ALIGNMENT_CENTER, W, 14, COLOR_IDLE if to_text != "" else COLOR_TARGET)
+	draw_string(_font, middle.position + Vector2(0.0, 32.0 * k + stack_offset), to_text if to_text != "" else "NOBODY",
+		HORIZONTAL_ALIGNMENT_CENTER, W, roundi(14 * k), COLOR_IDLE if to_text != "" else COLOR_TARGET)
 
 
-func _draw_wing_card(rect: Rect2, wingman: Wingman, selected: bool, key: String) -> void:
+func _draw_wing_card(rect: Rect2, wingman: Wingman, selected: bool, key: String, stack_offset: float) -> void:
 	_draw_card_frame(rect, wingman.accent_color, selected)
 	var order_color := COLOR_IDLE
 	match wingman.order:
 		Wingman.Order.ATTACK:
 			order_color = COLOR_ORDER
 		Wingman.Order.COVER_ME:
-			order_color = COLOR_BOOST
+			order_color = COLOR_COVER
 		Wingman.Order.WEAPONS_FREE:
 			order_color = COLOR_TARGET
-	# One row: [key] NAME ......... order icon.
-	var x := rect.position.x + 8.0
-	var baseline := rect.position.y + rect.size.y * 0.5 + 5.0
+	# Still joining on Form Up: the icon fades slowly out and in, starting from
+	# full brightness.
+	var joining: float = _joining_for.get(wingman, 0.0) - JOIN_BLINK_DELAY
+	if joining > 0.0:
+		order_color.a *= lerpf(JOIN_BLINK_MIN_ALPHA, 1.0, 0.5 + 0.5 * cos(TAU * joining / JOIN_BLINK_PERIOD))
+	# Stacked and centred: order icon on top, NAME under it; key in the corner.
+	# Base layout sizes, times WING_PANEL_SCALE.
+	const k := WING_PANEL_SCALE
+	var icon_size := ORDER_ICON_SIZE * k
+	var icon_center := Vector2(rect.get_center().x, rect.position.y + stack_offset + 4.0 * k + icon_size)
+	_draw_order_icon(wingman.order, icon_center, icon_size, order_color)
+	draw_string(_font, rect.position + Vector2(0.0, stack_offset + 38.0 * k), wingman.call_sign.to_upper(),
+		HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, roundi(13 * k), Color(wingman.accent_color, 1.0))
 	if key != "":
-		draw_string(_font, Vector2(x, baseline), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 10,
+		draw_string(_font, rect.position + Vector2(5.0, 13.0) * k, key, HORIZONTAL_ALIGNMENT_LEFT, -1, roundi(10 * k),
 			Color(1, 1, 1, 0.4))
-	var name_x := x + (12.0 if key != "" else 0.0)
-	draw_string(_font, Vector2(name_x, baseline), wingman.call_sign.to_upper(),
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(wingman.accent_color, 1.0))
-	var icon_center := Vector2(rect.end.x - 8.0 - ORDER_ICON_SIZE, rect.get_center().y)
-	_draw_order_icon(wingman.order, icon_center, ORDER_ICON_SIZE, order_color)
 
 
 ## Small symbol for a wingman order, `half_size` px from the centre to the edge:
@@ -552,15 +712,83 @@ func _draw_order_icon(order: Wingman.Order, c: Vector2, half_size: float, color:
 				draw_line(c + dir * s * inner, c + dir * s, color, 1.5, true)
 
 
+## A card's translucent rounded background, no outline: dark, or tinted in
+## `color` when selected.
 func _draw_card_frame(rect: Rect2, color: Color, selected: bool) -> void:
-	draw_rect(rect, Color(color, 0.22) if selected else Color(0.0, 0.02, 0.04, 0.45))
-	draw_rect(rect, Color(color, 1.0) if selected else Color(color, 0.3), false, 2.0 if selected else 1.0)
+	_card_style.bg_color = Color(color, 0.22) if selected else Color(0.0, 0.02, 0.04, 0.45)
+	draw_style_box(_card_style, rect)
 
 
 ## Keyboard key for an action's primary binding, shortened for a card corner.
 func _short_key(action: StringName) -> String:
 	var event := Settings.get_binding(action, Settings.Slot.PRIMARY)
 	return Settings.event_name(event).left(3) if event else ""
+
+
+## One of the icons left of the bars, for the bar at `bar_pos`, tinted `color`.
+## `key` names its cached texture (see _gauge_icon_texture()).
+func _draw_gauge_icon(key: String, fills: Array, outlines: Array, bar_pos: Vector2, color: Color) -> void:
+	var center := bar_pos + Vector2(-GAUGE_ICON_GAP - GAUGE_ICON_SIZE * 0.8, BAR_HEIGHT * 0.5)
+	var half := Vector2.ONE * (GAUGE_ICON_SIZE + 1.0)
+	draw_texture_rect(_gauge_icon_texture(key, fills, outlines), Rect2(center - half, half * 2.0), false, color)
+
+
+## A gauge icon drawn once, white and opaque, into a texture (a one-shot
+## SubViewport at the screen's real resolution, like _wingman_marker()), then
+## tinted when placed. Drawn directly instead, a translucent icon (the blinking
+## flame) showed darker lines where its outline and fill pieces overlap.
+## `fills`: shapes to fill; `outlines`: closed loops drawn round them,
+## antialiased (the fill alone is jagged at this size); both in icon units.
+func _gauge_icon_texture(key: String, fills: Array, outlines: Array) -> Texture2D:
+	var cache_key := "icon|" + key
+	if _marker_cache.has(cache_key):
+		return (_marker_cache[cache_key] as SubViewport).get_texture()
+	var bake_scale := maxf(get_viewport().get_final_transform().get_scale().y, 1.0)
+	var half := Vector2.ONE * (GAUGE_ICON_SIZE + 1.0)
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i((half * 2.0 * bake_scale).ceil())
+	viewport.transparent_bg = true
+	viewport.disable_3d = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var canvas := Node2D.new()
+	canvas.scale = Vector2.ONE * bake_scale
+	canvas.draw.connect(func() -> void:
+		for shape: Array[Vector2] in fills:
+			canvas.draw_colored_polygon(_icon_points(shape, half), Color.WHITE)
+		for shape: Array[Vector2] in outlines:
+			var points := _icon_points(shape, half)
+			points.append(points[0])
+			canvas.draw_polyline(points, Color.WHITE, 1.0, true))
+	viewport.add_child(canvas)
+	add_child(viewport)
+	_marker_cache[cache_key] = viewport
+	return viewport.get_texture()
+
+
+## An icon shape (GAUGE_ICON_SIZE units) placed at `center` in HUD pixels.
+func _icon_points(shape: Array[Vector2], center: Vector2) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for p in shape:
+		points.append(center + p * GAUGE_ICON_SIZE)
+	return points
+
+
+## A shape with a hole, as two hole-free halves that can be filled (polygons
+## can't have holes): the right half runs down the outline's right side and
+## back up the hole's, the left half likewise. Both loops start at their top and
+## run down the right side first, reaching the bottom at the given index.
+static func _split_ring(outer: Array[Vector2], hole: Array[Vector2], outer_bottom: int, hole_bottom: int) -> Array:
+	var right: Array[Vector2] = outer.slice(0, outer_bottom + 1)
+	var hole_right: Array[Vector2] = hole.slice(0, hole_bottom + 1)
+	hole_right.reverse()
+	right.append_array(hole_right)
+	var left: Array[Vector2] = outer.slice(outer_bottom)
+	left.append(outer[0])
+	var hole_left: Array[Vector2] = hole.slice(hole_bottom)
+	hole_left.append(hole[0])
+	hole_left.reverse()
+	left.append_array(hole_left)
+	return [right, left]
 
 
 func _draw_bar(pos: Vector2, fraction: float, color: Color) -> void:

@@ -80,6 +80,42 @@ enum Stunt { NONE, PULL_UP, BACK, PULL_THROUGH, ROLL_OUT }
 ## of ground_lookahead_time). The slot is also raised over the ground this far
 ## ahead of it, so it starts climbing before a rise.
 @export var formation_ground_lookahead := 1.0
+## Buildings and other map structures lift the slot over them, so the wingman
+## hops over rooftops in formation instead of flying into them: the slot is
+## kept formation_ground_clearance above every structure it will pass over in
+## the next this-many seconds (on the leader's current course)...
+@export var structure_lookahead := 4.0
+## ...less what the wingman can climb by then at this rate (m/s), so the slot
+## ramps up ahead of a tall building rather than jumping when it gets there.
+@export var structure_climb_rate := 10.0
+## The ramp reaches full height this many seconds before the structure. At
+## least formation_ground_lookahead (where the wingman's own ground check
+## looks, which would otherwise pull it out of formation on every climb), plus
+## time for the smoothed lift below to catch up.
+@export var structure_ready_time := 2.0
+## Also check this far (m) to either side of the slot's path: the wingman's
+## nose wanders a little off it, and its own ground check would otherwise
+## catch a tower the lift never saw, and pull it out of formation.
+@export var structure_side_margin := 8.0
+## The lift moves like a climbing ship rather than a lift cage: it heads for
+## the height needed at a speed proportional to the distance left (this many
+## m/s per metre), so it eases in at the top...
+@export var structure_lift_gain := 3.0
+## ...speeding up or slowing down no faster than this (m/s²), so climbs and
+## descents start and end gently instead of jerking...
+@export var structure_lift_accel := 25.0
+## ...at most this fast going up (m/s; a sudden turn towards a building)...
+@export var structure_lift_rise_speed := 40.0
+## ...and this fast coming back down after the buildings have passed...
+@export var structure_lift_fall_speed := 10.0
+## ...or this fast once there is nothing at all to clear ahead (out of the
+## city), so a wingman lifted high over a tower doesn't take ages to drop back
+## into the formation. In the city, falling faster only means rising again
+## for the next building, so the slower speed applies there...
+@export var structure_lift_clear_fall_speed := 30.0
+## ...but only after this many seconds with nothing taller ahead, so the slot
+## doesn't bob down and up again between neighbouring buildings.
+@export var structure_lift_hold := 1.5
 
 @export_group("Somersault")
 ## Rejoining from far ahead (see rejoin_turn_distance), the wingman loops up
@@ -107,6 +143,26 @@ enum Stunt { NONE, PULL_UP, BACK, PULL_THROUGH, ROLL_OUT }
 ## enemies tailing the leader show up, ready to chase them off.
 @export var cover_trail_distance := 35.0
 
+@export_group("Tuck in")
+## When the slot beside the leader runs into tall buildings (a street lined
+## with towers), the wingman tucks in behind the leader instead of climbing over
+## them: its slot slides onto the leader's own flight path, which the leader has
+## just flown through and so is known to be clear. The wingmen trail in single
+## file, then slide back out to their slots once the way is clear again.
+@export var tuck_in := true
+## Tuck in when the slot would have to be lifted more than this (m) over the
+## buildings ahead (see structure_lookahead).
+@export var tuck_lift_threshold := 25.0
+## How far apart (m) along the leader's path the wingmen trail: wing_index 0
+## this far behind the leader, the next twice as far, and so on. Kept well
+## behind the chase camera (about 11-14 m back), so nobody sits on it.
+@export var tuck_spacing := 20.0
+## Seconds to slide between the normal slot and the trail.
+@export var tuck_slide_time := 1.5
+## Stay tucked in this many seconds after the last tall building ahead, so
+## the formation doesn't fan out and back in between neighbouring towers.
+@export var tuck_hold := 2.0
+
 @export_group("Formation flight")
 ## Near its slot, the wingman switches to formation flight: it turns and rolls
 ## with the leader almost instantly and moves with the slot, sliding or braking
@@ -133,6 +189,11 @@ enum Stunt { NONE, PULL_UP, BACK, PULL_THROUGH, ROLL_OUT }
 ## direction of travel instead of straight at the follow goal. Hides most of
 ## the sideways slide while the formation swings through rolls and turns.
 @export var velocity_heading_blend := 0.5
+## The same for pitch (up and down relative to the leader): how far the nose
+## tilts with the climb or dive instead of pointing at the follow goal. High,
+## so a wingman rising over a building or dropping back after it pitches up or
+## down with it rather than sliding vertically with its nose level.
+@export_range(0.0, 1.0) var vertical_heading_blend := 1.0
 
 @export_group("Camera fade")
 ## Half-size of the box around the ship (local space) used to tell when the
@@ -233,12 +294,37 @@ var _roam_offset := Vector3.ZERO
 var _roam_time_left := 0.0
 ## 0 = normal slot, 1 = trailing Cover Me slot (slides between them).
 var _cover_amount := 0.0
+## How far the slot is raised over structures (see structure_lookahead), on
+## top of its rise over the ground. Changes at a limited rate: structure
+## heights jump at a building's edge, and the slot's velocity is taken from how
+## it moves.
+var _structure_lift := 0.0
+## How fast _structure_lift is changing (m/s), and seconds left holding it
+## before it may come down (structure_lift_hold).
+var _structure_lift_speed := 0.0
+var _structure_hold_left := 0.0
+## The lift the slot's path calls for right now (before smoothing).
+var _structure_needed := 0.0
+## 0 = normal slot, 1 = tucked in on the leader's path (see tuck_in), and
+## seconds left before sliding back out (tuck_hold).
+var _tuck_amount := 0.0
+var _tuck_hold_left := 0.0
+## The leader's recent positions, oldest first, at least TRAIL_STEP apart.
+var _trail := PackedVector3Array()
 ## How fast the ship actually turned last frame (pitch, yaw in rad/s), stick
 ## and formation flight together. The model banks with this.
 var _turn_rates := Vector2.ZERO
 
 ## Seconds to slide between the normal slot and the Cover Me slot.
 const COVER_SLIDE_TIME := 1.5
+## Points checked along the slot's path for structures (see structure_lookahead).
+const STRUCTURE_SAMPLES := 6
+## The leader's path is recorded a point every TRAIL_STEP m, keeping the last
+## TRAIL_POINTS. A jump of more than TRAIL_BREAK m in one tick (the leader was
+## moved, not flown) starts a new path.
+const TRAIL_STEP := 1.0
+const TRAIL_POINTS := 240
+const TRAIL_BREAK := 50.0
 ## Formation flight fades in as our heading comes within acos(0.3) ≈ 73° of
 ## the leader's and is fully available within acos(0.8) ≈ 37°. Holding
 ## formation, the heading stays within about 20°.
@@ -411,9 +497,10 @@ func _free_goal(delta: float) -> Vector3:
 	_level_up = Vector3.UP
 	if _too_far_from_leader():
 		# Head back towards the leader (a little ahead of it), and pick a fresh
-		# roam point once we're back in range.
+		# roam point once we're back in range. At boost_speed: the leader's full
+		# throttle is faster than our max_speed.
 		_roam_time_left = 0.0
-		_target_speed = max_speed
+		_target_speed = boost_speed
 		return leader.global_position - leader.global_basis.z * 60.0
 
 	var roam_point := leader.global_transform * _roam_offset
@@ -500,6 +587,9 @@ func _track_leader(delta: float) -> void:
 	# than jumping (a jump would read as the slot moving at thousands of m/s).
 	var cover_wanted := 1.0 if standing_order == Order.COVER_ME else 0.0
 	_cover_amount = move_toward(_cover_amount, cover_wanted, delta / COVER_SLIDE_TIME)
+	_record_trail()
+	_update_structure_lift(delta)
+	_update_tuck(delta)
 	var slot := slot_position()
 	var leader_basis := leader.global_basis
 	if _tracking_started and delta > 0.0:
@@ -525,15 +615,28 @@ func _track_leader(delta: float) -> void:
 		# Not while pointing the wrong way (still finishing a turn back towards
 		# the formation): normal flight turns us round first, then formation
 		# flight fades in as our nose comes round to the leader's heading.
-		var alignment := (-global_basis.z).dot(-leader_basis.z)
+		# Measured against the leader's heading tilted by the slot's own climb
+		# or dive, so pitching up with the slot over a building doesn't count
+		# as pointing the wrong way.
+		var climb := _slot_velocity.dot(leader_basis.y)
+		var expected := (-leader_basis.z * maxf(leader.speed, 1.0) + leader_basis.y * climb).normalized()
+		# Tucked in, the slot runs along the leader's path, which points the
+		# leader's old way while it turns: follow that instead.
+		if _tuck_amount > 0.0 and _slot_velocity.length() > 1.0:
+			expected = expected.lerp(_slot_velocity.normalized(), _tuck_amount).normalized()
+		var alignment := (-global_basis.z).dot(expected)
 		wanted *= smoothstep(ASSIST_MIN_ALIGNMENT, ASSIST_FULL_ALIGNMENT, alignment)
-	# Dodging a rock, pulling off a surface or somersaulting to rejoin from
-	# ahead: normal flight takes over at once, instead of formation flight
-	# dragging us along the slot.
+	# Dodging a rock, pulling up from the ground or a building (one the raised
+	# slot didn't get us over in time, say in a sudden turn), pulling off a
+	# surface or somersaulting to rejoin from ahead: normal flight takes over at
+	# once, instead of formation flight dragging us along the slot.
 	# Given an order: let go at once, or the slot keeps tugging us back mid-peel.
 	if state != State.FOLLOW:
 		_assist = 0.0
-	elif _avoiding or _recover_time > 0.0 or _stunt != Stunt.NONE or _overshooting:
+	# Tucked in on the leader's path, a scrape (grazing a wall beside it) is no
+	# reason to let go: the path is the clear way, and the scrape reaction would
+	# throw us across the street into the opposite building.
+	elif _avoiding or _ground_danger or (_recover_time > 0.0 and not _on_trail()) or _stunt != Stunt.NONE or _overshooting:
 		_assist = move_toward(_assist, 0.0, 4.0 * assist_blend_speed * delta)
 	else:
 		_assist = move_toward(_assist, wanted, assist_blend_speed * delta)
@@ -585,7 +688,15 @@ func _formation_turn(delta: float) -> void:
 	var direction := to_goal.normalized()
 	var travel := _formation_velocity()
 	if not is_instance_valid(_engage) and travel.length() > 1.0:
-		direction = direction.lerp(travel.normalized(), velocity_heading_blend).normalized()
+		var along := travel.normalized()
+		var climb := lerpf(direction.dot(up), along.dot(up), vertical_heading_blend)
+		direction = direction.lerp(along, velocity_heading_blend)
+		# Pitch separately: climbing or diving with the slot (over a building,
+		# say) with the nose level reads as being hauled up and down on strings.
+		var flat := direction - up * direction.dot(up)
+		if flat.length_squared() > 0.0001:
+			direction = flat.normalized() * sqrt(1.0 - climb * climb) + up * climb
+		direction = direction.normalized()
 	if absf(direction.dot(up)) > 0.98:
 		return
 	var desired := Basis.looking_at(direction, up)
@@ -619,17 +730,126 @@ func current_slot_offset() -> Vector3:
 
 
 ## Where the formation slot is in the world right now: current_slot_offset()
-## around the leader, raised to formation_ground_clearance over any terrain.
+## around the leader, raised to formation_ground_clearance over any terrain,
+## and over any buildings ahead of it (see structure_lookahead). Tucked in, it
+## slides onto the leader's path instead (see tuck_in).
 func slot_position() -> Vector3:
+	var slot := _ground_slot()
+	slot.y += _structure_lift
+	if _tuck_amount > 0.0:
+		var trail := _trail_point(tuck_spacing * (wing_index + 1) + cover_trail_distance * _cover_amount)
+		slot = slot.lerp(trail, smoothstep(0.0, 1.0, _tuck_amount))
+	return slot
+
+
+## Records the leader's position on its path (see _trail).
+func _record_trail() -> void:
+	var here := leader.global_position
+	if not _trail.is_empty() and _trail[-1].distance_to(here) > TRAIL_BREAK:
+		_trail.clear()
+	if _trail.is_empty() or _trail[-1].distance_to(here) >= TRAIL_STEP:
+		_trail.append(here)
+		if _trail.size() > TRAIL_POINTS:
+			_trail.remove_at(0)
+
+
+## The point `distance` m back along the leader's path. Where the recorded
+## path is too short (just started), straight back from its oldest point.
+func _trail_point(distance: float) -> Vector3:
+	var point := leader.global_position
+	var left := distance
+	for i in range(_trail.size() - 1, -1, -1):
+		var step := point.distance_to(_trail[i])
+		if step >= left:
+			return point.move_toward(_trail[i], left)
+		left -= step
+		point = _trail[i]
+	return point + leader.global_basis.z * left
+
+
+## Tucks in behind the leader while the slot would have to rise more than
+## tuck_lift_threshold over the buildings ahead, and slides back out once it
+## has been clear for tuck_hold and the lift has come down.
+func _update_tuck(delta: float) -> void:
+	var wanted := false
+	if tuck_in and _terrain != null and state == State.FOLLOW and order != Order.WEAPONS_FREE:
+		if _structure_needed > tuck_lift_threshold:
+			_tuck_hold_left = tuck_hold
+			wanted = true
+		elif _tuck_hold_left > 0.0:
+			_tuck_hold_left -= delta
+			wanted = true
+		else:
+			# Don't slide out onto a slot still high over the last tower.
+			wanted = _tuck_amount > 0.0 and _structure_lift > tuck_lift_threshold
+	_tuck_amount = move_toward(_tuck_amount, 1.0 if wanted else 0.0, delta / tuck_slide_time)
+
+
+## The slot raised over the ground (not structures) under it and a little ahead
+## of it, so the slot (and the wingman, which moves with it) starts climbing
+## before a rise.
+func _ground_slot() -> Vector3:
 	var slot := leader.global_transform * current_slot_offset()
 	if _terrain == null:
 		return slot
-	# Raise it over the ground under it and a little ahead of it, so the slot
-	# (and the wingman, which moves with it) starts climbing before a rise.
 	var ahead := slot + leader.velocity * formation_ground_lookahead
 	var ground := maxf(_terrain.surface_height(slot.x, slot.z), _terrain.surface_height(ahead.x, ahead.z))
 	slot.y = maxf(slot.y, ground + formation_ground_clearance)
 	return slot
+
+
+## Moves _structure_lift towards the height the slot needs to clear the
+## structures on its path: formation_ground_clearance over each, less what we
+## can climb before getting there.
+func _update_structure_lift(delta: float) -> void:
+	if _terrain == null:
+		return
+	var slot := _ground_slot()
+	var side := leader.global_basis.x * structure_side_margin
+	var needed := 0.0
+	# Nothing standing above the slot anywhere along the look-ahead.
+	var clear := true
+	for i in STRUCTURE_SAMPLES + 1:
+		var time := structure_lookahead * i / STRUCTURE_SAMPLES
+		var p := slot + leader.velocity * time
+		# Full height structure_ready_time early (see there).
+		var climb := structure_climb_rate * maxf(time - structure_ready_time, 0.0)
+		for q: Vector3 in [p, p + side, p - side]:
+			var excess := _structure_excess(q, slot.y)
+			clear = clear and excess <= 0.0
+			needed = maxf(needed, excess - climb)
+	_structure_needed = needed
+	# Something taller ahead: (re)start the hold. Lower: hold the height a
+	# while before coming down.
+	var aim := needed
+	if needed >= _structure_lift:
+		_structure_hold_left = structure_lift_hold
+	elif _structure_hold_left > 0.0:
+		_structure_hold_left -= delta
+		aim = _structure_lift
+	var fall := structure_lift_clear_fall_speed if clear else structure_lift_fall_speed
+	# Fully tucked in, the lift isn't used: let it come down as fast as it may
+	# rise, ready for sliding back out.
+	if _tuck_amount >= 1.0:
+		fall = structure_lift_rise_speed
+	# Never come down faster than we can brake by the height aimed for, or we
+	# hit the bottom (no lift) at speed and stop dead in one frame.
+	fall = minf(fall, sqrt(2.0 * structure_lift_accel * maxf(_structure_lift - aim, 0.0)))
+	var wanted_speed := clampf((aim - _structure_lift) * structure_lift_gain, -fall, structure_lift_rise_speed)
+	_structure_lift_speed = move_toward(_structure_lift_speed, wanted_speed, structure_lift_accel * delta)
+	_structure_lift = maxf(_structure_lift + _structure_lift_speed * delta, 0.0)
+	if _structure_lift <= 0.0:
+		_structure_lift_speed = maxf(_structure_lift_speed, 0.0)
+
+
+## How far a slot at `slot_y` would need raising to pass formation_ground_clearance
+## over whatever stands at `point`. Only structures count: the ground slot rises
+## over the ground by itself on the way there, so a hill ahead (with nothing on
+## it) needs no lift. Counting it would lift the slot by the whole rise of the
+## land seconds early, leaving the wingman far above the formation.
+func _structure_excess(point: Vector3, slot_y: float) -> float:
+	var ground_slot_y := maxf(slot_y, _terrain.surface_height(point.x, point.z) + formation_ground_clearance)
+	return _terrain.clearance_height(point.x, point.z) + formation_ground_clearance - ground_slot_y
 
 
 ## Away from the leader on our slot's side: sideways for a side slot, up for a
@@ -647,7 +867,9 @@ func _approach_point(slot: Vector3) -> Vector3:
 	var behind := (slot - global_position).dot(-leader.global_basis.z)
 	if behind <= 0.0:
 		return slot
-	return slot + _outward() * join_approach_offset * clampf(behind / rejoin_behind_distance, 0.0, 1.0)
+	# Tucked in, the slot is on the leader's path, so stay on it too.
+	var out := join_approach_offset * (1.0 - _tuck_amount)
+	return slot + _outward() * out * clampf(behind / rejoin_behind_distance, 0.0, 1.0)
 
 
 func _ground_clearance() -> float:
@@ -661,6 +883,41 @@ func _ground_lookahead() -> float:
 	# enough to catch real trouble. The full look-ahead would see every rise
 	# the leader is about to climb over and pull us out of formation.
 	return formation_ground_lookahead if _near_slot() else ground_lookahead_time
+
+
+func _avoid_ground(goal: Vector3) -> Vector3:
+	# Tucked in and close to the slot: we're flying the leader's own path,
+	# which it has just flown through. The ground check only knows a whole map
+	# cell's tallest structure, which down a street is usually the tower beside
+	# it, so it would keep pulling us up out of the street for nothing.
+	if _on_trail():
+		_ground_danger = false
+		return goal
+	return super(goal)
+
+
+## Tucked in and close to the slot, so flying the leader's own path. Also
+## anywhere above the slot (but horizontally close): the sky over the leader's
+## path is open, so a wingman still high from climbing over a tower may drop
+## straight down into the street to join the trail.
+func _on_trail() -> bool:
+	if _tuck_amount <= 0.5 or state != State.FOLLOW:
+		return false
+	var offset := global_position - _slot
+	return Vector2(offset.x, offset.z).length() < assist_full_range and offset.y > -assist_full_range
+
+
+func _ground_probe_direction() -> Vector3:
+	# In formation, check the way the slot is going, but without extrapolating
+	# its descent: dropping back down after a building, the structure lift
+	# eases off before reaching the rooftops, while a straight line along the
+	# (now dipping) nose would run into them and break formation for nothing.
+	if _assist > 0.0 and _near_slot():
+		var path := _slot_velocity
+		path.y = maxf(path.y, 0.0)
+		if path.length() > 1.0:
+			return (-global_basis.z).lerp(path.normalized(), _assist).normalized()
+	return super()
 
 
 ## Following the formation and close enough to the slot for formation flight
@@ -685,13 +942,14 @@ func is_in_formation() -> bool:
 
 ## Wingmen fire along with the leader only on Form Up, and only from a proper
 ## formation position. Covering wingmen hold their fire for threats.
-func _joins_leader_fire() -> bool:
-	return order == Order.FORM_UP and is_in_formation()
+func joins_leader_fire() -> bool:
+	# Not tucked in behind the leader: we'd be shooting through it.
+	return order == Order.FORM_UP and is_in_formation() and _tuck_amount <= 0.0
 
 
 func _wants_idle_fire() -> bool:
 	# Leader is shooting at nothing in particular: fire along with them.
-	return leader != null and leader.is_firing and _joins_leader_fire()
+	return leader != null and leader.is_firing and joins_leader_fire()
 
 
 func _follow_goal() -> Vector3:
@@ -755,7 +1013,7 @@ func _follow_goal() -> Vector3:
 
 	# Help with the leader's target, but only from a proper formation position.
 	var leader_target := leader.fire_target
-	if is_instance_valid(leader_target) and _joins_leader_fire():
+	if is_instance_valid(leader_target) and joins_leader_fire():
 		var lead := _lead_point(leader_target)
 		var to_target := lead - global_position
 		if to_target.length() < attack_range \

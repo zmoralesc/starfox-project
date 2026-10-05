@@ -217,7 +217,9 @@ func _pick_roam_point(center: Vector3, roam_radius: float) -> void:
 	var point := center + offset.normalized() * randf_range(0.3, 1.0) * roam_radius
 	if _boundary:
 		point = _boundary.clamp_inside(point, patrol_boundary_margin)
-	_roam_point = _above_ground(point, patrol_min_altitude)
+	# Not inside a station or a big rock (_clear_of_obstacles also keeps it
+	# above any ground, but at the AI's usual clearance, so lift it after).
+	_roam_point = _above_ground(_clear_of_obstacles(point), patrol_min_altitude)
 	_roam_time = 0.0
 
 
