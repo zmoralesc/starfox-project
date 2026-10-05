@@ -11,6 +11,7 @@ shader_parameter/nebula_strength = 0.8
 shader_parameter/star_brightness = 3.0
 shader_parameter/star_density = 0.30000001425
 shader_parameter/planet_enabled = true
+shader_parameter/night_brightness = 0.004
 
 [sub_resource type="Sky" id="Sky_space"]
 sky_material = SubResource("ShaderMaterial_sky")
