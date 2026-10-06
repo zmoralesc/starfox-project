@@ -79,6 +79,9 @@ var _jink_direction := Vector3.ZERO
 var _launch_time_left := 0.0
 ## The mission's play boundary, if it has one.
 var _boundary: PlayBoundary
+## Flash, flinch and damage smoke when shot (the Model flashes and flinches;
+## smoke comes out of `Model/SmokePoint`, the engine, if there is one).
+var _reaction: HitReaction
 
 
 func _ready() -> void:
@@ -87,18 +90,24 @@ func _ready() -> void:
 	add_to_group("targets")
 	add_to_group("obstacles")
 	health = max_health
+	var model := get_node_or_null("Model") as Node3D
+	_reaction = HitReaction.attach(self, model, model, radius, false,
+		get_node_or_null("Model/SmokePoint") as Node3D)
 	patrol_center = global_position
 	_boundary = get_tree().get_first_node_in_group("boundary") as PlayBoundary
 	_break_side = -1.0 if randf() < 0.5 else 1.0
 	_enter_state(State.PATROL)
 
 
-func take_hit(damage: int, _at: Vector3) -> void:
+func take_hit(damage: int, at: Vector3) -> void:
 	if health <= 0:
 		return  # already exploding; several bolts can land in one frame
 	health -= damage
 	if health > 0:
+		_reaction.hit(at, float(health) / max_health)
 		return
+	# The model goes to the wreck: as it was, not mid-flash or mid-flinch.
+	_reaction.release()
 	Explosion.spawn(get_parent(), global_position, explosion, explosion_size, velocity)
 	SoundFX.play_at(get_parent(), explosion_sound, global_position, 0.0, randf_range(0.9, 1.1))
 	get_tree().call_group("hud", "add_score", 1)

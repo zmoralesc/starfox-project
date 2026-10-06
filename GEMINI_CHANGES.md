@@ -24,9 +24,10 @@
 
 ## Visual Effects & Wrecks
 - Wreck Flight Alignment: In `effects/wreck.gd`, added `_align_with_velocity()` so a dying enemy fighter's nose (-Z basis) continuously aligns with its curved velocity vector under gravity (e.g. on Corneria) while maintaining its axial roll rotation.
+- Smoke & Explosion Ink Outlines Removed: In `effects/explosion_puff.gdshader`, added `depth_draw_always` and `ALPHA *= 1.0` so puff quads render in the transparent pass, preventing `InkOutline` from drawing black ink contours around smoke and fire puffs while keeping proper depth sorting.
 
 ## Documentation
-- Updated `ONBOARDING.md` to document player crash damage in the collision layers table, note the flexible wingman squad size, document the new command reissue logic, outline the new kill celebrations, explain the Weapons Free cooldown and aim scatter, and record wreck flight alignment.
-- Updated `docs/GUIDE.md` to remove the Kill Chatter tutorial suggestion (since it's now built-in) and replaced it with a custom weapon task. Removed hardcoded references to exactly three wingmen. Documented smoothed single crosshair and wreck flight alignment under gravity.
+- Updated `ONBOARDING.md` to document player crash damage in the collision layers table, note the flexible wingman squad size, document the new command reissue logic, outline the new kill celebrations, explain the Weapons Free cooldown and aim scatter, record wreck flight alignment, and update explosion puff outline status.
+- Updated `docs/GUIDE.md` to remove the Kill Chatter tutorial suggestion (since it's now built-in) and replaced it with a custom weapon task. Removed hardcoded references to exactly three wingmen. Documented smoothed single crosshair, wreck flight alignment under gravity, and removal of smoke/flame ink outlines.
 
 

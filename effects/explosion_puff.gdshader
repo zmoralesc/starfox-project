@@ -1,12 +1,14 @@
 shader_type spatial;
-render_mode cull_disabled;
+render_mode cull_disabled, depth_draw_always;
 
 // One puff of an explosion (Explosion, on GPUParticles3D quads): a camera-
 // facing ball that starts as fire in hard bands (white-hot core, orange, deep
 // red rim), cools from the edge inwards into smoke over its life, then breaks
 // up into holes and is gone. The smoke is toon-lit like everything else (the
-// puff's NORMAL is a sphere's), and it's opaque with a ragged cut-out edge, so
-// it gets ink outlines: the cartoon explosion look.
+// puff's NORMAL is a sphere's).
+// No ink outlines: writing ALPHA puts it in the transparent pass, out of the
+// depth texture InkOutline reads. depth_draw_always still writes depth so puffs
+// sort and occlude properly.
 //
 // The puff's age comes from the particle system (INSTANCE_CUSTOM.y, 0 to 1
 // over its life).
@@ -100,4 +102,5 @@ void fragment() {
 	EMISSION = fire * glow * burning;
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
+	ALPHA *= 1.0;
 }

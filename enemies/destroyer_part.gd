@@ -36,19 +36,26 @@ var is_destroyed := false
 ## Set by the Destroyer that owns this part.
 var destroyer: Destroyer
 
+## Flash and damage smoke when shot; no flinch, it's bolted to the hull. Once
+## destroyed it keeps burning.
+var _reaction: HitReaction
+
 
 func _ready() -> void:
 	health = max_health
 	add_to_group("targets")
 	add_to_group("destroyer_parts")
+	# Anchored: it doesn't fly, so its smoke can't trail; it pours out of the hull.
+	_reaction = HitReaction.attach(self, self, null, radius, true)
 
 
-func take_hit(damage: int, _at: Vector3) -> void:
+func take_hit(damage: int, at: Vector3) -> void:
 	if is_destroyed or destroyer == null or not destroyer.is_damageable():
 		return
 	health -= damage
 	if health <= 0:
 		_break()
+	_reaction.hit(at, float(health) / max_health)
 
 
 func _break() -> void:

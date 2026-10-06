@@ -215,58 +215,6 @@ func _douse_lights(node: Node) -> void:
 		_douse_lights(child)
 
 
-## A world-space trail of the explosions' puffs (explosion_puff.gdshader):
-## fire right behind the wreck, cooling into toon-lit, ink-outlined smoke that
-## swells and breaks up, so the trail matches the explosions at either end.
-## `rate` puffs a second, each lasting `puff_lifetime` and growing from
-## `start_size` to `end_size` metres (the wreck's own plume, or a debris trail).
+## The wreck's own plume, or a debris trail (see Explosion.trail()).
 func _make_smoke(rate: float, puff_lifetime: float, start_size: float, end_size: float) -> GPUParticles3D:
-	var material := ShaderMaterial.new()
-	material.shader = Explosion.PUFF_SHADER
-	material.set_shader_parameter("hot_color", smoke_style.hot_color)
-	material.set_shader_parameter("fire_color", smoke_style.fire_color)
-	material.set_shader_parameter("ember_color", smoke_style.ember_color)
-	material.set_shader_parameter("smoke_color", smoke_style.smoke_color)
-	material.set_shader_parameter("glow", smoke_style.glow)
-	material.set_shader_parameter("cool_at", smoke_burn)
-	material.set_shader_parameter("dissolve_from", smoke_dissolve_from)
-	material.set_shader_parameter("glint", 0.0)
-	material.set_shader_parameter("shadow_tone", 0.35)
-
-	var quad := QuadMesh.new()
-	quad.material = material
-
-	# Swell fast at first, then slowly.
-	var size := Curve.new()
-	size.add_point(Vector2(0.0, start_size / end_size))
-	size.add_point(Vector2(0.3, 0.75))
-	size.add_point(Vector2(1.0, 1.0))
-	var size_curve := CurveTexture.new()
-	size_curve.curve = size
-
-	var process := ParticleProcessMaterial.new()
-	process.direction = Vector3.UP
-	process.spread = 180.0
-	process.initial_velocity_min = 0.5
-	process.initial_velocity_max = 2.0
-	process.gravity = Vector3.ZERO
-	process.scale_min = end_size * 0.8
-	process.scale_max = end_size * 1.2
-	process.scale_curve = size_curve
-
-	# GPU particles, not CPU: they space each puff's start along the emitter's
-	# path between frames, so a fast wreck leaves an even trail instead of
-	# clumps (CPUParticles3D bunched them into pairs ~8 m apart at 80 m/s).
-	var smoke := GPUParticles3D.new()
-	smoke.name = "Smoke"
-	smoke.draw_pass_1 = quad
-	smoke.process_material = process
-	smoke.local_coords = false  # puffs stay where they were left: a trail
-	smoke.amount = maxi(int(rate * puff_lifetime), 1)
-	smoke.lifetime = puff_lifetime
-	# The trail stretches far behind the emitter: don't cull it as off-screen.
-	var reach := 150.0 * puff_lifetime
-	smoke.visibility_aabb = AABB(Vector3.ONE * -reach, Vector3.ONE * reach * 2.0)
-	smoke.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	smoke.emitting = true
-	return smoke
+	return Explosion.trail(smoke_style, rate, puff_lifetime, start_size, end_size, smoke_burn, smoke_dissolve_from)

@@ -19,6 +19,11 @@ extends Node3D
 ## `splash_size` times its own size. Null = the impact flash on water too.
 @export var water_splash: PackedScene = preload("res://effects/water_splash.tscn")
 @export var splash_size := 1.0
+## Hitting something shootable (anything with take_hit: enemies, destroyer
+## parts, asteroids, wrecks, the player) throws up this cartoon burst instead of
+## the impact flash, at `burst_size` times its own size. Null = the flash.
+@export var hit_burst: PackedScene = preload("res://effects/hit_burst.tscn")
+@export var burst_size := 1.0
 
 var _velocity := Vector3.ZERO
 var _origin := Vector3.ZERO
@@ -86,6 +91,8 @@ func _cast(from: Vector3, to: Vector3) -> bool:
 				_shooter_node.notify_kill(target)
 	if _hit_water(hit.position):
 		WaterSplash.spawn(water_splash, get_parent(), hit.position, splash_size)
+	elif hit_burst and target.has_method("take_hit"):
+		HitBurst.spawn(hit_burst, get_parent(), hit.position, -_velocity.normalized(), burst_size)
 	else:
 		Impact.spawn(get_parent(), hit.position, impact_color, 0.8)
 	queue_free()

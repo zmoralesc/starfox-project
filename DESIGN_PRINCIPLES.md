@@ -14,6 +14,10 @@
 - Favor effects that look like 2D animation.
 - Favor the use of shaders.
 
+## Performance
+
+- Target 60 frames per second.
+
 ## Character dialogue and personalities
 
 The Star Fox team's relationship with one another has evolved into family territory over the years. They're not above conflict or disagreement, but at the end of the day they respect each other deeply and would (and do) trust each other with their lives.

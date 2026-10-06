@@ -25,6 +25,12 @@ Run with FORCE_EXPORT = True in the exec globals (or from the command line:
     corneria_props.glb   the props: city, town, base, arches, bridge, road, sea
                          stacks, trees, and the plateau lake, river and falls
 The sea is not exported: Terrain makes it.
+
+The buildings, bridges, arches, stacks, trees and the falls are hand-made kit
+pieces from corneria_kit.blend (specified in ../ASSETS.md; see load_kit()): this
+script decides where they go, how big, and merges them into one object per
+group. The terrain, lake and river surfaces, the road and the bridge ramp are
+still built here.
 """
 
 import math
@@ -383,6 +389,8 @@ class Batch:
         self.faces = []
         self.face_mats = []
         self.facing = []
+        self.smooth = []
+        self.sharp = []      # sharp edges, as pairs of vertex indices
 
     def add(self, points, faces, mat, xf=None, away_from=None):
         """`away_from` (a world point): make these faces point away from it. Needed
@@ -393,6 +401,31 @@ class Batch:
         self.faces += [tuple(base + i for i in f) for f in faces]
         self.face_mats += [mat] * len(faces)
         self.facing += [G(*away_from) if away_from else None] * len(faces)
+        self.smooth += [False] * len(faces)
+
+    def kit(self, name, xf, scale=(1.0, 1.0, 1.0), height=None, only=None, swap=None):
+        """Kit piece `name` (see load_kit()), scaled by `scale` (x, y, z) about its
+        origin, then placed by `xf` (a placer). `height(y)` maps its heights instead
+        of scaling them, for pieces whose top keeps its size when stretched;
+        `only(centre)` keeps just the faces whose local centre passes; `swap` renames
+        materials. The faces keep the way they were modelled to face, and their
+        smooth shading."""
+        pts, faces, mats, smooth, sharp = KIT[name]
+        sx, sy, sz = scale
+        local = [(x * sx, height(y) if height else y * sy, z * sz) for x, y, z in pts]
+        keep = [k for k, f in enumerate(faces)
+                if only is None or only(tuple(sum(pts[i][c] for i in f) / len(f) for c in range(3)))]
+        used = sorted({i for k in keep for i in faces[k]})
+        index = {i: len(self.verts) + n for n, i in enumerate(used)}
+        self.verts += [G(*xf(local[i])) for i in used]
+        mirrored = sx * sz * (1 if height else sy) < 0     # mirroring turns faces inside out
+        for k in keep:
+            f = tuple(index[i] for i in faces[k])
+            self.faces.append(f[::-1] if mirrored else f)
+            self.face_mats.append(swap.get(mats[k], mats[k]) if swap else mats[k])
+            self.facing.append(KEEP)
+            self.smooth.append(smooth[k])
+        self.sharp += [(index[a], index[b]) for a, b in sharp if a in index and b in index]
 
     def box(self, size, mat, xf, y0=0.0):
         """A box standing on the local origin (base at y0), size (x, y, z)."""
@@ -412,20 +445,6 @@ class Batch:
         # Open tubes and cones face out from their axis.
         self.add(pts, faces, mat, xf, None if cap else xf((0, y0 + h * 0.3, 0)))
 
-    def dome(self, r, h, mat, xf, y0=0.0, segments=12, rings=4, away_from=None):
-        pts = []
-        for k in range(rings):
-            a = math.pi / 2 * k / rings
-            pts += [(r * math.cos(a) * math.cos(2 * math.pi * s / segments), y0 + h * math.sin(a),
-                     r * math.cos(a) * math.sin(2 * math.pi * s / segments)) for s in range(segments)]
-        pts.append((0, y0 + h, 0))
-        n = segments
-        faces = [(k * n + s, k * n + (s + 1) % n, (k + 1) * n + (s + 1) % n, (k + 1) * n + s)
-                 for k in range(rings - 1) for s in range(n)]
-        top = len(pts) - 1
-        faces += [((rings - 1) * n + s, (rings - 1) * n + (s + 1) % n, top) for s in range(n)]
-        self.add(pts, faces, mat, xf, away_from)
-
     def rod(self, a, b, thickness, mat):
         """A thin square beam from world point a to b."""
         d = Vector(b) - Vector(a)
@@ -443,12 +462,20 @@ class Batch:
             me.materials.append(MATERIALS[name])
         index = {name: k for k, name in enumerate(names)}
         me.polygons.foreach_set("material_index", [index[m] for m in self.face_mats])
+        me.polygons.foreach_set("use_smooth", self.smooth)
+        if self.sharp:
+            edges = {frozenset(e.vertices): e for e in me.edges}
+            for a, b in self.sharp:
+                e = edges.get(frozenset((a, b)))
+                if e:
+                    e.use_edge_sharp = True
         bm = bmesh.new()
         bm.from_mesh(me)
-        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         bm.faces.ensure_lookup_table()
+        # Kit faces already face the right way; the rest are worked out.
+        bmesh.ops.recalc_face_normals(bm, faces=[f for f, away in zip(bm.faces, self.facing) if away is not KEEP])
         for face, away in zip(bm.faces, self.facing):
-            if away is not None and face.normal.dot(face.calc_center_median() - away) < 0:
+            if away is not None and away is not KEEP and face.normal.dot(face.calc_center_median() - away) < 0:
                 face.normal_flip()
         bm.to_mesh(me)
         bm.free()
@@ -467,6 +494,10 @@ PALETTE = {
     "Water": ((0.25, 0.5, 0.75), 0), "Tree": ((0.18, 0.4, 0.2), 0), "TreeLight": ((0.27, 0.5, 0.22), 0),
     "Rock": ((0.55, 0.5, 0.46), 0), "Steel": ((0.6, 0.62, 0.66), 0), "BridgeRed": ((0.75, 0.25, 0.18), 0),
     "Marker": ((1.0, 0.85, 0.1), 2),
+    # Added with the kit (ASSETS.md).
+    "TaxiYellow": ((0.95, 0.8, 0.2), 0), "MilitaryDark": ((0.3, 0.34, 0.28), 0),
+    "HazardBlack": ((0.12, 0.12, 0.14), 0), "CarBody": ((0.22, 0.52, 0.82), 0),
+    "Trunk": ((0.4, 0.28, 0.18), 0), "AwningBlue": ((0.2, 0.5, 0.85), 0),
 }
 MATERIALS = {}
 
@@ -474,6 +505,47 @@ MATERIALS = {}
 def make_materials():
     for name, (srgb, emit) in PALETTE.items():
         MATERIALS[name] = material("Corneria_" + name, srgb, emit)
+
+
+# --- The kit ----------------------------------------------------------------
+# Hand-made pieces (corneria_kit.blend, specified in ../ASSETS.md), placed by the
+# builders below where they used to put boxes. Each is read once, into game
+# coordinates: (points, faces, face materials as PALETTE names, face smooth
+# flags, sharp edges). The kit's own material colours are ignored: every face
+# gets the palette material of its name, so the kit can't drift from it.
+KIT_FILE = os.path.join(HERE, "corneria_kit.blend")
+# Parts whose origin is a pivot apart from the rest of their asset (the radar
+# dish, the barrier arm): read where they stand. The others are read about their
+# own origin (some are laid out side by side in the file).
+KIT_PIVOTED = ("Kit_RadarDish_Dish", "Kit_GuardPost_Arm")
+KIT = {}
+KEEP = "keep"   # Batch.facing for a kit face: it already faces the right way
+SHAFT = 20.0    # height of every kit tower's repeating shaft section
+
+
+def load_kit():
+    with bpy.data.libraries.load(KIT_FILE, link=False) as (src, dst):
+        dst.objects = [n for n in src.objects if n.startswith("Kit_")]
+    loaded = set()
+    for o in dst.objects:
+        me = o.data
+        xf = o.matrix_world if o.name in KIT_PIVOTED else Matrix.Identity(4)
+        pts = []
+        for v in me.vertices:
+            p = xf @ v.co
+            pts.append((p.x, p.z, -p.y))    # Blender (Z up, +Y north) to game
+        # Material names without the prefix or Blender's ".001" for a clash.
+        names = [m.name.split(".")[0].removeprefix("Corneria_") for m in me.materials]
+        loaded |= set(me.materials)
+        KIT[o.name] = (pts, [tuple(p.vertices) for p in me.polygons],
+                       [names[p.material_index] for p in me.polygons],
+                       [p.use_smooth for p in me.polygons],
+                       [tuple(e.vertices) for e in me.edges if e.use_edge_sharp])
+        bpy.data.objects.remove(o)
+        bpy.data.meshes.remove(me)
+    for m in loaded:
+        if m not in MATERIALS.values():
+            bpy.data.materials.remove(m)
 
 
 # --- Water -----------------------------------------------------------------
@@ -499,56 +571,19 @@ def build_water(col, preview):
         right.append((x - n.x, LAKE_LEVEL, z - n.y))
     b.add(left + right[::-1], [tuple(range(len(left) * 2))], "Water", away_from=below)
 
-    # The falls: a sheet bowing out from the lip as it drops, foam at the foot.
+    # The falls (a kit piece: its lip at the origin, 120 m up, the water flowing
+    # towards its local +Z), turned to pour down the river.
     fx, fz = FALLS
     d = Vector((LOWER_RIVER[1][0] - fx, LOWER_RIVER[1][1] - fz)).normalized()
-    n = Vector((d.y, -d.x))
-    rows = [(LAKE_LEVEL, 0, 40), (85, 16, 43), (45, 26, 46), (0, 32, 50)]
-    pts = []
-    for y, out, half in rows:
-        for side in (1, -1):
-            pts.append((fx + n.x * half * side + d.x * out, y, fz + n.y * half * side + d.y * out))
-    faces = [(2 * k, 2 * k + 1, 2 * k + 3, 2 * k + 2) for k in range(len(rows) - 1)]
-    b.add(pts, faces, "Falls", away_from=(fx - d.x * 300, 60, fz - d.y * 300))   # facing downstream
-    foot = (fx + d.x * 45, fz + d.y * 45)
-    b.dome(60, 14, "Foam", placer(foot[0], -2, foot[1]), segments=10, rings=3, away_from=(foot[0], -30, foot[1]))
-    rng = random.Random(7)
-    for _ in range(5):
-        ox, oz = rng.uniform(-60, 60), rng.uniform(10, 90)
-        p = (foot[0] + n.x * ox + d.x * oz, foot[1] + n.y * ox + d.y * oz)
-        b.dome(rng.uniform(12, 22), rng.uniform(4, 8), "Foam", placer(p[0], -1, p[1]), segments=7, rings=2,
-               away_from=(p[0], -20, p[1]))
+    b.kit("Kit_Waterfall", placer(fx, LAKE_LEVEL - 120, fz, math.atan2(d.x, d.y)))
     b.flush(col)
 
 
 # --- Arches and the bay bridge ----------------------------------------------
 def arch(b, x, z, scale, rot):
-    """A stone arch standing on the seabed: square pillars rising into a round arch."""
-    xf = placer(x, -22, z, rot)
-    inner, outer, spring, depth = 40 * scale, 62 * scale, 82 * scale, 10 * scale
-    ring = [(-inner, 0), (-inner, spring)]
-    ring_out = [(-outer, 0), (-outer, spring)]
-    for k in range(1, 12):
-        a = math.pi - math.pi * k / 12
-        ring.append((inner * math.cos(a), spring + inner * math.sin(a)))
-        ring_out.append((outer * math.cos(a), spring + outer * math.sin(a)))
-    ring += [(inner, spring), (inner, 0)]
-    ring_out += [(outer, spring), (outer, 0)]
-    n = len(ring)
-    pts = []
-    for zz in (-depth, depth):
-        pts += [(u, v, zz) for u, v in ring] + [(u, v, zz) for u, v in ring_out]
-    faces = []
-    for k in range(n - 1):
-        for f in (0, 2 * n):          # front and back faces
-            faces.append((f + k, f + k + 1, f + n + k + 1, f + n + k))
-        faces.append((k, k + 1, 2 * n + k + 1, 2 * n + k))                 # underside of the arch
-        faces.append((n + k, n + k + 1, 3 * n + k + 1, 3 * n + k))         # outer surface
-    faces.append((0, n, 3 * n, 2 * n))                                       # pillar feet
-    faces.append((n - 1, 2 * n - 1, 4 * n - 1, 3 * n - 1))
-    b.add(pts, faces, "Stone", xf)
-    # A capstone ledge along the top.
-    b.box((outer * 0.5, 6 * scale, depth * 2.4), "Stone", placer(x, -22 + spring + outer - 3 * scale, z, rot))
+    """A stone arch standing on the seabed, flown through along its local Z (the
+    kit piece: an 80 m wide, 120 m high opening at scale 1; origin at sea level)."""
+    b.kit("Kit_StoneArch", placer(x, 0, z, rot), (scale, scale, scale))
 
 
 def build_arches(col):
@@ -586,36 +621,16 @@ def build_river_bridge(col):
     base road. High enough to fly under."""
     b = Batch("RiverBridge")
     u0, u1, v, deck = BRIDGE
-    length = u1 - u0
     xm, zm = city_xy((u0 + u1) / 2, v)
-    local = placer(xm, 0, zm, -CITY_ANGLE)     # local +X runs east along the street
-
-    def world(px, y, pz):
-        x, _, z = local((px, 0, pz))
-        return (x, y, z)
-
-    b.box((length, 3, 20), "Steel", placer(xm, deck - 3, zm, -CITY_ANGLE))
-    towers = (-length / 2 + 75, length / 2 - 75)
-    top = 98
-    for px in towers:
+    assert u1 - u0 == 300 and deck == 30, "BRIDGE must match the kit bridge (300 m, deck at 30 m)"
+    # The kit bridge: 300 m along its local X (here east along the street), deck
+    # top 30 m above its origin at sea level, tower feet 10 m below it.
+    b.kit("Kit_RiverBridge", placer(xm, 0, zm, -CITY_ANGLE))
+    for px in (-75, 75):
         for side in (-1, 1):
-            x, _, z = world(px, 0, side * 11)
-            base = min(ground(x, z), 0) - 2
-            b.box((6, top + 6 - base, 6), "BridgeRed", placer(x, base, z, -CITY_ANGLE))
-        for y in (deck - 6, top - 6, top):
-            x, _, z = world(px, 0, 0)
-            b.box((6, 5, 28), "BridgeRed", placer(x, y, z, -CITY_ANGLE))
-    for side in (-1, 1):
-        pz = side * 9
-        pts = [world(-length / 2, deck, pz), world(towers[0], top + 2, pz)]
-        for k in range(1, 8):
-            t = k / 8
-            pts.append(world(lerp(towers[0], towers[1], t), top + 2 - 58 * math.sin(math.pi * t), pz))
-        pts += [world(towers[1], top + 2, pz), world(length / 2, deck, pz)]
-        for a, c in zip(pts, pts[1:]):
-            b.rod(a, c, 1.4, "Steel")
-        for p in pts[2:-2]:
-            b.rod(p, (p[0], deck, p[2]), 0.7, "Steel")
+            x, _, z = placer(xm, 0, zm, -CITY_ANGLE)((px, 0, side * 11))
+            if ground(x, z) < -10:
+                print("warning: a river bridge tower stands in %.0f m of water" % -ground(x, z))
 
     # On the city side, a ramp down from the deck onto the street, on piers.
     ramp = []
@@ -715,61 +730,106 @@ def city_xy(u, v):
 
 
 def warning_light(b, x, y, z):
-    b.box((3, 3, 3), "WarningLight", placer(x, y, z))
+    b.kit("Kit_RoofLight", placer(x, y, z))
 
 
+def shafts(body, fixed):
+    """How many SHAFT sections bring a tower's body nearest `body` metres, given
+    `fixed` metres of base and crown, and the vertical stretch that then hits it."""
+    n = max(round((body - fixed) / SHAFT), 1)
+    return n, body / (fixed + n * SHAFT)
+
+
+# The tower builders return the point their warning light goes on (the antenna tip).
 def stepped(b, x, y, z, w, d, h, rot):
-    for k, (frac, scale) in enumerate(((0.0, 1.0), (0.5, 0.78), (0.8, 0.56))):
-        top = (0.5, 0.8, 1.0)[k]
-        b.box((w * scale, h * (top - frac), d * scale), "Tower", placer(x, y + h * frac, z, rot))
-        b.box((w * scale + 1, 3, d * scale + 1), "Glass", placer(x, y + h * top - 6, z, rot))
-    b.cylinder(1.5, 0.5, h * 0.15, "Steel", placer(x, y + h, z), segments=5)
-    return h * 1.15
+    """The stepped kit tower (55 × 52 m; a 20 m base, shafts, and a crown of two
+    setbacks, 100 m, under a 20 m antenna), stretched to a body `h` high."""
+    n, f = shafts(h, 120)
+    s = (w / 55, f, d / 52)
+    b.kit("Kit_SteppedTower_Base", placer(x, y, z, rot), s)
+    for k in range(n):
+        b.kit("Kit_SteppedTower_Shaft", placer(x, y + (20 + k * SHAFT) * f, z, rot), s)
+    b.kit("Kit_SteppedTower_Crown", placer(x, y + (20 + n * SHAFT) * f, z, rot), s)
+    return (x, y + (140 + n * SHAFT) * f, z)
 
 
 def round_tower(b, x, y, z, r, h):
-    b.cylinder(r * 1.35, r * 1.35, 12, "Concrete", placer(x, y, z))
-    b.cylinder(r, r, h, "Glass", placer(x, y, z))
-    for k in range(1, 4):
-        b.cylinder(r + 1, r + 1, 2.5, "Tower", placer(x, y + h * k / 4, z), cap=False)
-    b.dome(r, r * 0.6, "Tower", placer(x, y + h, z))
-    b.cylinder(1.2, 0.4, r * 1.2, "Steel", placer(x, y + h + r * 0.55, z), segments=5)
-    return h + r * 1.7
+    """The round kit tower (radius 22 m; a 12 m drum, shafts, then a dome and
+    antenna 39 m tall, which keep their proportions), glass `h` high."""
+    n, f = shafts(h, 12)
+    s = r / 22
+    b.kit("Kit_RoundTower_Base", placer(x, y, z), (s, f, s))
+    for k in range(n):
+        b.kit("Kit_RoundTower_Shaft", placer(x, y + (12 + k * SHAFT) * f, z), (s, f, s))
+    b.kit("Kit_RoundTower_Crown", placer(x, y + h, z), (s, s, s))
+    return (x, y + h + 39 * s, z)
 
 
 def slab(b, x, y, z, w, d, h, rot):
-    b.box((w - 4, h, d - 4), "Glass", placer(x, y, z, rot))
-    for sx in (-1, 1):
-        for sz in (-1, 1):
-            p = placer(x, y, z, rot)((sx * (w / 2 - 3), 0, sz * (d / 2 - 3)))
-            b.box((6, h, 6), "Tower", placer(p[0], y, p[2], rot))
-    b.box((w, 4, d), "Tower", placer(x, y + h, z, rot))
-    return h + 4
+    """The slab kit tower (55 × 38 m; a 10 m base, shafts, then a 4 m roof cap
+    with plant rooms, unstretched), body `h` high."""
+    n, f = shafts(h, 10)
+    s = (w / 55, f, d / 38)
+    b.kit("Kit_SlabTower_Base", placer(x, y, z, rot), s)
+    for k in range(n):
+        b.kit("Kit_SlabTower_Shaft", placer(x, y + (10 + k * SHAFT) * f, z, rot), s)
+    b.kit("Kit_SlabTower_Crown", placer(x, y + h, z, rot), (w / 55, 1, d / 38))
+    return (x, y + h + 4, z)
 
 
 def twin(b, x, y, z, w, h, rot):
-    t = w * 0.38
-    b.box((w, 14, w * 0.6), "Concrete", placer(x, y, z, rot))
-    for side in (-1, 1):
-        p = placer(x, y, z, rot)((side * w * 0.32, 0, 0))
-        b.box((t, h * (1 if side < 0 else 0.86), t), "Glass", placer(p[0], y, p[2], rot))
-        b.box((t + 1, 3, t + 1), "Tower", placer(p[0], y + h * (1 if side < 0 else 0.86), p[2], rot))
-    b.box((w * 0.3, 7, 9), "Tower", placer(x, y + h * 0.62, z, rot))
-    return h
+    """The twin kit towers (a 63 × 38 m, 14 m podium; shafts at local x ±20; the
+    west one `h` high, the east one 86 %; a sky bridge at 62 %). The kit's shaft
+    section holds both towers, so each tower stacks its own half."""
+    s = w / 63
+    xf = placer(x, y, z, rot)
+    b.kit("Kit_TwinTowers_Base", xf, (s, 1, s))
+    for side, frac, crown in ((-1, 1.0, "Kit_TwinTowers_CrownWest"), (1, 0.86, "Kit_TwinTowers_CrownEast")):
+        top = h * frac
+        n, f = shafts(top - 14, 0)
+        for k in range(n):
+            b.kit("Kit_TwinTowers_Shaft", placer(x, y + 14 + k * SHAFT * f, z, rot), (s, f, s),
+                  only=lambda c, side=side: c[0] * side > 0)
+        b.kit(crown, placer(x, y + top, z, rot), (s, 1, s))
+    b.kit("Kit_TwinTowers_Bridge", placer(x, y + h * 0.62, z, rot), (s, 1, s))
+    tip = xf((-20 * s, 0, 0))
+    return (tip[0], y + h + 10, tip[2])
+
+
+# Low blocks: the kit variant for each wall colour the builders ask for.
+LOW_KIT = {"Tower": "Kit_LowBuilding_A", "Wall": "Kit_LowBuilding_B", "Concrete": "Kit_LowBuilding_C"}
 
 
 def low(b, x, y, z, w, d, h, rot, mat):
-    b.box((w, h, d), mat, placer(x, y, z, rot))
-    b.box((w * 0.8, 2, d * 0.8), "RoofDark", placer(x, y + h, z, rot))
+    """A low block: the kit's 10 m unit block stretched to w × h × d; what stands
+    on its roof keeps its height."""
+    b.kit(LOW_KIT[mat], placer(x, y, z, rot), (w / 10, 1, d / 10),
+          height=lambda yy: yy * h / 10 if yy <= 10 else h + yy - 10)
 
 
 def spire(b, x, y, z):
-    b.cylinder(62, 62, 18, "Concrete", placer(x, y, z), segments=16)
-    for y0, y1, r0, r1 in ((18, 130, 30, 22), (130, 225, 22, 14), (225, 295, 14, 5)):
-        b.cylinder(r0, r1, y1 - y0, "Glass", placer(x, y + y0, z), segments=12)
-        b.cylinder(r1 + 6, r1 + 6, 3, "Tower", placer(x, y + y1 - 1.5, z), segments=12)
-    b.cylinder(1.6, 0.4, 45, "Steel", placer(x, y + 295, z), segments=5)
-    warning_light(b, x, y + 340, z)
+    b.kit("Kit_Spire", placer(x, y, z))
+
+
+# Street kit pieces: their length along the street; straight stretches are cut
+# into pieces about STREET_TILE long (stretched to fit).
+STREET_PIECE = {"Kit_Street_Straight": 10.0, "Kit_Street_Crossing": 24.0}
+STREET_TILE = 30.0
+
+
+def crossing(i, j):
+    """Whether a crossing piece goes where grid lines i (u) and j (v) meet."""
+    u, v = (i + 0.5) * PITCH, (j + 0.5) * PITCH
+    return math.hypot(u, v) < CITY_EDGE - STREET and ground(*city_xy(u, v)) >= 12
+
+
+def street_piece(b, name, axis, line, along, length):
+    """A street kit piece centred `along` grid line `line` (axis 0: the line is a
+    u, the street runs along v), stretched to `length` along the street."""
+    u, v = (line, along) if axis == 0 else (along, line)
+    x, z = city_xy(u, v)
+    rot = -CITY_ANGLE + (0 if axis == 0 else math.pi / 2)
+    b.kit(name, placer(x, CITY[3] - 0.3, z, rot), (1, 1, length / STREET_PIECE[name]))
 
 
 def build_city(col, trees):
@@ -793,22 +853,22 @@ def build_city(col, trees):
             rot = -CITY_ANGLE + rng.choice((0, math.pi / 2))
             t = math.exp(-(dist / 430) ** 2)
             if dist > 280 and rng.random() < 0.1:
-                for _ in range(6):   # a park: just trees
-                    trees.append((*city_xy(u + rng.uniform(-35, 35), v + rng.uniform(-35, 35)), y))
+                for _ in range(6):   # a park: just (round) trees
+                    trees.append((*city_xy(u + rng.uniform(-35, 35), v + rng.uniform(-35, 35)), y, True))
                 continue
             if t > 0.42:
                 h = 85 + 160 * t * rng.uniform(0.6, 1.0)
                 kind = rng.random()
                 if kind < 0.3:
-                    top = stepped(b, x, y, z, rng.uniform(48, 62), rng.uniform(44, 60), h, rot)
+                    tip = stepped(b, x, y, z, rng.uniform(48, 62), rng.uniform(44, 60), h, rot)
                 elif kind < 0.55:
-                    top = round_tower(b, x, y, z, rng.uniform(18, 26), h)
+                    tip = round_tower(b, x, y, z, rng.uniform(18, 26), h)
                 elif kind < 0.8:
-                    top = slab(b, x, y, z, rng.uniform(46, 64), rng.uniform(32, 44), h, rot)
+                    tip = slab(b, x, y, z, rng.uniform(46, 64), rng.uniform(32, 44), h, rot)
                 else:
-                    top = twin(b, x, y, z, rng.uniform(56, 70), h, rot)
+                    tip = twin(b, x, y, z, rng.uniform(56, 70), h, rot)
                 if h > 100:
-                    warning_light(b, x, y + top, z)
+                    warning_light(b, *tip)
             elif t > 0.12:
                 for side in (-1, 1):
                     p = placer(x, y, z, rot)((side * 22, 0, 0))
@@ -827,6 +887,7 @@ def build_city(col, trees):
 
     # Streets on the grid lines between blocks; bridges where a street crosses the river.
     bridged = 0
+    crossed = set()
     for k in range(-span - 1, span + 1):
         line = (k + 0.5) * PITCH
         half = math.sqrt(max(CITY_EDGE ** 2 - line ** 2, 0))
@@ -849,46 +910,66 @@ def build_city(col, trees):
             for a0, a1 in runs:
                 if a1 - a0 < 20:
                     continue
-                mid = (a0 + a1) / 2
-                u, v = (line, mid) if axis == 0 else (mid, line)
-                x, z = city_xy(u, v)
-                size = (STREET, 0.6, a1 - a0) if axis == 0 else (a1 - a0, 0.6, STREET)
-                roads.box(size, "Road", placer(x, CITY[3] - 0.3, z, -CITY_ANGLE))
-            # Every other street crossing the river gets a bridge.
+                # Crossings cut the run into straight stretches; each crossing
+                # piece is laid once, by whichever street gets there first.
+                cuts = []
+                for j in range(-span - 1, span + 1):
+                    c = (j + 0.5) * PITCH
+                    key = (k, j) if axis == 0 else (j, k)
+                    if a0 <= c <= a1 and crossing(*key):
+                        cuts.append(c)
+                        if key not in crossed:
+                            crossed.add(key)
+                            street_piece(roads, "Kit_Street_Crossing", axis, line, c, STREET)
+                start = a0
+                for c in cuts + [None]:
+                    end = a1 if c is None else c - STREET / 2
+                    if end - start > 2:
+                        n = max(round((end - start) / STREET_TILE), 1)
+                        for t in range(n):
+                            street_piece(roads, "Kit_Street_Straight", axis, line,
+                                         start + (t + 0.5) * (end - start) / n, (end - start) / n)
+                    if c is not None:
+                        start = c + STREET / 2
+            # Every other street crossing the river gets a bridge: kit spans of
+            # about 70 m from bank to bank, a pier down to the river bed at each
+            # joint over the water.
             for (a0, a1), (b0, b1) in zip(runs, runs[1:]):
                 if b0 - a1 > 400 or k % 2:
                     continue
                 bridged += 1
-                mid = (a1 + b0) / 2
-                u, v = (line, mid) if axis == 0 else (mid, line)
-                x, z = city_xy(u, v)
-                length = b0 - a1 + 10
-                size = (STREET, 3, length) if axis == 0 else (length, 3, STREET)
-                b.box(size, "Steel", placer(x, CITY[3] - 3, z, -CITY_ANGLE))
-                for p in range(int(length / 70) + 1):
-                    off = -length / 2 + p * 70
-                    pu, pv = (line, mid + off) if axis == 0 else (mid + off, line)
-                    px, pz = city_xy(pu, pv)
-                    g = ground(px, pz)
+                length = b0 - a1
+                n = max(round(length / 70), 1)
+                deck = CITY[3] + 0.3
+                rot = -CITY_ANGLE + (0 if axis == 0 else math.pi / 2)
+                for p in range(n + 1):
+                    if p < n:
+                        u, v = (line, a1 + (p + 0.5) * length / n)
+                        x, z = city_xy(*((u, v) if axis == 0 else (v, u)))
+                        b.kit("Kit_StreetBridge_Span", placer(x, deck, z, rot), (1, 1, length / n / 70))
+                    u, v = (line, a1 + p * length / n)
+                    x, z = city_xy(*((u, v) if axis == 0 else (v, u)))
+                    g = ground(x, z)
                     if g < CITY[3] - 4:
-                        b.box((6, CITY[3] - 3 - g, 6), "Concrete", placer(px, g, pz, -CITY_ANGLE))
+                        depth = deck - g + 2   # from the deck to 2 m into the river bed
+                        b.kit("Kit_StreetBridge_Pier", placer(x, deck, z, rot),
+                              height=lambda yy, depth=depth: -3 + (yy + 3) * (depth - 3) / 17)
     b.flush(col)
     roads.flush(col)
     return bridged
 
 
 # --- Harbour town ---------------------------------------------------------------
-def house(b, x, y, z, w, d, h, rot):
-    b.box((w, h, d), "Wall", placer(x, y, z, rot))
-    xf = placer(x, y + h, z, rot)
-    pts = [(-w / 2 - 1, 0, -d / 2 - 1), (w / 2 + 1, 0, -d / 2 - 1), (w / 2 + 1, 0, d / 2 + 1),
-           (-w / 2 - 1, 0, d / 2 + 1), (0, w * 0.35, -d / 2 - 1), (0, w * 0.35, d / 2 + 1)]
-    b.add(pts, [(0, 4, 5, 3), (1, 2, 5, 4), (0, 1, 4), (3, 5, 2), (0, 3, 2, 1)], "Roof", xf)
+def house(b, x, y, z, w, d, h, rot, variant):
+    """A kit house (`variant` A to D: an 18 × 24 m footprint, 10 m walls) stretched
+    to w × d with h high walls; the roof stretches with them."""
+    b.kit("Kit_House_" + variant, placer(x, y, z, rot), (w / 18, h / 10, d / 24))
 
 
 def build_town(col):
     b = Batch("Town")
     rng = random.Random(42)
+    styles = random.Random(43)   # which house goes where (apart from rng, so the layout stays put)
     tx, tz, r, base = TOWN
     placed = []
     tries = 0
@@ -900,66 +981,51 @@ def build_town(col):
         if ground(x, z) < 4 or any(math.hypot(x - px, z - pz) < (w + pw) * 0.5 + 14 for px, pz, pw in placed):
             continue
         placed.append((x, z, w))
-        house(b, x, ground(x, z), z, w, w * rng.uniform(1.0, 1.6), rng.uniform(7, 14), rng.uniform(0, math.pi))
+        house(b, x, ground(x, z), z, w, w * rng.uniform(1.0, 1.6), rng.uniform(7, 14), rng.uniform(0, math.pi),
+              styles.choice("ABCD"))
     for k in range(3):
         px = tx - 200 + k * 200
         pz = coast_z(px)
-        b.box((14, 3, 240), "Stone", placer(px, 0, pz + 60))
+        # The kit pier runs 240 m out to sea (+Z) from its shore end.
+        b.kit("Kit_Pier", placer(px, 0, pz - 60))
         for s in range(2):
-            boat = placer(px + (24 if s else -24), 0, pz + 80 + s * 70 + k * 15, rng.uniform(-0.3, 0.3))
-            b.box((6, 3, 16), "Wall", boat)
-            b.box((4, 3, 6), "Glass", placer(*boat((0, 0, 2)), rng.uniform(-0.3, 0.3)), y0=3)
-    # The lighthouse on the point east of the harbour.
+            b.kit("Kit_Boat_" + "AB"[s], placer(px + (24 if s else -24), 0, pz + 80 + s * 70 + k * 15,
+                                                 rng.uniform(-0.3, 0.3)))
+    # The lighthouse on the point east of the harbour (its keeper's cottage on
+    # the landward side).
     lx = tx + 420
     lz = coast_z(lx) - 70
-    g = ground(lx, lz)
-    for k in range(4):
-        b.cylinder(9 - k * 0.6, 8.4 - k * 0.6, 11, "Lighthouse" if k % 2 == 0 else "Wall", placer(lx, g + k * 11, lz))
-    b.cylinder(10, 10, 2, "RoofDark", placer(lx, g + 44, lz))
-    b.cylinder(4.5, 4.5, 6, "Lamp", placer(lx, g + 46, lz), segments=8)
-    b.cylinder(6, 0.5, 6, "Lighthouse", placer(lx, g + 52, lz), segments=8)
+    b.kit("Kit_Lighthouse", placer(lx, ground(lx, lz), lz))
     b.flush(col)
 
 
 # --- Military base ----------------------------------------------------------------
-def quonset(b, x, y, z, r, length, mat):
-    xf = placer(x, y, z)
-    pts = []
-    seg = 8
-    for zz in (-length / 2, length / 2):
-        pts += [(r * math.cos(math.pi * k / seg), r * math.sin(math.pi * k / seg), zz) for k in range(seg + 1)]
-    n = seg + 1
-    faces = [(k, k + 1, n + k + 1, n + k) for k in range(seg)]
-    faces += [tuple(range(n)), tuple(range(2 * n - 1, n - 1, -1))]
-    b.add(pts, faces, mat, xf)
-
-
 def build_base(col):
     b = Batch("Base")
     bx, bz, r, y = BASE
+    # Paved kit pieces (0.6 m slabs) at slightly different heights where they
+    # overlap, so their markings don't flicker: runway on top, then the parallel
+    # taxiway and aprons, then the cross taxiways.
     rx = bx - 150
-    b.box((70, 0.6, 1300), "Road", placer(rx, y - 0.3, bz))
-    for k in range(20):
-        b.box((2, 0.3, 30), "Marking", placer(rx, y + 0.3, bz - 600 + k * 63))
-    for end in (-1, 1):
-        for s in range(6):
-            b.box((4, 0.3, 40), "Marking", placer(rx - 25 + s * 10, y + 0.3, bz + end * 610))
-    b.box((30, 0.5, 900), "Road", placer(bx + 50, y - 0.25, bz))
+    b.kit("Kit_Runway_Main", placer(rx, y - 0.25, bz))
+    for k in range(9):
+        b.kit("Kit_Runway_Taxiway", placer(bx + 50, y - 0.3, bz - 400 + k * 100))
     for k in range(3):
-        b.box((200, 0.5, 26), "Road", placer(bx - 50, y - 0.25, bz - 350 + k * 350))
+        for t in range(2):
+            b.kit("Kit_Runway_Taxiway", placer(bx - 100 + t * 100, y - 0.35, bz - 350 + k * 350, math.pi / 2),
+                  (26 / 30, 1, 1))
+    # Hangars with their doors to the runway (west), each on an apron reaching
+    # from the taxiway to its door.
     for k in range(4):
-        quonset(b, bx + 200, y, bz - 330 + k * 220, 30, 90, "Military")
-    # Control tower with a glass cab, a radar dish, fuel tanks.
-    tx, tz = bx + 200, bz + 520
-    b.cylinder(6, 5, 45, "Concrete", placer(tx, y, tz), segments=8)
-    b.cylinder(11, 12, 8, "Glass", placer(tx, y + 45, tz), segments=8)
-    b.cylinder(13, 13, 2, "RoofDark", placer(tx, y + 53, tz), segments=8)
-    warning_light(b, tx, y + 55, tz)
-    b.cylinder(1.5, 1.5, 20, "Steel", placer(bx + 300, y, bz + 380), segments=6)
-    b.cylinder(14, 2, 4, "Steel", placer(bx + 300, y + 20, bz + 380, 0.4, 0.6), segments=12)
+        hz = bz - 330 + k * 220
+        b.kit("Kit_Hangar_Large", placer(bx + 200, y, hz, -math.pi / 2))
+        b.kit("Kit_Runway_Apron", placer(bx + 110, y - 0.3, hz, -math.pi / 2), (1, 1, 1.5))
+    # Control tower, a radar dish, fuel tanks.
+    b.kit("Kit_ControlTower", placer(bx + 200, y, bz + 520))
+    for part in ("Kit_RadarDish_Base", "Kit_RadarDish_Dish"):
+        b.kit(part, placer(bx + 300, y, bz + 380, 0.4))
     for k in range(3):
-        b.cylinder(10, 10, 14, "Wall", placer(bx + 330, y, bz - 520 + k * 26))
-        b.dome(10, 3, "Wall", placer(bx + 330, y + 14, bz - 520 + k * 26))
+        b.kit("Kit_FuelTank", placer(bx + 330, y, bz - 520 + k * 28))
     build_base_admin(b, bx, bz, y)
     b.flush(col)
 
@@ -967,54 +1033,36 @@ def build_base(col):
 def build_base_admin(b, bx, bz, y):
     """The base's working side, east of the hangars: headquarters, barracks, depot."""
     rng = random.Random(21)
-    # Headquarters: an L of three storeys with window bands, a flagpole out front.
+    # Headquarters: the kit's L of three storeys, its main wing (22 × 92 m, local
+    # x -22 to 0) centred on (hx, hz), mirrored north-south so its second wing
+    # lies south, away from the parking lot; porch and flagpole face west.
     hx, hz = bx + 440, bz + 40
-    for size, (ox, oz) in (((22, 15, 92), (0, 0)), ((54, 15, 22), (32, 35))):
-        b.box(size, "Wall", placer(hx + ox, y, hz + oz))
-        for floor in (3.0, 8.0, 12.5):
-            b.box((size[0] + 0.6, 1.8, size[2] + 0.6), "Glass", placer(hx + ox, y + floor, hz + oz))
-        b.box((size[0] - 2, 1.2, size[2] - 2), "RoofDark", placer(hx + ox, y + 15, hz + oz))
-    b.box((8, 4, 12), "Concrete", placer(hx - 15, y, hz))                 # entrance porch
-    b.cylinder(0.4, 0.3, 18, "Steel", placer(hx - 32, y, hz), segments=5)
-    b.box((0.3, 3, 5), "BridgeRed", placer(hx - 32, y + 14.5, hz - 2.6))  # the flag
-    b.cylinder(1.2, 0.5, 14, "Steel", placer(hx, y + 15, hz - 30), segments=5)
-    # Parking lot with cars.
+    b.kit("Kit_Headquarters", placer(hx + 11, y, hz), (1, 1, -1))
+    # Parking lot with cars, noses to the middle aisle; the kit car's body
+    # colour (CarBody) is swapped per car.
     px, pz = hx + 60, hz - 60
-    b.box((56, 0.4, 36), "Road", placer(px, y - 0.1, pz))
+    b.kit("Kit_ParkingLot", placer(px, y - 0.1, pz))
     for row in (-1, 1):
         for k in range(8):
             if rng.random() < 0.3:
                 continue
-            b.box((2.2, 1.6, 4.4), rng.choice(("Wall", "Glass", "Lighthouse", "RoofDark")),
-                  placer(px - 24 + k * 6.5, y + 0.3, pz + row * 10))
+            body = rng.choice(("Wall", "CarBody", "Lighthouse", "RoofDark"))
+            b.kit("Kit_Car", placer(px - 24 + k * 6.5, y + 0.3, pz + row * 10, 0 if row < 0 else math.pi),
+                  swap={"CarBody": body})
     # Barracks in two rows, and a mess hall.
     for col_x in (bx + 500, bx + 550):
         for k in range(4):
             low(b, col_x, y, bz - 300 + k * 70, 15, 50, 8, 0.0, "Concrete")
-    quonset(b, bx + 400, y, bz - 160, 11, 44, "Military")
-    # Maintenance depot with trucks out front.
+    b.kit("Kit_Hangar_Small", placer(bx + 400, y, bz - 160))
+    # Maintenance depot with trucks out front (doors and noses south).
     dx, dz = bx + 360, bz - 360
-    low(b, dx, y, dz, 64, 36, 11, 0.0, "Military")
+    b.kit("Kit_Depot", placer(dx, y, dz))
     for k in range(4):
-        b.box((3.4, 3.2, 8), "Military", placer(dx - 22 + k * 12, y, dz + 28))
+        b.kit("Kit_Truck", placer(dx - 22 + k * 12, y, dz + 28))
     # Helipad between the hangars and the headquarters.
-    hpx, hpz = bx + 320, bz - 20
-    b.cylinder(15, 15, 0.4, "Road", placer(hpx, y - 0.1, hpz), segments=16)
-    for ox in (-3.5, 3.5):
-        b.box((1.4, 0.2, 10), "Marking", placer(hpx + ox, y + 0.3, hpz))
-    b.box((7, 0.2, 1.4), "Marking", placer(hpx, y + 0.3, hpz))
-    # Radio mast: a tapering lattice with cross braces.
-    mx, mz, height_ = bx + 440, bz - 430, 64
-    legs = []
-    for sx, sz in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
-        legs.append([(mx + sx * lerp(4, 0.8, f), y + height_ * f, mz + sz * lerp(4, 0.8, f)) for f in (0, 0.25, 0.5, 0.75, 1)])
-    for leg in legs:
-        for a, c in zip(leg, leg[1:]):
-            b.rod(a, c, 0.6, "BridgeRed")
-    for level in range(4):
-        for k in range(4):
-            b.rod(legs[k][level], legs[(k + 1) % 4][level + 1], 0.3, "Steel")
-    warning_light(b, mx, y + height_, mz)
+    b.kit("Kit_Helipad", placer(bx + 320, y - 0.1, bz - 20))
+    # Radio mast.
+    b.kit("Kit_RadioMast", placer(bx + 440, y, bz - 430))
     # A guard post and barrier where the road comes in.
     s = 0.0
     while s < ROAD_LENGTHS[-1] and math.hypot(road_point(s)[0] - bx, road_point(s)[1] - bz) > BASE[2] - 60:
@@ -1023,30 +1071,27 @@ def build_base_admin(b, bx, bz, y):
     ax, az = road_point(s + 5)
     d = Vector((ax - gx, az - gz)).normalized()
     side = Vector((d.y, -d.x))
-    b.box((4, 3, 4), "Wall", placer(gx + side.x * 11, y, gz + side.y * 11))
-    b.box((5, 0.6, 5), "RoofDark", placer(gx + side.x * 11, y + 3, gz + side.y * 11))
-    b.rod((gx + side.x * 9, y + 1.2, gz + side.y * 9), (gx - side.x * 5, y + 1.2, gz - side.y * 5), 0.4, "Lighthouse")
+    # The kit's hinge at its origin, the booth along its local +X (here off the
+    # road's side) and the 14 m arm along -X, across the road.
+    for part in ("Kit_GuardPost", "Kit_GuardPost_Arm"):
+        b.kit(part, placer(gx + side.x * 9, y, gz + side.y * 9, math.atan2(-side.y, side.x)))
 
 
 # --- Sea stacks ----------------------------------------------------------------------
+# The kit's sea stacks and their heights above the water.
+STACK_KIT = (("Kit_SeaStack_B", 160.0), ("Kit_SeaStack_C", 195.0), ("Kit_SeaStack_A", 230.0))
+
+
 def build_sea_stacks(col):
+    """Each stack is the kit variant nearest its random height, scaled to it and
+    turned at random."""
     b = Batch("SeaStacks")
     rng = random.Random(11)
     for x, z in SEA_STACKS:
-        h, r = rng.uniform(150, 230), rng.uniform(38, 55)
-        lean = (rng.uniform(-20, 20), rng.uniform(-20, 20))
-        seg = 7
-        pts = []
-        levels = ((0.0, 1.0), (0.3, 0.8), (0.6, 0.55), (0.85, 0.35), (1.0, 0.14))
-        for f, s in levels:
-            for k in range(seg):
-                a = 2 * math.pi * k / seg + rng.uniform(-0.2, 0.2)
-                rr = r * s * rng.uniform(0.8, 1.2)
-                pts.append((x + lean[0] * f + rr * math.cos(a), -25 + h * f, z + lean[1] * f + rr * math.sin(a)))
-        faces = [(l * seg + k, l * seg + (k + 1) % seg, (l + 1) * seg + (k + 1) % seg, (l + 1) * seg + k)
-                 for l in range(len(levels) - 1) for k in range(seg)]
-        faces.append(tuple(range((len(levels) - 1) * seg + seg - 1, (len(levels) - 1) * seg - 1, -1)))
-        b.add(pts, faces, "Rock")
+        h = rng.uniform(150, 230)
+        name, kit_h = min(STACK_KIT, key=lambda v: abs(v[1] - h))
+        s = h / kit_h
+        b.kit(name, placer(x, 0, z, rng.uniform(0, 2 * math.pi)), (s, s, s))
     b.flush(col)
 
 
@@ -1074,19 +1119,25 @@ def scatter_trees(trees):
 
 
 def build_trees(col, trees):
+    """Kit trees 11 to 19 m tall (the kit's are 15 m; their trunks reach 1 m into
+    the ground): mostly dark conifers, round trees in the city's parks."""
     b = Batch("Trees")
     rng = random.Random(9)
-    for x, z, g in trees:
+    for x, z, g, *park in trees:
         h = rng.uniform(11, 19)
-        r = h * rng.uniform(0.3, 0.4)
-        b.cylinder(r, 0.0, h, "Tree" if rng.random() < 0.6 else "TreeLight", placer(x, g - 1, z, rng.uniform(0, 1)),
-                   segments=5, cap=False)
+        if park:
+            name = "Kit_Tree_Round"
+        else:
+            name = "Kit_Tree_Conifer" if rng.random() < 0.6 else "Kit_Tree_ConiferLight"
+        s = h / 15
+        b.kit(name, placer(x, g, z, rng.uniform(0, 2 * math.pi)), (s, s, s))
     b.flush(col)
     return len(trees)
 
 
 def build_props(root):
     make_materials()
+    load_kit()
     preview = collection("Preview", root)
     build_water(collection("Water", root), preview)
     build_arches(collection("Arches", root))

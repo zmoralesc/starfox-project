@@ -64,7 +64,7 @@ enemies/
   obstacle_proxy.gd        ObstacleProxy: invisible sphere the AI steers around (covers the destroyer hull)
 weapons/
   laser.gd                 Laser: bolt movement + hit detection (shared by both sides); splash on water (water_splash)
-  laser.tscn               Player-side bolt (green, 1500 m/s on ship.tscn, 16 m streak; Bolt + Glow, see laser_bolt/laser_glow)
+  laser.tscn               Player-side bolt (green, 1800 m/s on ship.tscn, 16 m streak; Bolt + Glow, see laser_bolt/laser_glow)
   enemy_laser.tscn         Enemy fighter bolt (red)
   turret_laser.tscn        Destroyer turret bolt (bigger, slower, 8 damage)
   laser_bolt.gdshader      Bolt look: additive (no ink outline), white core, tail fade, 1 px minimum width; on a tapered open cylinder (0.2 m radius player bolt, 12 rings) bent to a pointed head
@@ -79,17 +79,20 @@ world/
   terrain.gd               Terrain: low-poly ground (noise, or a TerrainMap), lakes, far ground, collision; height_at() / surface_height() / clearance_height() / water_level_at() / is_water_surface()
   water_marks.gd           WaterMarks (added by Terrain): splash rings + wake trails fed to water.gdshader each frame (rings[32], wake[192])
   terrain_map.gd           TerrainMap: a hand-made landscape exported from Blender (heights, paint, structure heights)
-  map_props.gd             MapProps: on an imported map props model; toon materials, water material, trimesh collision
+  map_props.gd             MapProps: on an imported map props model; toon materials (foliage unlined, with shadow-only stand-ins), water material, trimesh collision
   clouds.gd                Clouds: flyable cartoon cloud clusters that fade near the camera (Corneria draws them with effects/cloud.gdshader)
   planet_environment.tres  Day sky + horizon fog for planet missions
   play_boundary.gd         PlayBoundary: edge of a mission area; HUD warning, then the ship turns itself back
   great_fox.gd / .tscn     GreatFox: the team mothership as scenery outside a mission area (no collision; slow bob)
   space_station.gd / .tscn SpaceStation: solid friendly scenery (Space Station mission centre): toon materials, trimesh collision, AI avoidance spheres; keeps asteroids, waves and destroyers out
 effects/
-  impact.gd                Impact.spawn(...): small flash for laser hits (not on water: see water_splash.gd)
-  explosion.gd             Explosion.spawn(parent, at, style, size, velocity): flash, fireball, smoke, sparks, debris, shockwave, light; Explosion.prewarm()
+  impact.gd                Impact.spawn(...): small flash for laser hits on things that can't be shot (water: water_splash.gd; shootables: hit_burst.gd)
+  hit_burst.gd/.tscn       HitBurst: a bolt hitting anything with take_hit: cartoon star (0.2 s, 5 poses, min on-screen size) + 8 sparks back at the shooter; no ink; settings on the .tscn
+  hit_burst.gdshader       The star: camera-facing quad cut into a banded spiky star (core, yellow, orange rim) that pops out and hollows (instance uniforms age/seed)
+  hit_reaction.gd          HitReaction: on EnemyFighter / DestroyerPart: red flash (hit_flash instance uniform, 0.12 s), flinch (fighters, 0.8 m / 6°), smoke at ≤ 70 % health, fire at ≤ 40 % (Explosion.trail), from the target's smoke point (fighters: Model/SmokePoint, the engine) or else where it was first hit
+  explosion.gd             Explosion.spawn(parent, at, style, size, velocity): flash, fireball, smoke, sparks, debris, shockwave, light; Explosion.prewarm(); Explosion.trail(): a world-space puff trail (wrecks, debris, damage smoke)
   explosion_style.gd       ExplosionStyle resource: every look value, in units of size (fireball radius, m)
-  explosion_puff.gdshader  Puff: banded fire cooling into toon-lit smoke, breaking up; opaque, so ink-outlined
+  explosion_puff.gdshader  Puff: banded fire cooling into toon-lit smoke, breaking up; transparent pass, no ink outlines
   cloud.gdshader           Cartoon clouds (Clouds on Corneria): drifting noise lumps, squashed, shaded bottoms with soft crevices, own three-band light + silver lining; no ink outlines (transparent pass)
   explosions/*.tres        Presets: fighter, asteroid, destroyer_part, destroyer_chain, destroyer_final
   wreck.gd / .tscn         Wreck: a destroyed enemy fighter's model flying on, smoking, nose aligned with velocity vector, rolling, until it crashes, is shot (friendly bolts, via the fighter's hurtbox) or 3 s pass, then a second explosion (no damage, no score) that throws 3–5 smoking debris pieces
@@ -102,6 +105,7 @@ effects/
   shield_effect.gd         ShieldEffect: the blue shield bubble on the player ship (+ shield.gdshader)
   toon.gdshader            Cel shading used by every lit surface (surface in toon_surface.gdshaderinc, light model in toon_light.gdshaderinc); optional colour texture + glow map
   toon_clip.gdshader       toon.gdshader plus a clip plane (instance uniform clip_plane); the destroyer while it warps in
+  toon_unlined.gdshader    toon.gdshader in the transparent pass: no ink outlines (Corneria's foliage, via MapProps.unlined_materials)
   warp_portal.gd / .gdshader  WarpPortal: the destroyer's swirling arrival portal (opens, close(), frees itself; no collision)
   toon_material.gd         ToonMaterial.convert_tree(): cel-shaded copies of an imported model's PBR materials (keeps texture + glow; used by GreatFox)
   toon_vertex.gdshader     Same, coloured by vertex colours (the terrain)
@@ -137,8 +141,9 @@ models/
     source/                build_destroyer.py (builds and exports them in Blender) + collision.txt (hull collision pieces) + proxies.txt (AI avoidance spheres)
   enemy_fighter/           The Venomian "Mantis" enemy fighter (our own model), one .glb for every fighter type
     source/                build_enemy_fighter.py (builds and exports it in Blender)
-  corneria/                The Corneria map (our own): corneria_map.tres (TerrainMap) + corneria_props.glb (everything on the ground)
-    source/                build_corneria.py (builds the map in Blender and exports both)
+  corneria/                The Corneria map (our own): corneria_map.tres (TerrainMap) + corneria_props.glb (everything on the ground); ASSETS.md (the kit's spec)
+    kit/                   Kit_*.glb: previews of each kit piece (not used by the game)
+    source/                build_corneria.py (lays out the map in Blender and exports both) + corneria_kit.blend (the hand-made pieces); .gdignore'd
   space_station/           The Cornerian wheel station at the centre of the Space Station mission, about 800 m across (our own): space_station.glb
     source/                build_space_station.py (builds and exports it in Blender) + proxies.txt (AI avoidance spheres)
 ```
@@ -362,7 +367,7 @@ A state machine. The HUD doesn't show the state (every enemy marker is the same 
 
 Any hit triggers `EVADE` (outside the cooldown), through `notify_shot`. **Asteroids block line of sight.**
 
-**Model (the Venomian "Mantis"):** one `.glb` (`models/enemy_fighter/`, built by `source/build_enemy_fighter.py`) for both types, about 6.2 × 5.7 m. `FighterModel` on `Model/Mantis` paints `Fighter_Accent` and `Fighter_Lights` (eye, pincer tips, wing leading edges, tip-plate fronts): elite purple + red lights (energy 10), light fighter tan + orange (energy 8, overridden in `light_fighter.tscn`). Engine glow: `Model/Glow`, one oval over the twin nozzles. Muzzles at the gun tips (±0.95, −0.42, −2.15). Hurtbox 6.6 × 3.8 × 5.2 m, centred 0.5 m forward (about the old 5.5 m cube's hit rate, slightly higher); collision box 6.2 × 2 × 5.6, same centre; `radius` 3.5.
+**Model (the Venomian "Mantis"):** one `.glb` (`models/enemy_fighter/`, built by `source/build_enemy_fighter.py`) for both types, about 6.2 × 5.7 m. `FighterModel` on `Model/Mantis` paints `Fighter_Accent` and `Fighter_Lights` (eye, pincer tips, wing leading edges, tip-plate fronts): elite purple + red lights (energy 10), light fighter tan + orange (energy 8, overridden in `light_fighter.tscn`). Engine glow: `Model/Glow`, one oval over the twin nozzles. Muzzles at the gun tips (±0.95, −0.42, −2.15). Damage smoke from `Model/SmokePoint` at the engine (0, 0.3, 2.2). Hurtbox 6.6 × 3.8 × 5.2 m, centred 0.5 m forward (about the old 5.5 m cube's hit rate, slightly higher); collision box 6.2 × 2 × 5.6, same centre; `radius` 3.5.
 
 **Waves (`EnemySpawner`):** `enemy_scene` sets the level's fighter type for both waves and destroyer hangars. The base level (`levels/level_base.tscn`, so every mission) uses `light_fighter.tscn`; the script default is the elite `enemy_fighter.tscn`. 3 fighters, then one more per wave up to 8. Each wave spawns 600 m out, roughly ahead of the player and facing random directions, pushed `spawn_station_margin` (100 m) clear of a space station if there is one. Every 5th wave also brings a destroyer (`destroyer_every`, 0 = never). The next wave comes 6 s after every enemy is gone, destroyer included. At most `max_fighters` (12) enemy fighters can be alive at once, counting hangar launches. Anything that should hold up the next wave must be registered with `spawner.track(node)`. Waves don't start until `start()` is called.
 
@@ -442,10 +447,11 @@ The dialogue box, bottom left: a portrait square (faint static until portraits e
 - **`Level` exports:** `restart_delay` (3 s), `spawn_enemies` (off = no waves), `music` (a `LevelMusic`; empty = silence), `intro_line`, `intro_line_delay`, `intro_advisor_line` (said by MissionControl's advisor, Peppy, `intro_advisor_delay` 2 s after the player gets control, so not during the intro; empty = nothing; the Space Station mission sets "Stay sharp, team. I'm reading multiple enemy squadrons approaching our position."). The intro line is HIGH priority so that, if the intro was skipped and it is still on screen, the advisor's line queues behind it instead of cutting it off. Override `_build_world()` to generate a world (`main.gd` scatters asteroids there).
 
 ### Planet terrain (Corneria)
-- **The Corneria map** (`models/corneria/`, built by `source/build_corneria.py` in Blender): 8 × 8 km, north = −Z. Sea and sea stacks south; a bay with six stone arches (openings ~80 × 100 m); a suspension bridge (30 m deck) over the river mouth; Corneria City (~170 blocks, towers to 340 m with the spire, red warning lights over 100 m); a 130 m plateau with a lake (surface 120 m) and a waterfall; hills, ridges, mesas, a canyon and coastal cliffs in the west; the military base (west) reached by a road through a graded valley; a harbour town with a lighthouse (east coast); irregular mountains on three sides; ~6,000 trees.
+- **The Corneria map** (`models/corneria/`, built by `source/build_corneria.py` in Blender): 8 × 8 km, north = −Z. Sea and sea stacks south; a bay with six stone arches (openings ~80 × 120 m); a suspension bridge (30 m deck) over the river mouth; Corneria City (~170 blocks, towers to 340 m with the spire, red warning lights over 100 m); a 130 m plateau with a lake (surface 120 m) and a waterfall; hills, ridges, mesas, a canyon and coastal cliffs in the west; the military base (west) reached by a road through a graded valley; a harbour town with a lighthouse (east coast); irregular mountains on three sides; ~6,000 trees.
   - **Exports:** `corneria_map.tres` (a `TerrainMap`: 321 × 321 heights, per-cell paint 0 auto / 1 paved / 2 high water, `high_water_level` 120, per-cell structure heights) and `corneria_props.glb` (no sea: Terrain makes it). Re-export after editing the script; never hand-edit them.
-  - **`Props`** (`MapProps` on the glb instance): toon materials, `water_material` on `Corneria_Water`, trimesh collision (World layer) for `solid_nodes` (all but streets, road, trees).
-  - **Cost:** level loads in ~0.9 s headless; ~650 FPS uncapped at 1280 × 720 with 12 enemies over the city (same as the old 4 km test map).
+  - **`Props`** (`MapProps` on the glb instance): toon materials (`unlined_materials` Corneria_Tree / TreeLight / Trunk without ink outlines, plus a shadow-only child per mesh so they still cast shadows), `water_material` on `Corneria_Water`, trimesh collision (World layer) for `solid_nodes` (all but streets, road, trees).
+  - **Kit:** buildings, bridges, arches, stacks, trees and the falls are pieces from `source/corneria_kit.blend` (spec: `ASSETS.md`), copied in by `load_kit()` / `Batch.kit()`: scaled, turned, merged into the same group objects. Towers stack a base, 20 m shafts (`SHAFT`) and a crown; low blocks stretch a 10 m unit block; streets are 30 m pieces (`STREET_TILE`) between crossing pieces. Materials map by name to `PALETTE`; kit faces keep their facing and smooth shading.
+  - **Cost:** level loads in ~0.9 s headless; ~650 FPS uncapped at 1280 × 720 with 12 enemies over the city (same as the old 4 km test map). With the kit: 1.2–2.3 M triangles a frame, GPU 2.0–2.8 ms at 1280 × 720 (within ~0.2 ms of the old boxes); `corneria_props.glb` 22.6 MB.
 - **`Terrain`** (`world/terrain.gd`): with `map` set (Corneria), its heights and size; otherwise noise: 4 × 4 km, seed 1984. 25 m cells in 8 × 8 chunks (204,800 flat-shaded triangles on Corneria, 51,200 for the noise map).
   - **Noise height:** `base_height` 8 + hills ±70 (900 m wide) + ridged mountains up to 320 (none within 450 m of the centre) + boundary ring up to 520 (from 72% to 90% of the half-width), sinking below sea level at the very edge.
   - **Colour per face:** sand (< 6 m above water), rock (normal.y < 0.78), snow (> 260 m), light/dark grass patches; map cells painted paved get `paved_color`; ±5% brightness jitter. Vertex colours, converted to linear, drawn with `toon_vertex.gdshader`.

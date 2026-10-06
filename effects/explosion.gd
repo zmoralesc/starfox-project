@@ -161,6 +161,65 @@ func _add_light(size: float) -> void:
 	tween.tween_callback(light.queue_free)
 
 
+## A world-space trail of the explosions' puffs (explosion_puff.gdshader), in
+## `style`'s colours, so trails match the explosions: each puff burns for the
+## first `burn` of its life (0.001 = smoke from the start), cooling into toon-lit
+## smoke (no ink outlines) that swells and breaks up from `dissolve_from`.
+## `rate` puffs a second, each lasting `puff_lifetime` and growing from
+## `start_size` to `end_size` metres, born within `emit_radius` of the emitter
+## and drifting off at up to `drift` m/s, within `spread` degrees of the
+## emitter's +Y (180 = every way). Add it to the scene and move it with whatever
+## trails it (Wreck, WreckDebris, HitReaction's damage smoke).
+static func trail(style: ExplosionStyle, rate: float, puff_lifetime: float, start_size: float,
+		end_size: float, burn: float, dissolve_from: float, emit_radius := 0.0,
+		drift := 2.0, spread := 180.0) -> GPUParticles3D:
+	var material := ShaderMaterial.new()
+	material.shader = PUFF_SHADER
+	material.set_shader_parameter("hot_color", style.hot_color)
+	material.set_shader_parameter("fire_color", style.fire_color)
+	material.set_shader_parameter("ember_color", style.ember_color)
+	material.set_shader_parameter("smoke_color", style.smoke_color)
+	material.set_shader_parameter("glow", style.glow)
+	material.set_shader_parameter("cool_at", burn)
+	material.set_shader_parameter("dissolve_from", dissolve_from)
+	material.set_shader_parameter("glint", 0.0)
+	material.set_shader_parameter("shadow_tone", 0.35)
+
+	var quad := QuadMesh.new()
+	quad.material = material
+
+	var process := ParticleProcessMaterial.new()
+	if emit_radius > 0.0:
+		process.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+		process.emission_sphere_radius = emit_radius
+	process.direction = Vector3.UP
+	process.spread = spread
+	process.initial_velocity_min = drift * 0.25
+	process.initial_velocity_max = drift
+	process.gravity = Vector3.ZERO
+	process.scale_min = end_size * 0.8
+	process.scale_max = end_size * 1.2
+	# Swell fast at first, then slowly.
+	process.scale_curve = _curve_texture([Vector2(0.0, start_size / end_size), Vector2(0.3, 0.75), Vector2(1.0, 1.0)])
+
+	# GPU particles, not CPU: they space each puff's start along the emitter's
+	# path between frames, so a fast emitter leaves an even trail instead of
+	# clumps (CPUParticles3D bunched them into pairs ~8 m apart at 80 m/s).
+	var smoke := GPUParticles3D.new()
+	smoke.name = "Smoke"
+	smoke.draw_pass_1 = quad
+	smoke.process_material = process
+	smoke.local_coords = false  # puffs stay where they were left: a trail
+	smoke.amount = maxi(int(rate * puff_lifetime), 1)
+	smoke.lifetime = puff_lifetime
+	# The trail stretches far behind the emitter: don't cull it as off-screen.
+	var reach := 150.0 * puff_lifetime + end_size
+	smoke.visibility_aabb = AABB(Vector3.ONE * -reach, Vector3.ONE * reach * 2.0)
+	smoke.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	smoke.emitting = true
+	return smoke
+
+
 static func _random_direction() -> Vector3:
 	return Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)).normalized()
 
