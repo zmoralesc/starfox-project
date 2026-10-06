@@ -26,6 +26,9 @@ extends Node3D
 	preload("res://effects/explosions/destroyer_chain.tres"),
 	preload("res://effects/explosions/destroyer_final.tres"),
 ]
+## The same for the water splash (WaterSplash), on missions with a `terrain`
+## (there is no water to hit in space). Null = none.
+@export var prewarm_splash: PackedScene = preload("res://effects/water_splash.tscn")
 
 @export_group("Intro line")
 ## What the leader says over the comms as the level starts.
@@ -51,6 +54,8 @@ func _ready() -> void:
 	_build_world()
 	for style in prewarm_explosions:
 		Explosion.prewarm(self, style)
+	if prewarm_splash and get_tree().get_first_node_in_group("terrain"):
+		WaterSplash.prewarm(prewarm_splash, self)
 	Music.play(music)
 	($Ship as Ship).died.connect(_on_player_died)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED

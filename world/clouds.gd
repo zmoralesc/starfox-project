@@ -16,14 +16,29 @@ extends Node3D
 ## No clusters within this horizontal distance of the centre, so the mission's
 ## intro shot stays clear.
 @export var clear_radius := 350.0
-## Altitudes of the cloud layers; each cluster picks one, give or take 30 m.
+## Altitudes of the cloud layers; each cluster picks one, give or take
+## `layer_jitter`.
 @export var layers: PackedFloat32Array = [220.0, 430.0]
+@export var layer_jitter := 30.0
+## Each cluster is scaled as a whole by a random factor in this range, so the
+## sky has big and small clouds (the cloud shader's lumps and flat base scale
+## with it).
+@export var cluster_scale := Vector2(0.5, 1.5)
+## Chance that a cluster is a giant instead, scaled by `big_scale`. Giants go in
+## the highest layer, lifted by `big_lift` so their flat bases sit about there
+## rather than hanging down through the layer below.
+@export_range(0.0, 1.0) var big_chance := 0.06
+@export var big_scale := Vector2(4.0, 6.5)
+@export var big_lift := 100.0
 ## Blobs per cluster (min, max).
 @export var puffs := Vector2i(5, 9)
 ## Blob radius (min, max).
 @export var puff_radius := Vector2(18.0, 40.0)
 ## Blobs are squashed to this fraction of their height.
 @export var flatten := 0.6
+## Each blob's sphere: segments round, rings top to bottom. A lumpy cloud
+## shader (effects/cloud.gdshader) needs enough vertices to push about.
+@export var blob_detail := Vector2i(20, 12)
 @export var material: Material
 
 @export_group("Camera fade")
@@ -44,8 +59,8 @@ func _ready() -> void:
 	var blob := SphereMesh.new()
 	blob.radius = 1.0
 	blob.height = 2.0
-	blob.radial_segments = 10
-	blob.rings = 6
+	blob.radial_segments = blob_detail.x
+	blob.rings = blob_detail.y
 	for k in count:
 		var centre := Vector3.ZERO
 		for attempt in 20:
@@ -54,11 +69,16 @@ func _ready() -> void:
 			centre = Vector3(cos(angle) * distance, 0.0, sin(angle) * distance)
 			if distance > clear_radius:
 				break
-		centre.y = layers[rng.randi() % layers.size()] + rng.randf_range(-30.0, 30.0)
-		_add_cluster(rng, blob, centre)
+		var size := rng.randf_range(cluster_scale.x, cluster_scale.y)
+		var layer := layers[rng.randi() % layers.size()]
+		if rng.randf() < big_chance:
+			size = rng.randf_range(big_scale.x, big_scale.y)
+			layer = layers[layers.size() - 1] + big_lift
+		centre.y = layer + rng.randf_range(-layer_jitter, layer_jitter)
+		_add_cluster(rng, blob, centre, size)
 
 
-func _add_cluster(rng: RandomNumberGenerator, blob: SphereMesh, centre: Vector3) -> void:
+func _add_cluster(rng: RandomNumberGenerator, blob: SphereMesh, centre: Vector3, size: float) -> void:
 	var st := SurfaceTool.new()
 	var radius := 0.0
 	var n := rng.randi_range(puffs.x, puffs.y)
@@ -77,10 +97,11 @@ func _add_cluster(rng: RandomNumberGenerator, blob: SphereMesh, centre: Vector3)
 	cluster.material_override = material
 	cluster.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	cluster.position = centre
+	cluster.scale = Vector3.ONE * size
 	add_child(cluster)
 	_clusters.append(cluster)
 	_centres.append(centre)
-	_radii.append(radius)
+	_radii.append(radius * size)
 
 
 func _process(_delta: float) -> void:

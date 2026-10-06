@@ -1,30 +1,51 @@
 [gd_scene format=3 uid="uid://d0m0kf7ia42pk"]
 
 [ext_resource type="Script" uid="uid://dxu6n40qxcnw5" path="res://weapons/laser.gd" id="1_laser"]
+[ext_resource type="Shader" path="res://weapons/laser_bolt.gdshader" id="2_bolt"]
+[ext_resource type="Shader" path="res://weapons/laser_glow.gdshader" id="3_glow"]
 
-[sub_resource type="StandardMaterial3D" id="Mat_bolt"]
-albedo_color = Color(0.25, 1, 0.3, 1)
-emission_enabled = true
-emission = Color(0.2, 1, 0.25, 1)
-emission_energy_multiplier = 8.0
+[sub_resource type="ShaderMaterial" id="Mat_bolt"]
+render_priority = 0
+shader = ExtResource("2_bolt")
+shader_parameter/bolt_length = 8.034782
+shader_parameter/color = Color(0.2, 1, 0.25, 1)
+shader_parameter/energy = 16.0
+shader_parameter/radius = 0.2
 
-[sub_resource type="CapsuleMesh" id="Mesh_bolt"]
+[sub_resource type="CylinderMesh" id="Mesh_bolt"]
 material = SubResource("Mat_bolt")
-radius = 0.1
+top_radius = 0.03
+bottom_radius = 0.2
 height = 8.034782
 radial_segments = 8
-rings = 2
+rings = 12
+cap_top = false
+cap_bottom = false
+
+[sub_resource type="ShaderMaterial" id="Mat_glow"]
+render_priority = 0
+shader = ExtResource("3_glow")
+shader_parameter/color = Color(0.2, 1, 0.25, 1)
+shader_parameter/size = 0.8
+shader_parameter/bolt_length = 8.034782
+
+[sub_resource type="QuadMesh" id="Mesh_glow"]
+material = SubResource("Mat_glow")
 
 [node name="Laser" type="Node3D" unique_id=1934295221]
 script = ExtResource("1_laser")
 impact_color = Color(0.4, 1, 0.35, 1)
 collision_mask = 13
-trail_length = 8.0
+trail_length = 16.0
 
 [node name="Bolt" type="MeshInstance3D" parent="." unique_id=645769344]
 transform = Transform3D(1, 0, 0, 0, -3.6199901e-06, -1, 0, 1, -3.6199901e-06, 0, 3.351488e-08, -0.00925827)
 cast_shadow = 0
 mesh = SubResource("Mesh_bolt")
+
+[node name="Glow" type="MeshInstance3D" parent="Bolt"]
+cast_shadow = 0
+mesh = SubResource("Mesh_glow")
 
 [node name="Light" type="OmniLight3D" parent="." unique_id=1649660151]
 light_color = Color(0.3, 1, 0.3, 1)

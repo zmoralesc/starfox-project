@@ -12,6 +12,7 @@
 [ext_resource type="Resource" path="res://models/corneria/corneria_map.tres" id="10_map"]
 [ext_resource type="PackedScene" path="res://models/corneria/corneria_props.glb" id="11_props"]
 [ext_resource type="Script" path="res://world/map_props.gd" id="12_map_props"]
+[ext_resource type="Shader" path="res://effects/cloud.gdshader" id="13_cloud"]
 
 [sub_resource type="ShaderMaterial" id="Mat_ground"]
 shader = ExtResource("5_toon_vertex")
@@ -21,12 +22,7 @@ shader_parameter/glint = 0.0
 shader = ExtResource("6_water")
 
 [sub_resource type="ShaderMaterial" id="Mat_cloud"]
-shader = ExtResource("7_toon")
-shader_parameter/albedo = Color(0.97, 0.98, 1, 1)
-shader_parameter/shadow_tone = 0.72
-shader_parameter/mid_tone = 0.88
-shader_parameter/glint = 0.0
-shader_parameter/rim = 0.3
+shader = ExtResource("13_cloud")
 
 [node name="Corneria" instance=ExtResource("1_base")]
 intro_line = "Corneria below. Let's take a look around."
@@ -73,7 +69,7 @@ script = ExtResource("4_clouds")
 count = 170
 spread = 3600.0
 clear_radius = 0.0
-layers = PackedFloat32Array(330, 560)
+layers = PackedFloat32Array(650, 950)
 material = SubResource("Mat_cloud")
 
 [node name="EnemySpawner" parent="."]

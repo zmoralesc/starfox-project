@@ -1,19 +1,36 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://weapons/laser.gd" id="1_laser"]
+[ext_resource type="Shader" path="res://weapons/laser_bolt.gdshader" id="2_bolt"]
+[ext_resource type="Shader" path="res://weapons/laser_glow.gdshader" id="3_glow"]
 
-[sub_resource type="StandardMaterial3D" id="Mat_bolt"]
-albedo_color = Color(1, 0.22, 0.15, 1)
-emission_enabled = true
-emission = Color(1, 0.18, 0.1, 1)
-emission_energy_multiplier = 10.0
+[sub_resource type="ShaderMaterial" id="Mat_bolt"]
+render_priority = 0
+shader = ExtResource("2_bolt")
+shader_parameter/bolt_length = 6.0
+shader_parameter/color = Color(1, 0.18, 0.1, 1)
+shader_parameter/energy = 20.0
+shader_parameter/radius = 0.7
 
-[sub_resource type="CapsuleMesh" id="Mesh_bolt"]
+[sub_resource type="CylinderMesh" id="Mesh_bolt"]
 material = SubResource("Mat_bolt")
-radius = 0.35
+top_radius = 0.105
+bottom_radius = 0.7
 height = 6.0
 radial_segments = 8
-rings = 2
+rings = 12
+cap_top = false
+cap_bottom = false
+
+[sub_resource type="ShaderMaterial" id="Mat_glow"]
+render_priority = 0
+shader = ExtResource("3_glow")
+shader_parameter/color = Color(1, 0.18, 0.1, 1)
+shader_parameter/size = 2.5
+shader_parameter/bolt_length = 6.0
+
+[sub_resource type="QuadMesh" id="Mesh_glow"]
+material = SubResource("Mat_glow")
 
 [node name="TurretLaser" type="Node3D"]
 script = ExtResource("1_laser")
@@ -26,6 +43,10 @@ collision_mask = 3
 rotation = Vector3(1.5708, 0, 0)
 cast_shadow = 0
 mesh = SubResource("Mesh_bolt")
+
+[node name="Glow" type="MeshInstance3D" parent="Bolt"]
+cast_shadow = 0
+mesh = SubResource("Mesh_glow")
 
 [node name="Light" type="OmniLight3D" parent="."]
 light_color = Color(1, 0.3, 0.2, 1)

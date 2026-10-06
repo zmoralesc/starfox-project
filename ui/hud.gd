@@ -130,7 +130,7 @@ var _wing: WingCommand
 var _destroyer: Destroyer
 var _boundary: PlayBoundary
 var _font: Font
-## Bold version of _font, for the wingman initials.
+## Bold version of _font, for the wingman initials and the wing panel.
 var _bold_font: FontVariation
 ## One-shot SubViewports holding the wingman markers (see _wingman_marker()), keyed by
 ## initial and colour, and the gauge icons (_gauge_icon_texture()). Cleared when the window is resized.
@@ -591,6 +591,10 @@ func _draw_gauges() -> void:
 	else:
 		_draw_bar(origin, _ship.shields / _ship.max_shields, COLOR_SHIELD)
 		_draw_gauge_icon("shield", [SHIELD_ICON], [SHIELD_ICON], origin, COLOR_SHIELD)
+	if not _ship.thrusters_overheat:
+		if _wing:
+			_draw_wing_panel()
+		return
 	# Thrusters underneath: a blue bar that throttling empties (it shows how
 	# much throttle is left before they overheat). Overheated, it refills over
 	# the lockout, red and slowly blinking; the throttle works again once full.
@@ -643,19 +647,19 @@ func _draw_wing_panel() -> void:
 	var everyone := _wing.wingmen()
 	var all_selected := not everyone.is_empty() and _wing.selected.size() == everyone.size()
 	_draw_card_frame(all_rect, COLOR_IDLE, all_selected)
-	draw_string(_font, all_rect.position + Vector2(0.0, 15.0 * k), "ALL", HORIZONTAL_ALIGNMENT_CENTER, W, roundi(13 * k),
+	draw_string(_bold_font, all_rect.position + Vector2(0.0, 15.0 * k), "ALL", HORIZONTAL_ALIGNMENT_CENTER, W, roundi(13 * k),
 		Color(1, 1, 1, 0.95) if all_selected else Color(COLOR_IDLE, 0.8))
 	if not pad:
-		draw_string(_font, all_rect.position + Vector2(5.0, 14.0) * k, _short_key(&"select_all"),
+		draw_string(_bold_font, all_rect.position + Vector2(5.0, 14.0) * k, _short_key(&"select_all"),
 			HORIZONTAL_ALIGNMENT_LEFT, -1, roundi(10 * k), Color(1, 1, 1, 0.4))
 
 	# Middle: who gets the next order.
 	var middle := Rect2(left + W + GAP, top + H + GAP, W, H)
 	var to := _wing.recipients()
 	var to_text := " ".join(PackedStringArray(to.map(func(w: Wingman) -> String: return w.call_sign.left(1))))
-	draw_string(_font, middle.position + Vector2(0.0, 15.0 * k + stack_offset), "ORDERS TO", HORIZONTAL_ALIGNMENT_CENTER, W, roundi(10 * k),
+	draw_string(_bold_font, middle.position + Vector2(0.0, 15.0 * k + stack_offset), "ORDERS TO", HORIZONTAL_ALIGNMENT_CENTER, W, roundi(10 * k),
 		Color(1, 1, 1, 0.45))
-	draw_string(_font, middle.position + Vector2(0.0, 32.0 * k + stack_offset), to_text if to_text != "" else "NOBODY",
+	draw_string(_bold_font, middle.position + Vector2(0.0, 32.0 * k + stack_offset), to_text if to_text != "" else "NOBODY",
 		HORIZONTAL_ALIGNMENT_CENTER, W, roundi(14 * k), COLOR_IDLE if to_text != "" else COLOR_TARGET)
 
 
@@ -680,10 +684,10 @@ func _draw_wing_card(rect: Rect2, wingman: Wingman, selected: bool, key: String,
 	var icon_size := ORDER_ICON_SIZE * k
 	var icon_center := Vector2(rect.get_center().x, rect.position.y + stack_offset + 4.0 * k + icon_size)
 	_draw_order_icon(wingman.order, icon_center, icon_size, order_color)
-	draw_string(_font, rect.position + Vector2(0.0, stack_offset + 38.0 * k), wingman.call_sign.to_upper(),
+	draw_string(_bold_font, rect.position + Vector2(0.0, stack_offset + 38.0 * k), wingman.call_sign.to_upper(),
 		HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, roundi(13 * k), Color(wingman.accent_color, 1.0))
 	if key != "":
-		draw_string(_font, rect.position + Vector2(5.0, 13.0) * k, key, HORIZONTAL_ALIGNMENT_LEFT, -1, roundi(10 * k),
+		draw_string(_bold_font, rect.position + Vector2(5.0, 13.0) * k, key, HORIZONTAL_ALIGNMENT_LEFT, -1, roundi(10 * k),
 			Color(1, 1, 1, 0.4))
 
 

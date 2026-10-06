@@ -15,6 +15,10 @@ extends Node3D
 ## never pokes back through the ship that fired it. Close to one frame's travel
 ## makes a fast bolt read as a continuous streak instead of hopping dashes.
 @export var trail_length := 0.0
+## Hitting water throws up this splash (instead of the impact flash), at
+## `splash_size` times its own size. Null = the impact flash on water too.
+@export var water_splash: PackedScene = preload("res://effects/water_splash.tscn")
+@export var splash_size := 1.0
 
 var _velocity := Vector3.ZERO
 var _origin := Vector3.ZERO
@@ -80,9 +84,21 @@ func _cast(from: Vector3, to: Vector3) -> bool:
 		if is_instance_valid(_shooter_node) and _shooter_node.has_method("notify_kill"):
 			if target.is_queued_for_deletion() or target.get("is_destroyed") == true:
 				_shooter_node.notify_kill(target)
-	Impact.spawn(get_parent(), hit.position, impact_color, 0.8)
+	if _hit_water(hit.position):
+		WaterSplash.spawn(water_splash, get_parent(), hit.position, splash_size)
+	else:
+		Impact.spawn(get_parent(), hit.position, impact_color, 0.8)
 	queue_free()
 	return true
+
+
+## The water is part of Terrain's World-layer body, like the ground, so tell
+## them apart by height: on the water's surface means water.
+func _hit_water(at: Vector3) -> bool:
+	if water_splash == null:
+		return false
+	var terrain := get_tree().get_first_node_in_group("terrain") as Terrain
+	return terrain != null and terrain.is_water_surface(at)
 
 
 ## Stretches the Bolt mesh behind the head: as long as trail_length, or as far

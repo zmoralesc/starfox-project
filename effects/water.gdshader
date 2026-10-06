@@ -1,4 +1,5 @@
 shader_type spatial;
+render_mode depth_draw_always;
 
 // Stylised cel-shaded water for the sea, lakes and rivers.
 //
@@ -14,9 +15,14 @@ shader_type spatial;
 //   one sun path on the water far away.
 // - Sky tint at grazing angles.
 //
-// Opaque on purpose, so shorelines get ink outlines like everything else. The
-// ripples only reach the sparkles (through v_ripple), never NORMAL: a bumpy
-// normal would make the screen-space outlines scribble over the water.
+// No ink outlines (no line along every shore and at the horizon): it uses
+// ALPHA (always 1, as `ALPHA *= 1.0` keeps it), which puts it in the
+// transparent pass, after the outline quad and out of the depth texture the
+// outlines read; depth_draw_always still writes depth there. Its materials
+// get a render_priority between the outline quad (-100) and the other
+// see-through things (0), so a huge plane whose centre is nearer than a laser
+// bolt can't be drawn over it. The ripples only reach the sparkles (through
+// v_ripple), never NORMAL, so the cel-shaded light on it stays flat.
 
 group_uniforms colour;
 uniform vec4 shallow_color : source_color = vec4(0.26, 0.72, 0.76, 1.0);
@@ -68,6 +74,41 @@ group_uniforms light;
 // As in the toon shader: brightness in shadow, and where shadow starts.
 uniform float shadow_tone : hint_range(0.0, 1.0) = 0.45;
 uniform float lit_threshold : hint_range(0.0, 1.0) = 0.45;
+
+group_uniforms marks;
+// Foam drawn by things happening on the water, fed by WaterMarks
+// (world/water_marks.gd) every frame: rings where bolts splashed, and the
+// wakes of ships skimming the surface. Times are WaterMarks' clock.
+uniform float marks_time = 0.0;
+// Splash rings: (x, z, start time, size), the first ring_count used.
+uniform vec4 rings[32];
+uniform int ring_count = 0;
+// Box round all live rings (min x, min z, max x, max z), so the rest of the
+// water skips the loop.
+uniform vec4 ring_bounds = vec4(0.0);
+// Seconds a ring lasts; its radius (metres, times its size) at the start and
+// end; line thickness (metres, times size) as it starts, thinning as it goes.
+uniform float ring_life = 1.2;
+uniform vec2 ring_radius = vec2(0.6, 6.0);
+uniform float ring_width = 0.45;
+// Wake trails: points (x, z, time passed, strength 0..1) from oldest to
+// newest; a negative strength starts a new trail (no segment from the point
+// before), its size is the strength. The first wake_count used.
+uniform vec4 wake[192];
+uniform int wake_count = 0;
+uniform vec4 wake_bounds = vec4(0.0);
+// Seconds a wake lasts.
+uniform float wake_life = 3.5;
+// The V: two foam lines starting `wake_start` metres either side of the
+// track and spreading `wake_spread` metres a second, `wake_line` metres thick
+// (growing with age), breaking up as they fade.
+uniform float wake_start = 1.5;
+uniform float wake_spread = 12.0;
+uniform float wake_line = 0.7;
+// Churned foam straight behind the ship: this wide at first (metres), gone
+// after `churn_life` seconds.
+uniform float churn_width = 1.3;
+uniform float churn_life = 1.6;
 
 group_uniforms ground;
 // Set by Terrain: ground heights on its grid (R channel, metres), and the grid
@@ -126,6 +167,12 @@ float aa_step(float edge, float x) {
 	return smoothstep(edge - w, edge + w, x);
 }
 
+// The same with the blur width given (`w`, e.g. metres per pixel): inside the
+// marks' loops, which pixels skip differently, fwidth() is undefined.
+float px_step(float edge, float x, float w) {
+	return smoothstep(edge - w, edge + w, x);
+}
+
 float water_depth(vec3 world) {
 	if (!has_ground) {
 		return open_depth;
@@ -151,6 +198,90 @@ vec3 ripple_normal(vec2 xz, float strength) {
 	float hx = noise(a + vec2(e, 0.0)) + noise(b + vec2(e * 0.6, e * 0.8));
 	float hz = noise(a + vec2(0.0, e)) + noise(b + vec2(-e * 0.8, e * 0.6));
 	return normalize(vec3(-(hx - h) / e * strength, 1.0, -(hz - h) / e * strength));
+}
+
+bool in_box(vec2 p, vec4 box, float margin) {
+	return p.x > box.x - margin && p.y > box.y - margin && p.x < box.z + margin && p.y < box.w + margin;
+}
+
+// Foam (0..1) from splash rings at `xz`.
+float ring_foam(vec2 xz, float px) {
+	if (ring_count == 0 || !in_box(xz, ring_bounds, ring_radius.y * 3.0)) {
+		return 0.0;
+	}
+	float foam = 0.0;
+	for (int i = 0; i < ring_count; i++) {
+		vec4 r = rings[i];
+		float t = (marks_time - r.z) / ring_life;
+		if (t < 0.0 || t > 1.0) {
+			continue;
+		}
+		float eased = 1.0 - (1.0 - t) * (1.0 - t);
+		float radius = mix(ring_radius.x, ring_radius.y, eased) * r.w;
+		float d = length(xz - r.xy);
+		// Ragged: the line thins away in places as it fades.
+		float rag = noise((xz - r.xy) / 1.5 + r.z * 13.0);
+		float width = ring_width * r.w * (1.0 - t) * (0.4 + rag);
+		foam = max(foam, 1.0 - px_step(width, abs(d - radius), px));
+		// A churned centre for the first moments.
+		foam = max(foam, 1.0 - px_step(radius * 0.5 * (1.0 - t * 2.0) * rag, d, px));
+	}
+	return foam;
+}
+
+// Foam (0..1) from ships' wakes at `xz`: per segment of each trail, the
+// distance from the track and how long ago the ship passed there.
+float wake_foam(vec2 xz, float px) {
+	float reach = wake_start + wake_spread * wake_life + wake_line * 3.0;
+	if (wake_count < 2 || !in_box(xz, wake_bounds, reach)) {
+		return 0.0;
+	}
+	float foam = 0.0;
+	// Noise at this spot (outside the loop: it doesn't depend on the trail),
+	// so the bands come out uneven: clean, even-width lines looked drawn on.
+	float breakup = noise(xz / 2.5);
+	// Large: the arm wanders in and out and swells and thins along its length.
+	float wander = noise2(xz / 9.0) - 0.5;
+	float swell = noise(xz / 5.0 + 31.0);
+	// Small: ragged edges, and foam flecks just outside the band.
+	float fleck = noise2(xz / 1.1 + 7.0);
+	for (int i = 1; i < wake_count; i++) {
+		vec4 b = wake[i];
+		if (b.w < 0.0) {
+			continue;  // starts a new trail: no segment from the point before
+		}
+		vec4 a = wake[i - 1];
+		vec2 ab = b.xy - a.xy;
+		float along = dot(xz - a.xy, ab) / max(dot(ab, ab), 1e-4);
+		float s = clamp(along, 0.0, 1.0);
+		float d = length(xz - (a.xy + ab * s));
+		if (d > reach) {
+			continue;
+		}
+		float age = marks_time - mix(a.z, b.z, s);
+		if (age < 0.0 || age > wake_life) {
+			continue;
+		}
+		float strength = mix(abs(a.w), b.w, s);
+		float t = age / wake_life;
+		// The V's arms: spreading, wandering more as they age, swelling and
+		// thinning, with ragged edges, breaking into patches as they fade.
+		float arm = abs(d - (wake_start + wake_spread * age) - wander * (1.0 + age * 2.5));
+		float width = wake_line * (1.0 + age * 0.6) * strength * (0.25 + 1.5 * swell);
+		width += (fleck - 0.5) * wake_line * 1.2;
+		// Only beside the segment, not round its ends: there the distance is to
+		// a point, and the arm would draw a circle round every trail point.
+		float line = (along >= 0.0 && along <= 1.0) ? 1.0 - px_step(width, arm, px) : 0.0;
+		// Patchy from the start, and more so in the first moments, so the arms
+		// fray in behind the ship rather than starting on a straight edge.
+		line *= px_step(max(0.15 + t * 0.75, 1.0 - age / 0.3), breakup, 0.02);
+		// Churn down the middle.
+		float churn_edge = churn_width * strength * (1.0 - age / churn_life) * (0.3 + breakup + (fleck - 0.5) * 0.8);
+		// Breaking into patches as it narrows, not tapering to a thin straight line.
+		float churn = (1.0 - px_step(churn_edge, d, px)) * px_step(0.1 + age / churn_life * 0.6, breakup, 0.02);
+		foam = max(foam, max(line, churn));
+	}
+	return foam;
 }
 
 void fragment() {
@@ -188,6 +319,9 @@ void fragment() {
 	float phase = depth / foam_reach + TIME * foam_speed;
 	float rolling = 1.0 - aa_step(foam_line_width, fract(phase));
 	rolling *= 1.0 - aa_step(0.75 + 0.25 * edge_noise, depth / foam_reach);
+	// Splash rings and wakes (WaterMarks): foam like the shore's.
+	float marks = max(ring_foam(world.xz, metres_per_px), wake_foam(world.xz, metres_per_px));
+	foam = max(foam, marks);
 	col = mix(col, foam_color.rgb, max(foam, rolling));
 
 	// Sky at grazing angles (on the flat surface, so it's a smooth gradient).
@@ -203,6 +337,7 @@ void fragment() {
 	v_ripple = normalize((VIEW_MATRIX * vec4(ripple_normal(world.xz, strength), 0.0)).xyz);
 
 	ALBEDO = col;
+	ALPHA *= 1.0;  // transparent pass: no ink outlines (see the top)
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 }

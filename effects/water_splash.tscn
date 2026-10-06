@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://effects/water_splash.gd" id="1_splash"]
+
+[node name="WaterSplash" type="Node3D"]
+script = ExtResource("1_splash")

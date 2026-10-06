@@ -8,6 +8,12 @@
 - The player's attention is limited, and so we should reduce the amount of text they have to read. Favor visual indicators over plain text. Favor simplicity over complexity.
 - Whenever possible, static visual elements (elements that are not updated) should be rendered once and reused each frame.
 
+## Visual style
+
+- Cel-shaded, animated look.
+- Favor effects that look like 2D animation.
+- Favor the use of shaders.
+
 ## Character dialogue and personalities
 
 The Star Fox team's relationship with one another has evolved into family territory over the years. They're not above conflict or disagreement, but at the end of the day they respect each other deeply and would (and do) trust each other with their lives.

@@ -42,6 +42,8 @@ const TURN_BACK_GOAL_DISTANCE := 150.0
 ## throttle is pushed. At full heat they overheat: the throttle stops working
 ## (the ship eases back to cruise speed) until they've cooled right down.
 ##
+## Off: the throttle never heats up, and the HUD hides the thruster bar.
+@export var thrusters_overheat := true
 ## Seconds of full throttle (up or down) from cold to overheated.
 @export var heat_time := 5.2
 ## Seconds to cool from full heat to cold while the throttle is released.
@@ -317,7 +319,7 @@ func _update_thrusters(delta: float) -> void:
 			thrusters_cooled.emit()
 		return
 	_throttle = Input.get_axis("throttle_down", "throttle_up") if controls_enabled else 0.0
-	if _throttle == 0.0:
+	if _throttle == 0.0 or not thrusters_overheat:
 		thruster_heat = move_toward(thruster_heat, 0.0, delta / maxf(cool_time, 0.01))
 		return
 	thruster_heat = minf(thruster_heat + absf(_throttle) * delta / maxf(heat_time, 0.01), 1.0)

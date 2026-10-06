@@ -63,10 +63,12 @@ enemies/
   destroyer_hangar.gd      DestroyerHangar: hangar door that launches squadrons (extends DestroyerPart)
   obstacle_proxy.gd        ObstacleProxy: invisible sphere the AI steers around (covers the destroyer hull)
 weapons/
-  laser.gd                 Laser: bolt movement + hit detection (shared by both sides)
-  laser.tscn               Player-side bolt (green, 500 m/s on ship.tscn, 8 m streak)
+  laser.gd                 Laser: bolt movement + hit detection (shared by both sides); splash on water (water_splash)
+  laser.tscn               Player-side bolt (green, 1500 m/s on ship.tscn, 16 m streak; Bolt + Glow, see laser_bolt/laser_glow)
   enemy_laser.tscn         Enemy fighter bolt (red)
   turret_laser.tscn        Destroyer turret bolt (bigger, slower, 8 damage)
+  laser_bolt.gdshader      Bolt look: additive (no ink outline), white core, tail fade, 1 px minimum width; on a tapered open cylinder (0.2 m radius player bolt, 12 rings) bent to a pointed head
+  laser_glow.gdshader      Soft halo along a bolt, even along it and fading towards the tail, laid out on screen; shrinks with distance (no minimum size)
 world/
   asteroid.gd              Asteroid: procedural, destructible rocks
   intro_cutscene.gd        IntroCutscene: level intro fly-by
@@ -74,21 +76,28 @@ world/
   space_sky.gdshader       Procedural starfield sky; optional distant planet (Corneria on the Space Station mission: `planet_*` uniforms)
   space_environment.tres   Shared Environment (sky, glow, tonemap) used by the title and the base level
   asteroid_field_environment.tres  Its copy for the Space Station mission, with the planet on (keep the two in step)
-  terrain.gd               Terrain: low-poly ground (noise, or a TerrainMap), lakes, far ground, collision; height_at() / surface_height() / clearance_height()
+  terrain.gd               Terrain: low-poly ground (noise, or a TerrainMap), lakes, far ground, collision; height_at() / surface_height() / clearance_height() / water_level_at() / is_water_surface()
+  water_marks.gd           WaterMarks (added by Terrain): splash rings + wake trails fed to water.gdshader each frame (rings[32], wake[192])
   terrain_map.gd           TerrainMap: a hand-made landscape exported from Blender (heights, paint, structure heights)
   map_props.gd             MapProps: on an imported map props model; toon materials, water material, trimesh collision
-  clouds.gd                Clouds: flyable cartoon cloud clusters that fade near the camera
+  clouds.gd                Clouds: flyable cartoon cloud clusters that fade near the camera (Corneria draws them with effects/cloud.gdshader)
   planet_environment.tres  Day sky + horizon fog for planet missions
   play_boundary.gd         PlayBoundary: edge of a mission area; HUD warning, then the ship turns itself back
   great_fox.gd / .tscn     GreatFox: the team mothership as scenery outside a mission area (no collision; slow bob)
   space_station.gd / .tscn SpaceStation: solid friendly scenery (Space Station mission centre): toon materials, trimesh collision, AI avoidance spheres; keeps asteroids, waves and destroyers out
 effects/
-  impact.gd                Impact.spawn(...): small flash for laser hits
+  impact.gd                Impact.spawn(...): small flash for laser hits (not on water: see water_splash.gd)
   explosion.gd             Explosion.spawn(parent, at, style, size, velocity): flash, fireball, smoke, sparks, debris, shockwave, light; Explosion.prewarm()
   explosion_style.gd       ExplosionStyle resource: every look value, in units of size (fireball radius, m)
   explosion_puff.gdshader  Puff: banded fire cooling into toon-lit smoke, breaking up; opaque, so ink-outlined
+  cloud.gdshader           Cartoon clouds (Clouds on Corneria): drifting noise lumps, squashed, shaded bottoms with soft crevices, own three-band light + silver lining; no ink outlines (transparent pass)
   explosions/*.tres        Presets: fighter, asteroid, destroyer_part, destroyer_chain, destroyer_final
-  wreck.gd / .tscn         Wreck: a destroyed enemy fighter's model flying on, smoking, until it crashes, is shot (friendly bolts, via the fighter's hurtbox) or 3 s pass, then a second explosion (no damage, no score)
+  wreck.gd / .tscn         Wreck: a destroyed enemy fighter's model flying on, smoking, until it crashes, is shot (friendly bolts, via the fighter's hurtbox) or 3 s pass, then a second explosion (no damage, no score) that throws 3–5 smoking debris pieces
+  wreck_debris.gd          WreckDebris: a smoking piece from a wreck's second explosion (tumbles, trails smoke, burns out after 1–2 s; visual only)
+  water_splash.gd/.tscn    WaterSplash: a bolt hitting water (shader jet ~11 m + crown, foam ring on the water); settings on the .tscn
+  water_splash.gdshader    The splash shapes: a unit cylinder bent into a spiky jet or crown that rises, falls and breaks up (instance uniforms age/seed/size)
+  water_spray.gdshader     The wake's spray: a unit plane bent into a ragged curtain beside the ship
+  water_wake.gd            WaterWake (on ship.tscn): spray sheets + foam V on the water when skimming (below 12 m, full at 3 m)
   muzzle_flash.gd          MuzzleFlash.spawn(...): brief flash on a gun muzzle when a fighter fires
   shield_effect.gd         ShieldEffect: the blue shield bubble on the player ship (+ shield.gdshader)
   toon.gdshader            Cel shading used by every lit surface (surface in toon_surface.gdshaderinc, light model in toon_light.gdshaderinc); optional colour texture + glow map
@@ -271,7 +280,7 @@ Gameplay numbers are `@export`s grouped in the Inspector (`Speed`, `Handling`, `
 ### Player (`Ship`)
 - **Mouse steering:** the mouse moves a virtual stick, shown as the cursor ring on the HUD. It stays where you leave it; `mouse_recenter` makes it drift back to centre.
 - **Shields:** 100. Enemy bolts do 4. The shields stop every shot while they have at least 1 point; once they are knocked out (`shields_down`), the next hit destroys the ship and `died` fires. Damaged shields recharge at 10/s after 3 s without a hit. Knocked-out shields stay offline for 12 s (`shield_reboot_time`) before recharging from zero. `shields_depleted` / `shields_online` signal the transitions. The bubble effect is `effects/shield_effect.gd` + `effects/shield.gdshader` on the `Model/Shield` node.
-- **Thruster heat** (*Thrusters* exports on `Ship`): throttling up or down heats them in proportion to the throttle; `heat_time` 5.2 s at full throttle overheats them (half throttle 10.4 s). Released, they cool in `cool_time` 3 s. Overheated, the throttle is ignored (back to cruise) for `overheat_time` 3 s while the heat drains. Signals `thrusters_overheated` / `thrusters_cooled`. Player only.
+- **Thruster heat** (*Thrusters* exports on `Ship`): throttling up or down heats them in proportion to the throttle; `heat_time` 5.2 s at full throttle overheats them (half throttle 10.4 s). Released, they cool in `cool_time` 3 s. Overheated, the throttle is ignored (back to cruise) for `overheat_time` 3 s while the heat drains. Signals `thrusters_overheated` / `thrusters_cooled`. Player only. **`thrusters_overheat`** off (as on `ship.tscn` now) turns it all off and hides the bar: the throttle is unlimited, and destroyer turret lock-on is what stops you hanging back to spray the destroyer.
 - **What wingmen engage:** `aim_target` is whatever is under the crosshair right now. `fire_target` is what you've been shooting in the last 1.5 s; wingmen in formation engage it.
 - **Cutscenes:** setting `controls_enabled = false` puts the ship on autopilot, flying straight at `autopilot_speed`.
 
@@ -365,6 +374,7 @@ Any hit triggers `EVADE` (outside the cooldown), through `notify_shot`. **Astero
 - **Turrets (`DestroyerTurret`):** a destroyed turret is disabled, charred and stays on the hull.
   - **Targeting:** the player if within `aggro_range` (450 m); otherwise the nearest wingman in range.
   - **Firing limits:** pitch is limited to −5°…80°, so there are blind spots. Each turret needs a clear line of fire past the hull and asteroids.
+  - **Lock-on** (*Lock-on* exports): below `lock_speed` 50 m/s a turret locks on to its target, fully in `lock_time` 3 s at or below `crawl_speed` 25 m/s (slower in between); above 50 m/s the lock breaks in `unlock_time` 1 s. Locked, it fires every `locked_fire_interval` 0.15 s (from 1.4), with `locked_spread_deg` 0.2° (from 1.5°), turns at `locked_turn_rate` 3 rad/s (from 1.2) and leads along the target's curving path (`accel_tracking` 4). Circling behind the engines (4 runs each): about 2.2 hits/s at 20 m/s (1.6–2.7; full shields gone in about 6 s once locked), 0.75 at 35 m/s, none at 50 m/s or above (before lock-on: under 0.1 at any speed).
 - **Hangars (`DestroyerHangar`):** every `launch_interval` (40 s, first launch 15 s after going active), the next intact hangar opens its door and launches 3 fighters, within the fighter cap.
   - **Launched fighters:** they fly straight out for 2 s via `EnemyFighter.begin_launch()`, with collisions off so they can leave through the hull, then patrol in front of the bay.
   - **Destroying a door** blows it off and stops launches from that side.
@@ -441,9 +451,9 @@ The dialogue box, bottom left: a portrait square (faint static until portraits e
   - **Colour per face:** sand (< 6 m above water), rock (normal.y < 0.78), snow (> 260 m), light/dark grass patches; map cells painted paved get `paved_color`; ±5% brightness jitter. Vertex colours, converted to linear, drawn with `toon_vertex.gdshader`.
   - **Collision:** a `ConcavePolygonShape3D` per chunk from the same triangles (World layer); water and the 30 km far-ground plane have thin solid slabs. Crashes are the normal 30 damage + bounce.
   - **API:** `height_at(x, z)` (exact, `-INF` off the map), `surface_height(x, z)` (ground or water, incl. a map's high water), `clearance_height(x, z)` (also the map's structure height on that cell). AI, spawner and turn-back use `clearance_height`; the camera uses `surface_height`; wingman slots use `surface_height`, plus a gradual lift over `clearance_height` (see below).
-- **Water:** one opaque plane at `sea_level` 0 (`water.gdshader`); `water_to_horizon` (Corneria) extends it to the horizon. The plateau lake is part of the props. Shader: depth (from a heights texture Terrain sets, `_feed_water()`; the floor fades to `open_sea_depth` 100 m between 150 and 600 m from land, `water_depth_fade`, so no straight bands along the map edge) picks shallow / mid (3 m) / deep (12 m) bands; shore foam to 0.6 m plus lines rolling in from 4 m; wave crests (fade out by 1.8 km); sun sparkles on 7 m ripples; sky tint at grazing angles. Ripples never touch `NORMAL` (the ink outlines would draw them).
-- **`Clouds`** (`world/clouds.gd`): defaults 60 clusters of 5–9 blobs at 220 / 430 m (±30) within 1700 m, none within 350 m of the centre; Corneria: 170 at 330 / 560 m within 3600 m. Fade up to 85% when the camera is inside or within 40 m.
-- **Environment:** `planet_environment.tres` (procedural day sky, sky ground colour = horizon, fog density 0.00035 in the horizon colour, `fog_sky_affect` 0). Sun pitched higher, shadows to 600 m.
+- **Water:** one opaque plane at `sea_level` 0 (`water.gdshader`); `water_to_horizon` (Corneria) extends it to the horizon. The plateau lake is part of the props. Shader: depth (from a heights texture Terrain sets, `_feed_water()`; the floor fades to `open_sea_depth` 100 m between 150 and 600 m from land, `water_depth_fade`, so no straight bands along the map edge) picks shallow / mid (3 m) / deep (12 m) bands; shore foam to 0.6 m plus lines rolling in from 4 m; wave crests (fade out by 1.8 km); sun sparkles on 7 m ripples; sky tint at grazing angles. No ink outlines: drawn in the transparent pass (`ALPHA *= 1.0`, `depth_draw_always`), material `render_priority` -50 (`Terrain.water_render_priority`) so it draws before bolts and other see-through things. Ripples never touch `NORMAL` (flat cel light). **Splashes and wake:** bolts hitting water (`Terrain.is_water_surface()`, within 0.5 m of `water_level_at()`) spawn `WaterSplash` (`Laser.water_splash`, `splash_size` 1) instead of `Impact`: `water_splash.gdshader` bends a cylinder into a jet (11 m, 6 spikes) and a crown (4.5 m, 11 spikes) over 1.1 s; a foam ring on the water (`WaterMarks.add_ring()`, 0.6→6 m over 1.2 s); prewarmed by `Level.prewarm_splash`. `WaterWake` on `ship.tscn` (wingmen too): strength = (1 − smoothstep(3, 12 m over water)) × speed / 90 m/s (0.67 at cruise); reports its trail to `WaterMarks` (point every 10 m, ≤24 per trail, ≤8 trails), which the water shader draws as a V of ragged, wandering, patchy foam bands (start 1.5 m out, spreading 12 m/s, 3.5 s) plus broken churn (1.6 s); two spray sheets (`water_spray.gdshader`, foot wobbling 0.9 m and frayed) beside the wingtips, 3 m ahead to 8 m back, 4.5 m tall × strength. Cost (1280 × 720): four wakes + 22 splashes/s ≈ +0.5 ms GPU.
+- **`Clouds`** (`world/clouds.gd`): defaults 60 clusters of 5–9 blobs at 220 / 430 m (±30) within 1700 m, none within 350 m of the centre; Corneria: 170 at 650 / 950 m within 3600 m. Each cluster scaled 0.5–1.5 (`cluster_scale`), or with `big_chance` 6% a giant at 4–6.5 (`big_scale`) in the top layer + `big_lift` 100 m (Corneria: 7 giants, 370–920 m across). Fade up to 85% when the camera is inside or within 40 m. Corneria's use `effects/cloud.gdshader`: drifting noise lumps (16 m apart, 12 m high), bottoms squashed to 0.3 below 8 m under the centre, soft crevice shading on downward faces, three bands (white, pale blue, blue-grey underside), rim and silver lining; no ink outlines (transparent pass via `ALPHA *= 1.0`, which keeps the camera fade, plus `depth_draw_always`); blobs 20 × 12.
+- **Environment:** `planet_environment.tres` (procedural day sky, sky ground colour = horizon, depth fog in the horizon colour: clear to 1.5 km, full at 5 km (the far plane), curve 1.6, `fog_sky_affect` 0; was exponential 0.00035, which washed out the near ground). Sun pitched higher, shadows to 600 m.
 - **Camera:** `ChaseCamera.ground_clearance` 3 m above `surface_height()`.
 - **Start:** 120 m over the sea at (−450, 120, 3400), heading north; intro start 300 m further south.
 - **Enemies on Corneria:** the base level's waves, no destroyers (`destroyer_every = 0` on its `EnemySpawner`).
@@ -532,7 +542,7 @@ Two tips:
 - **Twin lasers** (`Fighter.parallel_fire`, on in `ship.tscn`, so the player and wingmen; off on enemies).
   - **Path:** each bolt flies from its muzzle parallel to the line from the point between the muzzles through the aim point, so the pair stays 0.87 m either side of the crosshair line at every range (under an enemy's 1.1 m hit sphere). No bends. Off = each bolt flies straight to the aim point.
   - **Muzzle flash:** `Fighter.muzzle_flash_size` (0.6 on `ship.tscn`, 0 = none) spawns `MuzzleFlash` (`effects/muzzle_flash.gd`) on the muzzle: 70 ms, bolt's `impact_color`, drawn over the ship's own fins (no depth test).
-  - **Streak:** `Laser.trail_length` (8 m on `laser.tscn`, 0 on enemy and turret bolts) stretches the bolt mesh behind its head, growing from the muzzle, so a bolt moving ~10 m per frame reads as one streak.
+  - **Streak:** `Laser.trail_length` (16 m on `laser.tscn`, 0 on enemy and turret bolts) stretches the bolt mesh behind its head, growing from the muzzle, so a bolt moving ~25 m per frame reads as one streak.
 - **Engine glow follows speed** (`Fighter._update_engine_glow()`, *Engine glow* exports): strength 1.0 at cruise, `engine_glow_per_speed` 0.015 per m/s, clamped to `engine_glow_range` (0.5–2.3); scales `Model/Glow`'s size and emission and `Model/EngineLight`'s energy. Each ship duplicates the shared glow material. Ships without those nodes (enemies) are skipped.
 - **Physics interpolation is off.** Ships and the camera update at 60 Hz, so there may be slight judder on high-refresh monitors.
 - **Wingmen and enemies only see the player.** Enemies never target wingmen, and nothing damages wingmen. (Destroyer turrets shoot at wingmen only when the player is out of range, purely for show.)

@@ -76,6 +76,9 @@ extends Node3D
 @export_group("Water and far ground")
 ## Material for the lake surface (effects/water.gdshader).
 @export var water_material: Material
+## Its render priority: between the ink outline quad (-100) and other
+## see-through things (0). See water.gdshader.
+@export_range(-128, 127) var water_render_priority := -50
 ## Water reaches the horizon instead of stopping at the map's edge (for a map
 ## with a coast: sea beyond it rather than the far ground).
 @export var water_to_horizon := false
@@ -153,6 +156,19 @@ func surface_height(x: float, z: float) -> float:
 	if map and _map_cell(map.paint, x, z) == TerrainMap.PAINT_HIGH_WATER:
 		surface = maxf(surface, map.high_water_level)
 	return surface
+
+
+## Height of the water's surface at x/z (the sea, or a map's raised lake or
+## river), or -INF where the ground is at or above it (dry land).
+func water_level_at(x: float, z: float) -> float:
+	var surface := surface_height(x, z)
+	return surface if height_at(x, z) < surface - 0.05 else -INF
+
+
+## True if `point` lies on the water's surface (within `tolerance` metres), e.g.
+## where a bolt hit: the splash goes there instead of the impact flash.
+func is_water_surface(point: Vector3, tolerance := 0.5) -> bool:
+	return absf(point.y - water_level_at(point.x, point.z)) < tolerance
 
 
 ## Height to stay above: ground, water, or the top of any structure on the map
@@ -334,6 +350,18 @@ func _build_water(body: StaticBody3D) -> void:
 	add_child(water)
 	body.add_child(_slab(Vector2(extent, extent), sea_level))
 	_feed_water(water_material)
+	if water_material:
+		# The water draws in the transparent pass (no ink outlines; see
+		# water.gdshader): before the other see-through things, which it would
+		# otherwise cover when its huge plane sorts nearer than them.
+		water_material.render_priority = water_render_priority
+	# Splash rings and wakes, drawn by the water shader (shared with the map's
+	# lakes and rivers).
+	if water_material is ShaderMaterial:
+		var marks := WaterMarks.new()
+		marks.name = "WaterMarks"
+		marks.material = water_material
+		add_child(marks)
 
 
 ## Gives the water shader (effects/water.gdshader) the ground heights, so it can

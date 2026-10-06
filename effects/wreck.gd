@@ -21,8 +21,10 @@ extends Node3D
 @export_group("Flight")
 ## Seconds before it explodes if it hasn't hit anything.
 @export var lifetime := 3.0
-## Random tumble, radians per second about each axis.
-@export var tumble_rate := 2.5
+## Out of control, it rolls about its nose-to-tail axis (only: spinning on
+## every axis looked wrong for a ship), at a random rate in this range
+## (radians per second), either way round.
+@export var roll_rate := Vector2(1.5, 3.5)
 ## Downward acceleration on planet missions (where there is a `terrain`
 ## group), so wrecks fall and crash. Space has none. 0 = keep flying level.
 @export var planet_gravity := 15.0
@@ -52,6 +54,25 @@ extends Node3D
 @export var explosion: ExplosionStyle = preload("res://effects/explosions/fighter.tres")
 @export var explosion_size := 6.0
 
+@export_group("Debris")
+## How many smoking pieces (WreckDebris) the second explosion throws out
+## (random in this range, inclusive).
+@export var debris_count := Vector2i(3, 5)
+## Their speed away from the blast, on top of the wreck's own (m/s, random in
+## this range).
+@export var debris_speed := Vector2(18.0, 35.0)
+## Seconds each piece keeps flying before it burns out (random in this range).
+@export var debris_lifetime := Vector2(1.0, 2.0)
+## How fast they slow down (fraction of their speed lost per second, roughly).
+@export var debris_drag := 0.8
+## Piece size (metres across).
+@export var debris_size := 0.7
+## Their trails: a thinner, shorter-lived version of the wreck's plume.
+@export var debris_smoke_rate := 30.0
+@export var debris_smoke_lifetime := 1.2
+@export var debris_smoke_start_size := 0.8
+@export var debris_smoke_end_size := 3.5
+
 ## The fighters' running lights go out (material name, see FighterModel).
 const LIGHTS_MATERIAL := "Fighter_Lights"
 const DEAD_LIGHTS_COLOR := Color(0.06, 0.05, 0.05)
@@ -63,7 +84,7 @@ var velocity := Vector3.ZERO
 ## True once it has exploded (read by the crosshair and Wingman.target_gone()).
 var is_destroyed := false
 
-var _spin := Vector3.ZERO
+var _roll := 0.0
 var _age := 0.0
 var _gravity := 0.0
 var _sound: AudioStream
@@ -95,7 +116,7 @@ static func spawn(scene: PackedScene, parent: Node, fighter: CollisionObject3D, 
 func _start(model: Node3D, start_velocity: Vector3, sound: AudioStream) -> void:
 	velocity = start_velocity
 	_sound = sound
-	_spin = Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * tumble_rate
+	_roll = randf_range(roll_rate.x, roll_rate.y) * (1.0 if randf() < 0.5 else -1.0)
 	if get_tree().get_first_node_in_group("terrain"):
 		_gravity = planet_gravity
 	# The engine is dead: no glow, no running lights.
@@ -103,7 +124,7 @@ func _start(model: Node3D, start_velocity: Vector3, sound: AudioStream) -> void:
 	if glow:
 		glow.hide()
 	_douse_lights(model)
-	_smoke = _make_smoke()
+	_smoke = _make_smoke(smoke_rate, smoke_puff_lifetime, smoke_start_size, smoke_end_size)
 	get_parent().add_child(_smoke)
 	_smoke.global_position = global_position
 
@@ -132,9 +153,8 @@ func _physics_process(delta: float) -> void:
 		return
 	global_position = to
 	_smoke.global_position = to
-	rotate_x(_spin.x * delta)
-	rotate_y(_spin.y * delta)
-	rotate_z(_spin.z * delta)
+	# Local Z runs along the fighter (the wreck took its model's transform).
+	rotate_object_local(Vector3.BACK, _roll * delta)
 	if _age >= lifetime:
 		_explode(global_position)
 
@@ -149,7 +169,23 @@ func _explode(at: Vector3) -> void:
 	_smoke.global_position = at
 	_smoke.emitting = false
 	get_tree().create_timer(smoke_puff_lifetime, false).timeout.connect(_smoke.queue_free)
+	_throw_debris(at)
 	queue_free()
+
+
+## A few smoking pieces flying out of the blast, carried on with the wreck's
+## velocity, so the kill lingers for a moment after the last explosion.
+func _throw_debris(at: Vector3) -> void:
+	var parent := get_parent()
+	for i in randi_range(debris_count.x, debris_count.y):
+		var out := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)).normalized()
+		var smoke := _make_smoke(debris_smoke_rate, debris_smoke_lifetime,
+			debris_smoke_start_size, debris_smoke_end_size)
+		var piece := WreckDebris.spawn(parent, at, velocity + out * randf_range(debris_speed.x, debris_speed.y),
+			debris_size, smoke, debris_smoke_lifetime)
+		piece.lifetime = randf_range(debris_lifetime.x, debris_lifetime.y)
+		piece.drag = debris_drag
+		piece.gravity = _gravity
 
 
 func _douse_lights(node: Node) -> void:
@@ -170,7 +206,9 @@ func _douse_lights(node: Node) -> void:
 ## A world-space trail of the explosions' puffs (explosion_puff.gdshader):
 ## fire right behind the wreck, cooling into toon-lit, ink-outlined smoke that
 ## swells and breaks up, so the trail matches the explosions at either end.
-func _make_smoke() -> GPUParticles3D:
+## `rate` puffs a second, each lasting `puff_lifetime` and growing from
+## `start_size` to `end_size` metres (the wreck's own plume, or a debris trail).
+func _make_smoke(rate: float, puff_lifetime: float, start_size: float, end_size: float) -> GPUParticles3D:
 	var material := ShaderMaterial.new()
 	material.shader = Explosion.PUFF_SHADER
 	material.set_shader_parameter("hot_color", smoke_style.hot_color)
@@ -188,7 +226,7 @@ func _make_smoke() -> GPUParticles3D:
 
 	# Swell fast at first, then slowly.
 	var size := Curve.new()
-	size.add_point(Vector2(0.0, smoke_start_size / smoke_end_size))
+	size.add_point(Vector2(0.0, start_size / end_size))
 	size.add_point(Vector2(0.3, 0.75))
 	size.add_point(Vector2(1.0, 1.0))
 	var size_curve := CurveTexture.new()
@@ -200,8 +238,8 @@ func _make_smoke() -> GPUParticles3D:
 	process.initial_velocity_min = 0.5
 	process.initial_velocity_max = 2.0
 	process.gravity = Vector3.ZERO
-	process.scale_min = smoke_end_size * 0.8
-	process.scale_max = smoke_end_size * 1.2
+	process.scale_min = end_size * 0.8
+	process.scale_max = end_size * 1.2
 	process.scale_curve = size_curve
 
 	# GPU particles, not CPU: they space each puff's start along the emitter's
@@ -212,10 +250,10 @@ func _make_smoke() -> GPUParticles3D:
 	smoke.draw_pass_1 = quad
 	smoke.process_material = process
 	smoke.local_coords = false  # puffs stay where they were left: a trail
-	smoke.amount = maxi(int(smoke_rate * smoke_puff_lifetime), 1)
-	smoke.lifetime = smoke_puff_lifetime
+	smoke.amount = maxi(int(rate * puff_lifetime), 1)
+	smoke.lifetime = puff_lifetime
 	# The trail stretches far behind the emitter: don't cull it as off-screen.
-	var reach := 150.0 * smoke_puff_lifetime
+	var reach := 150.0 * puff_lifetime
 	smoke.visibility_aabb = AABB(Vector3.ONE * -reach, Vector3.ONE * reach * 2.0)
 	smoke.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	smoke.emitting = true

@@ -11,7 +11,7 @@ static var _meshes: Array[ArrayMesh] = []
 @export var radius := 10.0
 ## How it bursts (fireball radius = radius × explosion_scale).
 @export var explosion: ExplosionStyle = preload("res://effects/explosions/asteroid.tres")
-@export var explosion_scale := 0.6
+@export var explosion_scale := 1.4
 ## The crosshair doesn't turn red over rocks: they're everywhere in the field
 ## and would drown out the enemies.
 @export var highlight_on_crosshair := false
