@@ -34,7 +34,7 @@ shader_parameter/city_light_strength = 0.8
 shader_parameter/planet_brightness = 1.0
 shader_parameter/night_brightness = 0.025
 shader_parameter/day_brightness = 1.0
-shader_parameter/day_saturation = 1.0
+shader_parameter/day_saturation = 1.2
 
 [sub_resource type="Sky" id="Sky_space"]
 sky_material = SubResource("ShaderMaterial_sky")

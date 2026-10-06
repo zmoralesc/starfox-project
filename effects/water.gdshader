@@ -46,6 +46,14 @@ uniform float foam_reach = 4.0;
 // ...this many times a second, each this thick (fraction of the spacing).
 uniform float foam_speed = 0.35;
 uniform float foam_line_width : hint_range(0.0, 1.0) = 0.18;
+// The lines would follow the depth exactly, so on an evenly sloping beach
+// they ran dead straight and even: noise bends them (`foam_wobble`, in
+// fractions of the line spacing; `foam_wobble_scale` metres), varies their
+// thickness and breaks them into separate crests (`foam_gaps`: share left
+// out, 0 = unbroken).
+uniform float foam_wobble = 1.0;
+uniform float foam_wobble_scale = 10.0;
+uniform float foam_gaps : hint_range(0.0, 1.0) = 0.3;
 
 group_uniforms crests;
 uniform vec4 crest_color : source_color = vec4(0.62, 0.86, 1.0, 1.0);
@@ -316,8 +324,12 @@ void fragment() {
 	// Shore foam: a solid ragged edge, plus lines rolling in to it.
 	float edge_noise = noise(world.xz / 6.0 + slow * 4.0);
 	float foam = 1.0 - aa_step(foam_depth * (0.5 + edge_noise), depth);
-	float phase = depth / foam_reach + TIME * foam_speed;
-	float rolling = 1.0 - aa_step(foam_line_width, fract(phase));
+	vec2 shore_p = world.xz / foam_wobble_scale;
+	float bend = (noise2(shore_p + vec2(slow, -slow)) - 0.5) * foam_wobble;
+	float phase = depth / foam_reach + TIME * foam_speed + bend;
+	float thickness = foam_line_width * (0.4 + 1.2 * noise(shore_p * 1.7 + 11.0));
+	float rolling = 1.0 - aa_step(thickness, fract(phase));
+	rolling *= aa_step(foam_gaps, noise(shore_p * 0.8 + vec2(-slow * 3.0, 23.0)));
 	rolling *= 1.0 - aa_step(0.75 + 0.25 * edge_noise, depth / foam_reach);
 	// Splash rings and wakes (WaterMarks): foam like the shore's.
 	float marks = max(ring_foam(world.xz, metres_per_px), wake_foam(world.xz, metres_per_px));

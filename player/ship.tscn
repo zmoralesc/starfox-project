@@ -9,7 +9,7 @@
 [ext_resource type="AudioStream" uid="uid://cdss2q2d7xicb" path="res://audio/sfx/laser.mp3" id="sfx_laser"]
 [ext_resource type="AudioStream" uid="uid://bw7352g4sqs8m" path="res://audio/sfx/thrusters.mp3" id="sfx_thrusters"]
 [ext_resource type="Script" uid="uid://c7ltkt2mp8ftg" path="res://player/ship_model.gd" id="ship_model"]
-[ext_resource type="Script" path="res://effects/water_wake.gd" id="water_wake"]
+[ext_resource type="Script" uid="uid://8iqf7g8ddbm7" path="res://effects/water_wake.gd" id="water_wake"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_hull"]
 size = Vector3(6.2, 1.2, 6.5)
@@ -50,7 +50,7 @@ script = ExtResource("1_ship")
 thrusters_overheat = false
 cruise_speed = 60.0
 max_speed = 130.0
-laser_speed = 1500.0
+laser_speed = 1800.0
 fire_interval = 0.09
 parallel_fire = true
 muzzle_flash_size = 0.6
@@ -101,5 +101,5 @@ volume_db = -8.0
 autoplay = true
 max_distance = 300.0
 
-[node name="WaterWake" type="Node3D" parent="."]
+[node name="WaterWake" type="Node3D" parent="." unique_id=248509192]
 script = ExtResource("water_wake")

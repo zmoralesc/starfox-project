@@ -127,6 +127,7 @@ func _start(model: Node3D, start_velocity: Vector3, sound: AudioStream) -> void:
 	_smoke = _make_smoke(smoke_rate, smoke_puff_lifetime, smoke_start_size, smoke_end_size)
 	get_parent().add_child(_smoke)
 	_smoke.global_position = global_position
+	_align_with_velocity()
 
 
 ## A friendly bolt hit it: blow it up now (any damage will do; no score, the
@@ -153,10 +154,21 @@ func _physics_process(delta: float) -> void:
 		return
 	global_position = to
 	_smoke.global_position = to
+	_align_with_velocity()
 	# Local Z runs along the fighter (the wreck took its model's transform).
 	rotate_object_local(Vector3.BACK, _roll * delta)
 	if _age >= lifetime:
 		_explode(global_position)
+
+
+## Aligns the wreck's nose (-basis.z) with its flight direction while preserving roll.
+func _align_with_velocity() -> void:
+	if velocity.length_squared() > 0.001:
+		var heading := velocity.normalized()
+		var current_forward := -global_basis.z
+		if not current_forward.is_equal_approx(heading):
+			var q := Quaternion(current_forward, heading)
+			global_basis = (Basis(q) * global_basis).orthonormalized()
 
 
 func _explode(at: Vector3) -> void:
