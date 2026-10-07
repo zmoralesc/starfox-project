@@ -391,7 +391,7 @@ Any hit triggers `EVADE` (outside the cooldown), through `notify_shot`. **Astero
   | Hangar doors | (±132, 36, 15), 114 × 51 m, `open_height` 54; health 29, score 2 |
   | Turrets | 8, `juggernaut_turret.tscn` (same values as the old turret): bow glacis (±22.5, 112.7, −360), sponson plates (±112.5, 121, −165), main deck (±78, 115, −82.5), castle bastions (±63, 188.5, 195); positions from `MOUNT_PADS` in `juggernaut_c2.py` |
   | Hull collision | trimesh from the model (`hull_collision_from_model`) |
-  | AI avoidance | 15 `obstacle_boxes` fitted to the hull and bridge (no face more than ~25 m off the hull), `box_margin` 10; spheres only on the thrusters (`proxy_radius` 0, no `extra_proxies`) |
+  | AI avoidance | 15 `ObstacleBox` nodes under `AvoidanceBoxes`, fitted to the hull and bridge (no face more than ~25 m off the hull), `margin` 10 each; edit them in the editor (drawn as cyan boxes; `size` or scale); spheres only on the thrusters (`proxy_radius` 0, no `extra_proxies`) |
   | Warp | `portal_radius` 190, `portal_height` 95; through at 12 s, active at 17 s |
   | Parking | `stop_distance` 375 (bow 560–600 m from the station's centre, parked at 130 s) |
   | Death | `death_blast_height` 150, `death_blast_size` 60–125, `final_blast_size` 290 |

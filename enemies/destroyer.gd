@@ -18,7 +18,7 @@ extends AnimatableBody3D
 ##
 ## The hull itself (this body) is on the World layer: it stops all shots,
 ## blocks line of sight and is solid. A grid of ObstacleProxy spheres filling
-## hull_outline (and any extra_proxies or obstacle_boxes) lets the AI steer
+## hull_outline (and any extra_proxies or ObstacleBox children) lets the AI steer
 ## around it.
 ##
 ## The model is built in Blender by models/destroyer/source/build_destroyer.py
@@ -54,11 +54,10 @@ static var _hull_shapes := {}
 ## Extra spheres for parts that stand out of the hull outline (the bridge
 ## tower, hangar housings): local position in xyz, radius in w.
 @export var extra_proxies: Array[Vector4] = []
-## Avoidance boxes (ObstacleBox) in this node's space, for hulls that spheres
-## fit badly: the AI keeps box_margin (plus its own avoid_margin) from their
-## faces. The thrusters keep their spheres either way.
-@export var obstacle_boxes: Array[AABB] = []
-@export var box_margin := 10.0
+## For hulls that spheres fit badly, add ObstacleBox nodes anywhere under this
+## node instead (the Juggernaut keeps them under `AvoidanceBoxes`): they're
+## placed and sized in the editor, and found at load. The thrusters keep their
+## spheres either way.
 
 @export_group("Behaviour")
 @export var cruise_speed := 8.0
@@ -443,7 +442,8 @@ func _smash_asteroids() -> void:
 
 ## Cover the hull with spheres (and boxes) so AI ships steer around its real shape: a grid
 ## over hull_outline (symmetric about the centre line), keeping only points
-## inside it, plus extra_proxies and one per thruster; then obstacle_boxes.
+## inside it, plus extra_proxies and one per thruster; then any ObstacleBox
+## children (placed in the scene) are collected for _smash_asteroids().
 func _build_obstacle_proxies() -> void:
 	var z := _hull_bounds.position.y + proxy_spacing.y * 0.5
 	while proxy_radius > 0.0 and z <= _hull_bounds.end.y:
@@ -458,13 +458,9 @@ func _build_obstacle_proxies() -> void:
 		_add_proxy(Vector3(extra.x, extra.y, extra.z), extra.w)
 	for thruster in thrusters:
 		_add_proxy(thruster.position, thruster.radius)
-	for aabb in obstacle_boxes:
-		var box := ObstacleBox.new()
-		box.size = aabb.size
-		box.margin = box_margin
-		box.position = aabb.get_center()
-		add_child(box)
-		_boxes.append(box)
+	for node in find_children("*", "Node3D", true, false):
+		if node is ObstacleBox:
+			_boxes.append(node)
 
 
 ## One trimesh collision shape (on this body, the World layer) per mesh in the

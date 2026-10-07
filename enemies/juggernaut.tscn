@@ -9,6 +9,7 @@
 [ext_resource type="PackedScene" path="res://models/destroyer/juggernaut_thruster_keel.glb" id="7_keel"]
 [ext_resource type="PackedScene" path="res://models/destroyer/juggernaut_thruster_pod.glb" id="8_pod"]
 [ext_resource type="PackedScene" path="res://models/destroyer/juggernaut_hangar_door.glb" id="9_door"]
+[ext_resource type="Script" path="res://enemies/obstacle_box.gd" id="10_obstacle_box"]
 
 [sub_resource type="StandardMaterial3D" id="Mat_bay"]
 albedo_color = Color(1, 0.6, 0.25, 1)
@@ -40,7 +41,6 @@ script = ExtResource("1_destroyer")
 hull_collision_from_model = true
 hull_outline = PackedVector2Array(-120.0, 525.0, -120.0, 500.0, -127.0, 500.0, -127.0, 475.0, -128.0, 475.0, -128.0, 425.0, -126.0, 425.0, -126.0, 400.0, -110.0, 400.0, -110.0, 375.0, -112.0, 375.0, -112.0, 350.0, -114.0, 350.0, -114.0, 325.0, -116.0, 325.0, -116.0, 300.0, -118.0, 300.0, -118.0, 275.0, -120.0, 275.0, -120.0, 250.0, -122.0, 250.0, -122.0, 225.0, -123.0, 225.0, -123.0, 200.0, -153.0, 200.0, -153.0, 175.0, -152.0, 175.0, -152.0, 150.0, -153.0, 150.0, -153.0, 125.0, -152.0, 125.0, -152.0, 100.0, -153.0, 100.0, -153.0, 75.0, -134.0, 75.0, -134.0, 50.0, -133.0, 50.0, -133.0, -25.0, -134.0, -25.0, -134.0, -50.0, -153.0, -50.0, -153.0, -75.0, -152.0, -75.0, -152.0, -125.0, -153.0, -125.0, -153.0, -150.0, -152.0, -150.0, -152.0, -175.0, -153.0, -175.0, -153.0, -200.0, -131.0, -200.0, -131.0, -225.0, -120.0, -225.0, -120.0, -250.0, -116.0, -250.0, -116.0, -275.0, -114.0, -275.0, -114.0, -300.0, -111.0, -300.0, -111.0, -325.0, -101.0, -325.0, -101.0, -350.0, -91.0, -350.0, -91.0, -375.0, -82.0, -375.0, -82.0, -400.0, -72.0, -400.0, -72.0, -425.0, -65.0, -425.0, -65.0, -450.0, -56.0, -450.0, -56.0, -475.0, -42.0, -475.0, -42.0, -500.0, -35.0, -500.0, -35.0, -525.0, -23.0, -525.0, -23.0, -550.0, 23.0, -550.0, 23.0, -525.0, 35.0, -525.0, 35.0, -500.0, 42.0, -500.0, 42.0, -475.0, 56.0, -475.0, 56.0, -450.0, 65.0, -450.0, 65.0, -425.0, 72.0, -425.0, 72.0, -400.0, 82.0, -400.0, 82.0, -375.0, 91.0, -375.0, 91.0, -350.0, 101.0, -350.0, 101.0, -325.0, 111.0, -325.0, 111.0, -300.0, 114.0, -300.0, 114.0, -275.0, 116.0, -275.0, 116.0, -250.0, 120.0, -250.0, 120.0, -225.0, 131.0, -225.0, 131.0, -200.0, 153.0, -200.0, 153.0, -175.0, 152.0, -175.0, 152.0, -150.0, 153.0, -150.0, 153.0, -125.0, 152.0, -125.0, 152.0, -75.0, 153.0, -75.0, 153.0, -50.0, 134.0, -50.0, 134.0, -25.0, 133.0, -25.0, 133.0, 50.0, 134.0, 50.0, 134.0, 75.0, 153.0, 75.0, 153.0, 100.0, 152.0, 100.0, 152.0, 125.0, 153.0, 125.0, 153.0, 150.0, 152.0, 150.0, 152.0, 175.0, 153.0, 175.0, 153.0, 200.0, 123.0, 200.0, 123.0, 225.0, 122.0, 225.0, 122.0, 250.0, 120.0, 250.0, 120.0, 275.0, 118.0, 275.0, 118.0, 300.0, 116.0, 300.0, 116.0, 325.0, 114.0, 325.0, 114.0, 350.0, 112.0, 350.0, 112.0, 375.0, 110.0, 375.0, 110.0, 400.0, 126.0, 400.0, 126.0, 425.0, 128.0, 425.0, 128.0, 475.0, 127.0, 475.0, 127.0, 500.0, 120.0, 500.0, 120.0, 525.0)
 proxy_radius = 0.0
-obstacle_boxes = Array[AABB]([AABB(-97.0, -44.0, -324.4, 192.0, 176.0, 800.0), AABB(-89.0, -44.0, 139.6, 176.0, 256.0, 248.0), AABB(-81.0, -36.0, -420.4, 160.0, 160.0, 896.0), AABB(-57.0, -36.0, -516.4, 112.0, 128.0, 1000.0), AABB(-153.0, -12.0, -220.4, 312.0, 152.0, 440.0), AABB(-57.0, -52.0, 131.6, 112.0, 320.0, 112.0), AABB(-49.0, -36.0, -548.4, 96.0, 120.0, 1032.0), AABB(-137.0, -36.0, -244.4, 280.0, 88.0, 536.0), AABB(-113.0, -28.0, -388.4, 224.0, 88.0, 864.0), AABB(-49.0, -60.0, -300.4, 96.0, 208.0, 688.0), AABB(-73.0, -12.0, -484.4, 152.0, 96.0, 968.0), AABB(-129.0, -28.0, 363.6, 264.0, 136.0, 112.0), AABB(-65.0, -52.0, -284.4, 136.0, 208.0, 672.0), AABB(-105.0, -36.0, -372.4, 208.0, 136.0, 848.0), AABB(-121.0, -36.0, -348.4, 240.0, 112.0, 824.0)])
 cruise_speed = 10.0
 stop_distance = 375.0
 portal_radius = 190.0
@@ -217,3 +217,80 @@ position = Vector3(-63, 188.5, 195)
 
 [node name="TurretAftR" parent="." instance=ExtResource("4_turret")]
 position = Vector3(63, 188.5, 195)
+
+[node name="AvoidanceBoxes" type="Node3D" parent="."]
+
+[node name="Box1" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(-1, 44, 75.6)
+script = ExtResource("10_obstacle_box")
+size = Vector3(192, 176, 800)
+
+[node name="Box2" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(-1, 84, 263.6)
+script = ExtResource("10_obstacle_box")
+size = Vector3(176, 256, 248)
+
+[node name="Box3" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(-1, 44, 27.6)
+script = ExtResource("10_obstacle_box")
+size = Vector3(160, 160, 896)
+
+[node name="Box4" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(-1, 28, -16.4)
+script = ExtResource("10_obstacle_box")
+size = Vector3(112, 128, 1000)
+
+[node name="Box5" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(3, 64, -0.4)
+script = ExtResource("10_obstacle_box")
+size = Vector3(312, 152, 440)
+
+[node name="Box6" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(-1, 108, 187.6)
+script = ExtResource("10_obstacle_box")
+size = Vector3(112, 320, 112)
+
+[node name="Box7" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(-1, 24, -32.4)
+script = ExtResource("10_obstacle_box")
+size = Vector3(96, 120, 1032)
+
+[node name="Box8" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(3, 8, 23.6)
+script = ExtResource("10_obstacle_box")
+size = Vector3(280, 88, 536)
+
+[node name="Box9" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(-1, 16, 43.6)
+script = ExtResource("10_obstacle_box")
+size = Vector3(224, 88, 864)
+
+[node name="Box10" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(-1, 44, 43.6)
+script = ExtResource("10_obstacle_box")
+size = Vector3(96, 208, 688)
+
+[node name="Box11" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(3, 36, -0.4)
+script = ExtResource("10_obstacle_box")
+size = Vector3(152, 96, 968)
+
+[node name="Box12" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(3, 40, 419.6)
+script = ExtResource("10_obstacle_box")
+size = Vector3(264, 136, 112)
+
+[node name="Box13" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(3, 52, 51.6)
+script = ExtResource("10_obstacle_box")
+size = Vector3(136, 208, 672)
+
+[node name="Box14" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(-1, 32, 51.6)
+script = ExtResource("10_obstacle_box")
+size = Vector3(208, 136, 848)
+
+[node name="Box15" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(-1, 20, 63.6)
+script = ExtResource("10_obstacle_box")
+size = Vector3(240, 112, 824)
