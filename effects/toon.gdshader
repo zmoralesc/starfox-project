@@ -6,7 +6,7 @@ shader_type spatial;
 // "no effect" (white albedo, black emission), so flat-colour materials look
 // exactly as before. The surface is in toon_surface.gdshaderinc (shared with
 // toon_clip.gdshader), the light model (bands, glint, rim) in
-// toon_light.gdshaderinc, shared with toon_vertex.gdshader. Outlines are drawn
+// toon_light.gdshaderinc, shared with terrain.gdshader. Outlines are drawn
 // separately by InkOutline (effects/ink_outline.gd).
 
 #include "res://effects/toon_surface.gdshaderinc"

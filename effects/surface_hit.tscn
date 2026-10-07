@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://effects/hit_burst.gd" id="1_burst"]
+
+[node name="SurfaceHit" type="Node3D"]
+script = ExtResource("1_burst")
+star_size = 1.3
+star_time = 0.18
+star_spikes = 6.0
+star_spike_variety = 0.25
+star_valley = 0.72
+star_max_grow = 1.5
+tint_from_bolt = true
+spark_count = 6
+spark_speed = Vector2(15, 35)
+spark_lifetime = 0.25
+spark_length = 1.4
+spark_spread = 50.0
+dust_count = 4

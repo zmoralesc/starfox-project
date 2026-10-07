@@ -31,8 +31,11 @@ uniform float frames = 5.0;
 // Fraction of the life spent popping out to full size.
 uniform float pop = 0.25;
 // Never smaller on screen than this (radius, radians of view), so a hit on a
-// distant fighter still shows. Bigger hits are their real size.
+// distant fighter still shows, but never grown past `max_grow` times its real
+// size for it: further off, it shrinks with distance again, or a far miss
+// would be drawn tens of metres wide. Bigger hits are their real size.
 uniform float min_angle = 0.014;
+uniform float max_grow = 2.5;
 
 float hash(float n) {
 	return fract(sin(n * 127.1 + 311.7) * 43758.5453);
@@ -43,7 +46,7 @@ void vertex() {
 	// towards the camera by its radius so the hull it hit doesn't hide it.
 	vec3 centre = (VIEW_MATRIX * vec4(NODE_POSITION_WORLD, 1.0)).xyz;
 	float size = length(MODEL_MATRIX[0].xyz);
-	size = max(size, -centre.z * min_angle);
+	size = max(size, min(-centre.z * min_angle, size * max_grow));
 	vec3 p = centre + vec3(VERTEX.xy * 2.0 * size, 0.0);
 	p.z = min(p.z + size, -0.05);
 	POSITION = PROJECTION_MATRIX * vec4(p, 1.0);

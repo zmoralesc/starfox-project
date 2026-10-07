@@ -1,5 +1,6 @@
-// Shared cel-shading light model, included by toon.gdshader and
-// toon_vertex.gdshader. Light falls into hard bands (lit / mid / shadow)
+// Shared cel-shading light model, included by toon_surface.gdshaderinc (so
+// toon, toon_clip and toon_unlined), terrain.gdshader, the explosion puffs and the
+// water splash and spray. Light falls into hard bands (lit / mid / shadow)
 // instead of a smooth gradient, highlights are a hard-edged glint and a thin
 // rim of light picks out the silhouette on the lit side. Ambient light (from
 // the environment) fills the shadow band with a flat tone.

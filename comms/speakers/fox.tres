@@ -1,9 +1,11 @@
 [gd_resource type="Resource" script_class="CommsSpeaker" format=3]
 
 [ext_resource type="Script" path="res://comms/comms_speaker.gd" id="1_speaker"]
+[ext_resource type="Texture2D" path="res://comms/portraits/fox.png" id="2_portrait"]
 
 [resource]
 script = ExtResource("1_speaker")
+portrait = ExtResource("2_portrait")
 display_name = "Fox"
 color = Color(1, 0.85, 0.2, 1)
 beep_pitch = 1.0

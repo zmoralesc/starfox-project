@@ -20,7 +20,8 @@ extends CanvasLayer
 ## 1. the portrait square expands from a horizontal line,
 ## 2. it shows static for a moment,
 ## 3. the portrait and name appear as the text box unfolds to the right.
-## Then the line types out. Closing plays the same timeline backwards. A line
+## Then the line types out. Closing plays the same timeline backwards, except
+## that the portrait and name cut to static as soon as it starts. A line
 ## waiting in the queue turns a closing box around once it's back to static,
 ## so the next speaker comes in without the square collapsing. A different
 ## speaker interrupting an open box gets a short burst of static over the
@@ -260,7 +261,9 @@ func _process(delta: float) -> void:
 func _apply_open() -> void:
 	var expand := _segment(0.0, expand_time)
 	var unfold := _segment(expand_time + noise_time, unfold_time)
-	var portrait_on := _open_t >= expand_time + noise_time
+	# Closing isn't quite opening in reverse: the portrait cuts to static as
+	# soon as the text box starts folding, not once it has folded away.
+	var portrait_on := _open_t >= expand_time + noise_time and _phase != Phase.CLOSING
 
 	var h := lerpf(line_height, PORTRAIT_SIZE, _smooth(expand))
 	_portrait_frame.size.y = h

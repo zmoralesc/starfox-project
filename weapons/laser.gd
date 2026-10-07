@@ -5,6 +5,8 @@ extends Node3D
 
 @export var lifetime := 1.6
 @export var damage := 1
+## The bolt's colour for its effects: the muzzle flash, and the pop and sparks
+## of `surface_hit`.
 @export var impact_color := Color(1.0, 0.35, 0.2)
 ## What the bolt can hit. Defaults to the world layer only (Fighter.LAYER_WORLD);
 ## friendly ships are on another layer, so there's no friendly fire.
@@ -15,15 +17,20 @@ extends Node3D
 ## never pokes back through the ship that fired it. Close to one frame's travel
 ## makes a fast bolt read as a continuous streak instead of hopping dashes.
 @export var trail_length := 0.0
-## Hitting water throws up this splash (instead of the impact flash), at
-## `splash_size` times its own size. Null = the impact flash on water too.
+## Hitting water throws up this splash, at `splash_size` times its own size.
+## Null = `surface_hit` on water too.
 @export var water_splash: PackedScene = preload("res://effects/water_splash.tscn")
 @export var splash_size := 1.0
 ## Hitting something shootable (anything with take_hit: enemies, destroyer
-## parts, asteroids, wrecks, the player) throws up this cartoon burst instead of
-## the impact flash, at `burst_size` times its own size. Null = the flash.
+## parts, asteroids, wrecks, the player) throws up this cartoon burst, at
+## `burst_size` times its own size. Null = `surface_hit` there too.
 @export var hit_burst: PackedScene = preload("res://effects/hit_burst.tscn")
 @export var burst_size := 1.0
+## Hitting anything else (the ground, buildings, hulls) throws up this smaller
+## pop in `impact_color`, its sparks and dust glancing off the surface, at
+## `surface_hit_size` times its own size. Null = nothing.
+@export var surface_hit: PackedScene = preload("res://effects/surface_hit.tscn")
+@export var surface_hit_size := 1.0
 
 var _velocity := Vector3.ZERO
 var _origin := Vector3.ZERO
@@ -93,8 +100,11 @@ func _cast(from: Vector3, to: Vector3) -> bool:
 		WaterSplash.spawn(water_splash, get_parent(), hit.position, splash_size)
 	elif hit_burst and target.has_method("take_hit"):
 		HitBurst.spawn(hit_burst, get_parent(), hit.position, -_velocity.normalized(), burst_size)
-	else:
-		Impact.spawn(get_parent(), hit.position, impact_color, 0.8)
+	elif surface_hit:
+		# Off the surface, leaning the way the bolt glanced.
+		var normal: Vector3 = hit.normal
+		var off := (_velocity.normalized().bounce(normal) + normal).normalized()
+		HitBurst.spawn(surface_hit, get_parent(), hit.position, off, surface_hit_size, impact_color)
 	queue_free()
 	return true
 

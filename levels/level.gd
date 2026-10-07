@@ -29,8 +29,11 @@ extends Node3D
 ## The same for the water splash (WaterSplash), on missions with a `terrain`
 ## (there is no water to hit in space). Null = none.
 @export var prewarm_splash: PackedScene = preload("res://effects/water_splash.tscn")
-## The same for the bolts' hit burst (HitBurst). Null = none.
-@export var prewarm_hit_burst: PackedScene = preload("res://effects/hit_burst.tscn")
+## The same for the bolts' hit effects (HitBurst scenes: on targets, on surfaces).
+@export var prewarm_hit_bursts: Array[PackedScene] = [
+	preload("res://effects/hit_burst.tscn"),
+	preload("res://effects/surface_hit.tscn"),
+]
 
 @export_group("Intro line")
 ## What the leader says over the comms as the level starts.
@@ -58,8 +61,8 @@ func _ready() -> void:
 		Explosion.prewarm(self, style)
 	if prewarm_splash and get_tree().get_first_node_in_group("terrain"):
 		WaterSplash.prewarm(prewarm_splash, self)
-	if prewarm_hit_burst:
-		HitBurst.prewarm(prewarm_hit_burst, self)
+	for burst in prewarm_hit_bursts:
+		HitBurst.prewarm(burst, self)
 	Music.play(music)
 	($Ship as Ship).died.connect(_on_player_died)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED

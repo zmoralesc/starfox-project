@@ -37,7 +37,7 @@ func _ready() -> void:
 			push_warning("MapProps: no mesh named %s" % node_name)
 			continue
 		var shape := mesh.mesh.create_trimesh_shape()
-		# Some props are single sheets (the falls, the lake): solid from both sides.
+		# Some props are single sheets (the lake, the river): solid from both sides.
 		shape.backface_collision = true
 		var collision := CollisionShape3D.new()
 		collision.name = node_name

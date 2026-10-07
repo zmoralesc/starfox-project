@@ -28,8 +28,28 @@ uniform float continent_scale = 1.4;
 uniform float land_amount : hint_range(0.0, 1.0) = 0.42;
 uniform vec3 ocean_deep : source_color = vec3(0.03, 0.12, 0.36);
 uniform vec3 ocean_shallow : source_color = vec3(0.08, 0.34, 0.60);
+// Land: biomes picked by a moisture noise (wetter near coasts) and by
+// temperature (cooler towards the poles and with height).
 uniform vec3 land_low : source_color = vec3(0.20, 0.46, 0.18);
+uniform vec3 land_forest : source_color = vec3(0.07, 0.25, 0.09);
+uniform vec3 land_dry : source_color = vec3(0.46, 0.46, 0.22);
+uniform vec3 land_desert : source_color = vec3(0.80, 0.66, 0.42);
+// Cold ground short of the ice caps.
+uniform vec3 land_tundra : source_color = vec3(0.42, 0.44, 0.36);
+// High ground, and the bare rock of mountain ranges.
 uniform vec3 land_high : source_color = vec3(0.52, 0.47, 0.30);
+uniform vec3 rock_color : source_color = vec3(0.33, 0.29, 0.25);
+// Size of the biome patches (bigger = smaller patches).
+uniform float biome_scale = 2.4;
+// 0 = almost no desert, 1 = lots.
+uniform float dryness : hint_range(0.0, 1.0) = 0.45;
+uniform float mountain_amount : hint_range(0.0, 2.0) = 1.0;
+// Snow on the highest mountains, at this mountain height (0 to 1).
+uniform float snow_line : hint_range(0.0, 1.0) = 0.8;
+// Fine light/dark mottling of the ground (0 = flat colour).
+uniform float land_detail : hint_range(0.0, 1.0) = 0.35;
+// How strongly the sun picks out mountains and hills (0 = flat shading).
+uniform float relief_strength : hint_range(0.0, 0.1) = 0.012;
 uniform vec3 ice_color : source_color = vec3(0.88, 0.93, 1.0);
 // Ice caps start at this |sin(latitude)|.
 uniform float ice_latitude : hint_range(0.0, 1.0) = 0.9;
@@ -104,6 +124,20 @@ float fbm6(vec3 p) {
 	return v;
 }
 
+// Ridged noise, 0 to ~1: sharp crests where the noise crosses its middle
+// value, for mountain ranges.
+float ridged(vec3 p) {
+	float v = 0.0;
+	float a = 0.5;
+	for (int i = 0; i < 5; i++) {
+		float r = 1.0 - abs(value_noise(p) * 2.0 - 1.0);
+		v += a * r * r * r;
+		p *= 2.03;
+		a *= 0.5;
+	}
+	return v;
+}
+
 // Rotates v by angle about the unit axis k (Rodrigues).
 vec3 rotate_about(vec3 v, vec3 k, float angle) {
 	float c = cos(angle);
@@ -125,10 +159,43 @@ vec3 planet_surface(vec3 dir, vec3 n, vec3 sun, bool has_sun) {
 	float sea = mix(0.62, 0.38, land_amount);
 	float land = smoothstep(sea - 0.004, sea + 0.004, height);
 	vec3 ocean = mix(ocean_deep, ocean_shallow, smoothstep(sea - 0.09, sea, height));
-	vec3 ground = mix(land_low, land_high, smoothstep(sea + 0.04, sea + 0.2, height));
+	float elevation = smoothstep(sea + 0.04, sea + 0.25, height);
+
+	// Mountain ranges: ridge lines inside broad belts, kept off the coast.
+	float belts = smoothstep(0.44, 0.56, fbm(q * 1.6 + 17.0));
+	float inland = smoothstep(sea + 0.01, sea + 0.07, height);
+	float crests = smoothstep(0.35, 0.75, ridged(q * 3.1 + warp * 0.8));
+	float mountain = clamp(crests * belts * inland * mountain_amount, 0.0, 1.0);
+
+	// Biomes: moisture (wetter near the coast) against temperature.
+	float moisture = fbm(q * biome_scale + 31.0) + 0.15 * (1.0 - inland) - (dryness - 0.5) * 0.25;
+	float cold = smoothstep(ice_latitude - 0.35, ice_latitude - 0.05, latitude) + elevation * 0.3;
+	vec3 ground = mix(land_dry, land_low, smoothstep(0.40, 0.48, moisture));
+	ground = mix(ground, land_forest, smoothstep(0.57, 0.66, moisture));
+	// Deserts in the dry, warm belts.
+	ground = mix(land_desert, ground, smoothstep(0.33, 0.40, moisture + cold * 0.4));
+	ground = mix(ground, land_tundra, smoothstep(0.4, 0.8, cold));
+	ground = mix(ground, land_high, elevation * 0.4);
+	ground = mix(ground, rock_color, smoothstep(0.15, 0.45, mountain));
+	ground = mix(ground, ice_color, smoothstep(snow_line, snow_line + 0.1, mountain + cold * 0.15) * 0.85);
+	// Fine mottling so no stretch of land is one flat colour.
+	ground *= 1.0 + (fbm(s * 38.0 + 5.0) - 0.5) * 2.0 * land_detail;
+
 	vec3 albedo = mix(ocean, ground, land);
 	float ice = smoothstep(ice_latitude, ice_latitude + 0.03, latitude + (fbm(s * 6.0) - 0.5) * 0.12);
 	albedo = mix(albedo, ice_color, ice);
+
+	// Relief: tilt the normal along the slope of the land's height, taken from
+	// screen-space derivatives (no extra noise samples). n stands in for the
+	// surface position, since the planet is a unit sphere here.
+	float relief = (elevation * 0.3 + mountain) * land * (1.0 - ice);
+	vec3 dpdx = dFdx(n);
+	vec3 dpdy = dFdy(n);
+	vec3 r1 = cross(dpdy, n);
+	vec3 r2 = cross(n, dpdx);
+	float det = dot(dpdx, r1);
+	vec3 slope = (dFdx(relief) * r1 + dFdy(relief) * r2) / (sign(det) * max(abs(det), 1e-12));
+	vec3 bumped = normalize(n - slope * relief_strength);
 
 	// Clouds: streaked along the latitude lines, like weather bands.
 	vec3 cq = s * 3.0 + up * dot(s, up) * 2.5 + warp * 2.0;
@@ -139,8 +206,11 @@ vec3 planet_surface(vec3 dir, vec3 n, vec3 sun, bool has_sun) {
 	// Daylight with a soft terminator; without a sun the planet is evenly lit.
 	float ndl = has_sun ? dot(n, sun) : 1.0;
 	float day = smoothstep(-0.03, 0.12, ndl);
+	// Slopes facing the sun brighter, slopes facing away darker; clouds lie over them.
+	float shade = has_sun ? clamp(1.0 + (dot(bumped, sun) - ndl) * 3.0, 0.4, 1.6) : 1.0;
+	shade = mix(shade, 1.0, cloud * 0.9);
 	float grey = dot(albedo, vec3(0.2126, 0.7152, 0.0722));
-	vec3 day_albedo = mix(vec3(grey), albedo, day_saturation) * day_brightness;
+	vec3 day_albedo = mix(vec3(grey), albedo, day_saturation) * day_brightness * shade;
 	vec3 col = (albedo * night_brightness + day_albedo * day * (1.0 - night_brightness)) * planet_brightness;
 
 	// Sun glint on open water.
@@ -151,7 +221,8 @@ vec3 planet_surface(vec3 dir, vec3 n, vec3 sun, bool has_sun) {
 	// Cities on the night side, clustered by a second noise.
 	float cell = hash13(floor(s * 160.0));
 	float cluster = smoothstep(0.55, 0.75, fbm(s * 9.0 + 3.0));
-	float lights = step(0.86, cell) * cluster * land * (1.0 - ice) * (1.0 - cloud * 0.8);
+	float lights = step(0.86, cell) * cluster * land * (1.0 - ice) * (1.0 - cloud * 0.8)
+		* (1.0 - smoothstep(0.1, 0.35, mountain));
 	col += city_light_color * lights * city_light_strength * (1.0 - smoothstep(-0.15, 0.05, ndl));
 
 	// Atmosphere thickening towards the rim, on the lit side.

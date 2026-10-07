@@ -50,7 +50,10 @@ script = ExtResource("1_ship")
 thrusters_overheat = false
 cruise_speed = 60.0
 max_speed = 130.0
-laser_speed = 1800.0
+acceleration = 60.0
+engine_glow_per_speed = 0.0075
+engine_glow_range = Vector2(0.7, 1.5)
+laser_speed = 2400.0
 fire_interval = 0.09
 parallel_fire = true
 muzzle_flash_size = 0.6
@@ -68,10 +71,10 @@ transform = Transform3D(0, 0, -0.0055, 0, 0.0055, 0, 0.0055, 0, 0, 0, -0.3, -0.5
 script = ExtResource("ship_model")
 
 [node name="MuzzleL" type="Marker3D" parent="Model" unique_id=574490376]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.87, 0.326545, -1.4282837)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.70601857, 0.26277447, -0.48083544)
 
 [node name="MuzzleR" type="Marker3D" parent="Model" unique_id=793489537]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.87, 0.326545, -1.4282837)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.6969086, 0.26277447, -0.48083544)
 
 [node name="Glow" type="MeshInstance3D" parent="Model" unique_id=319916097]
 transform = Transform3D(0.71, 0, 0, 0, 1.295, 0, 0, 0, 0.4, 0, -0.25, 0.8)

@@ -23,10 +23,13 @@ Run with FORCE_EXPORT = True in the exec globals (or from the command line:
                          are paved or under the plateau's water, and the height of
                          the structures on each cell (the AI flies over those)
     corneria_props.glb   the props: city, town, base, arches, bridge, road, sea
-                         stacks, trees, and the plateau lake, river and falls
+                         stacks, trees, and the plateau lake and river
+    waterfall.txt        where the falls go: paste its lines onto the Waterfall
+                         node in levels/corneria.tscn (world/waterfall.gd builds
+                         and animates the falls in the game; they're not a prop)
 The sea is not exported: Terrain makes it.
 
-The buildings, bridges, arches, stacks, trees and the falls are hand-made kit
+The buildings, bridges, arches, stacks and trees are hand-made kit
 pieces from corneria_kit.blend (specified in ../ASSETS.md; see load_kit()): this
 script decides where they go, how big, and merges them into one object per
 group. The terrain, lake and river surfaces, the road and the bridge ramp are
@@ -60,7 +63,10 @@ PLATEAU = [(1250, -4000), (4000, -4000), (4000, -900), (3000, -1000), (2400, -14
 LAKE = (2300.0, -2450.0, 450.0, 300.0)        # centre x, z, radius x, radius z
 LAKE_LEVEL = 120.0
 UPPER_RIVER = [(2050, -2300), (1960, -2050), (1890, -1860)]
-FALLS = (1870.0, -1830.0)                     # where the river leaves the cliff
+LIP = UPPER_RIVER[-1]                          # the cliff's edge, where the river pours over
+RIVER_TO_LIP = UPPER_RIVER                     # the upper river ends at the lip
+PLUNGE_HALF_WIDTH = 60.0                       # the plunge pool under the falls: half its width
+RIVER_SHORT_OF_LIP = 6.0                       # the river's water surface stops this far before the lip
 LOWER_RIVER = [(1850, -1800), (1500, -1450), (1100, -1150), (600, -850), (150, -500),
                (-150, -50), (-300, 500), (-340, 800)]
 BAY = [(-450, 2700), (-480, 1900), (-400, 1300), (-330, 800)]
@@ -147,6 +153,25 @@ def line_dist(px, pz, pts):
     return best, along
 
 
+def falls_direction():
+    """The way the falls pour: from the lip towards the head of the lower river."""
+    return Vector((LOWER_RIVER[0][0] - LIP[0], LOWER_RIVER[0][1] - LIP[1])).normalized()
+
+
+def falls_local(px, pz):
+    """A point relative to the lip: how far out (along the falls' direction)
+    and how far across."""
+    d = falls_direction()
+    dx, dz = px - LIP[0], pz - LIP[1]
+    return dx * d.x + dz * d.y, dx * d.y - dz * d.x
+
+
+def behind_lip(px, pz, margin=0.0):
+    """True on the plateau's side of the falls' lip (upstream of the line across
+    the river there), `margin` metres back from it."""
+    return falls_local(px, pz)[0] < -margin
+
+
 def polygon_sdist(px, pz, poly):
     """Signed distance to a polygon's edge: positive inside."""
     inside = False
@@ -217,9 +242,17 @@ def height(x, z, road=True):
     h = lerp(h, max(h, PLATEAU_H + knolls), plateau)
     lx, lz, rx, rz = LAKE
     e = ((x - lx) / rx) ** 2 + ((z - lz) / rz) ** 2
-    h = lerp(h, 100, (1 - smoothstep(0.7, 1.1, e)) * plateau)
-    d, _ = line_dist(x, z, UPPER_RIVER)
-    h = lerp(h, 108, smoothstep(90, 30, d) * plateau)
+    # Carved so its banks rise through the water's surface (at e 0.9) and hide
+    # the edge of the water sheet: no flat slab showing from the side.
+    h = lerp(h, 100, (1 - smoothstep(0.55, 0.85, e)) * plateau)
+    # The river's channel, cut through the lip: a 108 m bed, its banks rising
+    # through the water (120 m) about 40 m out, under the edges of the water sheet.
+    d, _ = line_dist(x, z, RIVER_TO_LIP)
+    # Near the lip the plateau slopes off to the cliff edge, below the water:
+    # raise the banks there so they stand above it all the way to the lip.
+    if behind_lip(x, z):
+        h = lerp(h, max(h, 126), smoothstep(110, 60, d))
+    h = lerp(h, 108, smoothstep(55, 22, d) * max(plateau, 1.0 if behind_lip(x, z) else 0.0))
 
     for mx, mz, r, mh in MESAS:
         t = smoothstep(r + 40, r - 40, math.hypot(x - mx, z - mz))
@@ -232,7 +265,14 @@ def height(x, z, road=True):
 
     # The lower river, from the foot of the falls to the bay.
     d, _ = line_dist(x, z, LOWER_RIVER)
-    h = lerp(h, -8, smoothstep(170, 35, d) * (1 - plateau))
+    # (Not behind the lip: it would pull the upper river's banks down there.)
+    h = lerp(h, -8, smoothstep(170, 35, d) * (1 - plateau) * smoothstep(-10, 10, falls_local(x, z)[0]))
+    # The plunge pool: a sheer face under the lip and a pool below it, joined to
+    # the lower river (the cliff there was a slope the falls would land on).
+    out, across = falls_local(x, z)
+    if 0 < out < 120:
+        pool = smoothstep(0, 14, out) * smoothstep(PLUNGE_HALF_WIDTH + 15, PLUNGE_HALF_WIDTH, abs(across))
+        h = lerp(h, min(h, -8), pool)
     # The road from the river bridge to the base runs on a graded bed, cutting a
     # valley through the hills (or banking up over dips) on its way.
     if road and ROAD_PROFILE:
@@ -562,21 +602,32 @@ def build_water(col, preview):
     b.add([(x, LAKE_LEVEL, z) for x, z in ellipse(lx, lz, rx * 0.95, rz * 0.95)], [tuple(range(40))], "Water",
           away_from=below)
     left, right = [], []
-    for k, (x, z) in enumerate(UPPER_RIVER):
-        a = UPPER_RIVER[max(k - 1, 0)]
-        c = UPPER_RIVER[min(k + 1, len(UPPER_RIVER) - 1)]
+    # Almost to the lip, where it narrows to the falls' width (wider, its
+    # corners would hang out over the cliff). It stops RIVER_SHORT_OF_LIP
+    # metres short: the ground there already slopes down the face (the terrain
+    # grid is coarser than the face), and the falls' run-up covers the join.
+    d = falls_direction()
+    river = RIVER_TO_LIP[:-1] + [(LIP[0] - d.x * RIVER_SHORT_OF_LIP, LIP[1] - d.y * RIVER_SHORT_OF_LIP)]
+    for k, (x, z) in enumerate(river):
+        a = river[max(k - 1, 0)]
+        c = river[min(k + 1, len(river) - 1)]
         d = Vector((c[0] - a[0], c[1] - a[1])).normalized()
-        n = Vector((d.y, -d.x)) * 45
+        n = Vector((d.y, -d.x)) * (40 if k == len(river) - 1 else 45)
         left.append((x + n.x, LAKE_LEVEL, z + n.y))
         right.append((x - n.x, LAKE_LEVEL, z - n.y))
     b.add(left + right[::-1], [tuple(range(len(left) * 2))], "Water", away_from=below)
 
-    # The falls (a kit piece: its lip at the origin, 120 m up, the water flowing
-    # towards its local +Z), turned to pour down the river.
-    fx, fz = FALLS
-    d = Vector((LOWER_RIVER[1][0] - fx, LOWER_RIVER[1][1] - fz)).normalized()
-    b.kit("Kit_Waterfall", placer(fx, LAKE_LEVEL - 120, fz, math.atan2(d.x, d.y)))
+    # The falls themselves are the game's Waterfall node (see falls_placement()).
     b.flush(col)
+
+
+def falls_placement():
+    """The Waterfall node's position and turn: its lip on the river's surface
+    (a little above, so the sheet's lip doesn't flicker against it), the water
+    flowing along its local +Z, towards the pool at the head of the lower river."""
+    fx, fz = LIP
+    d = falls_direction()
+    return (fx, LAKE_LEVEL + 0.3, fz), math.atan2(d.x, d.y)
 
 
 # --- Arches and the bay bridge ----------------------------------------------
@@ -1189,7 +1240,7 @@ def cell_paint(x, z):
     if face_color(20, 1.0, x, z) == PAVED:
         return PAINT_PAVED
     lx, lz, rx, rz = LAKE
-    if ((x - lx) / (rx * 0.95)) ** 2 + ((z - lz) / (rz * 0.95)) ** 2 < 1 or line_dist(x, z, UPPER_RIVER)[0] < 45:
+    if ((x - lx) / (rx * 0.95)) ** 2 + ((z - lz) / (rz * 0.95)) ** 2 < 1 or (line_dist(x, z, RIVER_TO_LIP)[0] < 45 and behind_lip(x, z, 12)):
         return PAINT_HIGH_WATER
     return PAINT_AUTO
 
@@ -1247,6 +1298,11 @@ def export_map():
     bpy.ops.export_scene.gltf(filepath=os.path.join(out, "corneria_props.glb"), export_format="GLB",
                               use_selection=True, use_active_scene=True, export_apply=True, export_yup=True,
                               export_materials="EXPORT", export_cameras=False, export_lights=False)
+    (px, py, pz), turn = falls_placement()
+    c, s = math.cos(turn), math.sin(turn)
+    with open(os.path.join(out, "waterfall.txt"), "w", newline="\n") as f:
+        f.write("transform = Transform3D(%.6f, 0, %.6f, 0, 1, 0, %.6f, 0, %.6f, %s, %s, %s)\n" % (
+            c, s, -s, c, number(px), number(py), number(pz)))
     print("exported: %d structure cells, %d paved, %d high water" % (
         sum(1 for t in tops if t > 0), paint.count(PAINT_PAVED), paint.count(PAINT_HIGH_WATER)))
 

@@ -5,7 +5,7 @@ extends Node3D
 ## sparks, tumbling debris, an optional shockwave ring and a burst of light.
 ## What it looks like comes from an ExplosionStyle (presets in
 ## effects/explosions/); how big it is from `size`, the fireball's radius in
-## metres. Laser hits use the smaller Impact instead.
+## metres. Laser hits use the smaller HitBurst instead.
 ##
 ## The whole effect is built in this node's space and the node is scaled by
 ## `size`, so materials and meshes are shared by every explosion of a style

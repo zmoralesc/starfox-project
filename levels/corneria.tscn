@@ -4,7 +4,7 @@
 [ext_resource type="Environment" path="res://world/planet_environment.tres" id="2_env"]
 [ext_resource type="Script" path="res://world/terrain.gd" id="3_terrain"]
 [ext_resource type="Script" path="res://world/clouds.gd" id="4_clouds"]
-[ext_resource type="Shader" path="res://effects/toon_vertex.gdshader" id="5_toon_vertex"]
+[ext_resource type="Shader" path="res://effects/terrain.gdshader" id="5_terrain_shader"]
 [ext_resource type="Shader" path="res://effects/water.gdshader" id="6_water"]
 [ext_resource type="Shader" path="res://effects/toon.gdshader" id="7_toon"]
 [ext_resource type="Script" path="res://world/play_boundary.gd" id="8_boundary"]
@@ -13,9 +13,10 @@
 [ext_resource type="PackedScene" path="res://models/corneria/corneria_props.glb" id="11_props"]
 [ext_resource type="Script" path="res://world/map_props.gd" id="12_map_props"]
 [ext_resource type="Shader" path="res://effects/cloud.gdshader" id="13_cloud"]
+[ext_resource type="PackedScene" path="res://world/waterfall.tscn" id="14_waterfall"]
 
 [sub_resource type="ShaderMaterial" id="Mat_ground"]
-shader = ExtResource("5_toon_vertex")
+shader = ExtResource("5_terrain_shader")
 shader_parameter/glint = 0.0
 
 [sub_resource type="ShaderMaterial" id="Mat_water"]
@@ -25,7 +26,7 @@ shader = ExtResource("6_water")
 shader = ExtResource("13_cloud")
 
 [node name="Corneria" instance=ExtResource("1_base")]
-intro_line = "Corneria below. Let's take a look around."
+intro_line = "We're approaching Corneria City now."
 
 [node name="WorldEnvironment" parent="."]
 environment = ExtResource("2_env")
@@ -59,6 +60,7 @@ map = ExtResource("10_map")
 material = SubResource("Mat_ground")
 water_material = SubResource("Mat_water")
 water_to_horizon = true
+backdrop = true
 
 [node name="Props" parent="." instance=ExtResource("11_props")]
 script = ExtResource("12_map_props")
@@ -82,3 +84,6 @@ radius = 3300.0
 
 [node name="GreatFox" parent="." instance=ExtResource("9_great_fox")]
 transform = Transform3D(0.34202015, 0, 0.9396926, 0, 1, 0, -0.9396926, 0, 0.34202015, 500, 700, 4500)
+
+[node name="Waterfall" parent="." instance=ExtResource("14_waterfall")]
+transform = Transform3D(0.832050, 0, -0.554700, 0, 1, 0, 0.554700, 0, 0.832050, 1890, 120.3, -1860)

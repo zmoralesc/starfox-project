@@ -1,9 +1,11 @@
 [gd_resource type="Resource" script_class="Pilot" format=3 uid="uid://bjqltjt72tni6"]
 
 [ext_resource type="Script" uid="uid://csn0dgd4lxvmi" path="res://comms/pilot.gd" id="1_pilot"]
+[ext_resource type="Texture2D" path="res://comms/portraits/falco.png" id="2_portrait"]
 
 [resource]
 script = ExtResource("1_pilot")
+portrait = ExtResource("2_portrait")
 accent_color = Color(0.3, 0.55, 1, 1)
 display_name = "Falco"
 color = Color(0.3, 0.55, 1, 1)

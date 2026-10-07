@@ -12,7 +12,10 @@ origin is the station's centre, where the spokes meet the spindle.
 Layout: a spindle along Z (bow at -Z) with a wheel round its middle, about
 800 m across, joined by four spokes; the wheel's open quarters are wide enough
 to fly through. Docking arms and a hangar sit at the bow, solar wings and a
-comms dish at the stern.
+comms dish at the stern. Surface detail (add_*_detail: frames, conduits,
+plates, radiator fins, cargo, tanks, roof machinery) breaks up the large
+faces; it is solid like the rest. Curved hulls are smooth-shaded, corners
+hard (SMOOTH_ANGLE).
 
 Each component is one mesh object, modelled around its own pivot (PIVOTS), so
 the game can later char, hide or detach it on its own, like the destroyer's
@@ -73,6 +76,29 @@ SPINDLE_PROFILE = [pt for profile, _ in SPINDLE_SECTIONS for pt in profile]
 # Length of spindle each AI avoidance sphere covers.
 SPINDLE_STEP = 30.0
 
+# ---------------------------------------------------------------- detail
+# Surface detail (see the add_*_detail functions): decoration that breaks up
+# the large plain faces, solid like the rest of the hull.
+RING_ARCS = 32                                # light/dark arcs round the wheel
+RING_ARC_SEGMENTS = 3                         # lathe segments per arc
+# Frames wrapped round the wheel at the arc joints that have no collar or module.
+FRAME_ANGLES = [360.0 * k / RING_ARCS for k in range(1, RING_ARCS, 2)]
+FRAME_SPAN = 0.5                              # degrees
+# Radiator fin clusters on the outside of the wheel, one per 45 degrees,
+# alternating either side of the habitat module.
+FIN_ANGLES = [45.0 * m + (5.625 if m % 2 == 0 else 39.375) for m in range(8)]
+FIN_COUNT, FIN_STEP = 4, 1.2                  # fins per cluster, degrees apart
+# Spoke frames, from the hub outwards (between the blue bands).
+SPOKE_RIBS = [HUB_RADIUS + 40.0 + 28.0 * k for k in range(8)]
+# Fittings on the spindle's narrow sections: cargo containers forward, tanks
+# aft, as (z from, z to, reach from the axis). The AI proxies cover them.
+CONTAINER_ROWS = [-124.0, -102.0]             # row centres (z); containers 20 m long
+TANK_Z = (86.0, 144.0)
+FITTINGS = [(-134.0, -92.0, 44.0), (TANK_Z[0], TANK_Z[1], 49.0)]
+# Faces meeting at less than this stay smoothly shaded (curved hulls); sharper
+# edges (box corners, chamfers, steps in the spindle) stay hard.
+SMOOTH_ANGLE = 30.0
+
 PIVOTS = {
     "Core": (0.0, 0.0, 0.0),
     "Ring": (0.0, 0.0, 0.0),
@@ -91,6 +117,7 @@ for _i, _a in enumerate(SPOKE_ANGLES):
 COLORS = {
     "Hull": ((0.30, 0.32, 0.35), 0.0),
     "HullLight": ((0.40, 0.42, 0.45), 0.0),
+    "HullDark": ((0.22, 0.235, 0.26), 0.0),    # detail: plates, frames, machinery
     "Dark": ((0.08, 0.09, 0.11), 0.0),
     "Accent": ((0.08, 0.20, 0.50), 0.0),       # Cornerian blue
     "Trim": ((0.80, 0.58, 0.12), 0.0),         # hazard yellow at docks and the hangar
@@ -225,12 +252,15 @@ class Part:
             me.materials.append(material(n))
         for poly, mat in zip(me.polygons, self.mats):
             poly.material_index = names.index(mat)
-            poly.use_smooth = False
+            poly.use_smooth = True
         bm = bmesh.new()
         bm.from_mesh(me)
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         bm.to_mesh(me)
         bm.free()
+        # Curved hulls shade smoothly (flat-shaded, the wheel and spindle broke
+        # into a light or dark band per lathe segment); corners stay hard.
+        me.set_sharp_from_angle(angle=math.radians(SMOOTH_ANGLE))
         o = bpy.data.objects.new(self.name, me)
         o.location = G(self.pivot)
         collection.objects.link(o)
@@ -282,6 +312,7 @@ def build_core(rng):
         base = Vector((tip[0] * 0.3, tip[1] * 0.3, -262))
         p.add(beam(base, tip, 1.6, 1.6), "HullLight")
         p.add(box(tip, (3, 3, 3)), "NavRed")
+    add_core_detail(p)
     return p
 
 
@@ -292,10 +323,11 @@ def build_ring(rng):
                (-RING_HALF + c, RING_OUT), (RING_HALF - c, RING_OUT), (RING_HALF, RING_OUT - c),
                (RING_HALF, RING_IN + c), (RING_HALF - c, RING_IN)]
     # Alternating light and dark arcs give the wheel a panelled rhythm.
-    arcs = 32
+    arcs = RING_ARCS
     for k in range(arcs):
         a0 = TAU * k / arcs
-        p.add(lathe(section, 3, closed=True, a0=a0, a1=a0 + TAU / arcs), "Hull" if k % 2 else "HullLight")
+        p.add(lathe(section, RING_ARC_SEGMENTS, closed=True, a0=a0, a1=a0 + TAU / arcs),
+              "Hull" if k % 2 else "HullLight")
     # Blue collars, a little proud of the wheel.
     collar =[(t + (1.5 if t > 0 else -1.5), r + (2.0 if r > (RING_IN + RING_OUT) / 2 else -2.0))
               for t, r in section]
@@ -311,7 +343,8 @@ def build_ring(rng):
             n = int(TAU * r / 9.0)
             for k in range(n):
                 deg = 360.0 * (k + 0.5) / n
-                if rng.random() < 0.15 or near_angle(deg, COLLAR_ANGLES, COLLAR_SPAN / 2 + 1.0):
+                if rng.random() < 0.15 or near_angle(deg, COLLAR_ANGLES, COLLAR_SPAN / 2 + 1.0) \
+                        or near_angle(deg, FRAME_ANGLES, FRAME_SPAN / 2 + 0.6):
                     continue
                 p.add(box(radial(deg) * r + Z * side * (RING_HALF + 0.1), (1.4, 3.2, 0.6),
                           (radial(deg), tangent(deg), Z)), "Window")
@@ -319,7 +352,8 @@ def build_ring(rng):
         n = int(TAU * RING_IN / 9.0)
         for k in range(n):
             deg = 360.0 * (k + 0.5) / n
-            if rng.random() < 0.15 or near_angle(deg, COLLAR_ANGLES, COLLAR_SPAN / 2 + 1.0):
+            if rng.random() < 0.15 or near_angle(deg, COLLAR_ANGLES, COLLAR_SPAN / 2 + 1.0) \
+                    or near_angle(deg, FRAME_ANGLES, FRAME_SPAN / 2 + 0.6):
                 continue
             p.add(box(radial(deg) * (RING_IN - 0.1) + Z * z, (0.6, 3.2, 1.6),
                       (radial(deg), tangent(deg), Z)), "Window")
@@ -337,6 +371,7 @@ def build_ring(rng):
                 p.add(box(base + d * 11 + t * (dx * 4.2) + Z * side * 15.1, (1.6, 2.6, 0.5), (d, t, Z)),
                       "Window")
         p.add(box(base + d * 17.5, (3, 3, 3), (d, t, Z)), "NavRed" if d.x < 0 else "NavGreen")
+    add_ring_detail(p, section)
     return p
 
 
@@ -351,11 +386,14 @@ def build_spoke(i, deg, rng):
                    5, 3, up=Z), "Dark")
     for r in (HUB_RADIUS + 26, RING_IN - 26):
         p.add(box(d * r, (8, w + 1.2, h + 7), (d, t, Z)), "Accent")
+    # Frames round the spoke at intervals, standing a little proud.
+    for r in SPOKE_RIBS:
+        p.add(box(d * r, (2.4, w + 1.6, h + 1.6), (d, t, Z)), "HullLight")
     # Lit windows down the leading and trailing sides (the transit tube).
     for side in (-1, 1):
         r = HUB_RADIUS + 40
         while r < RING_IN - 36:
-            if rng.random() > 0.2:
+            if rng.random() > 0.2 and all(abs(r - rib) > 2.5 for rib in SPOKE_RIBS):
                 p.add(box(d * r + t * side * (w / 2 + 0.1), (3.0, 0.6, 1.8), (d, t, Z)), "Window")
             r += 8.0
     # White strobes where the spoke meets the wheel.
@@ -401,6 +439,7 @@ def build_hangar(rng):
         for z in range(int(front + 14), int(cz + sz / 2 - 6), 7):
             if rng.random() > 0.2:
                 p.add(box((cx + side * (side_x(cy + 8) + 0.1), cy + 8, z), (0.6, 1.8, 3.2)), "Window")
+    add_hangar_detail(p)
     return p
 
 
@@ -470,8 +509,166 @@ def build_dish(rng):
     return p
 
 
+# ---------------------------------------------------------------- detail
+# Seeded on their own (not the windows' rng), so changing detail never moves a
+# window.
+def ring_box(deg, r, z, size):
+    """A box at angle `deg` round the Z axis, `r` out and `z` along it; `size`
+    is (radial, round the axis, along Z)."""
+    return box(radial(deg) * r + Z * z, size, (radial(deg), tangent(deg), Z))
+
+
+def free_arcs(blocked, step=0.25):
+    """The stretches round the wheel, (start, end) in degrees, clear of every
+    (angle, half-width) in `blocked`."""
+    arcs, start = [], None
+    n = int(360.0 / step)
+    for k in range(n + 1):
+        deg = k * step
+        clear = k < n and not any(near_angle(deg, [a], w) for a, w in blocked)
+        if clear and start is None:
+            start = deg
+        elif not clear and start is not None:
+            arcs.append((start, deg - step))
+            start = None
+    return arcs
+
+
+def conduit_runs(p, rng, blocked, r, z, size):
+    """A pipe laid round the wheel at radius `r` and height `z`, `size` (radial,
+    Z) in cross-section, broken into straight runs of 2-3.5 degrees with a
+    junction box between them, and kept out of `blocked`."""
+    for a0, a1 in free_arcs(blocked):
+        deg = a0
+        while deg < a1 - 1.0:
+            run = min(rng.uniform(2.0, 3.5), a1 - deg)
+            half = math.radians(run / 2)
+            p.add(ring_box(deg + run / 2, r * math.cos(half), z, (size[0], 2.0 * r * math.sin(half), size[1])),
+                  "Dark")
+            end = deg + run
+            if end < a1 - 0.5:
+                p.add(ring_box(end, r, z, (size[0] + 1.2, 3.0, size[1] + 1.2)), "HullDark")
+            deg = end + rng.uniform(0.3, 0.8)
+
+
+def add_ring_detail(p, section):
+    """Frames, conduits, hull plates, radiator fins and a guide rail on the wheel."""
+    rng = random.Random(31)
+    # Frames: the cross-section a little proud, wrapped round the wheel at the
+    # arc joints that have no collar or module.
+    frame = [(t + (0.7 if t > 0 else -0.7), r + (0.9 if r > (RING_IN + RING_OUT) / 2 else -0.9))
+             for t, r in section]
+    half = math.radians(FRAME_SPAN / 2)
+    for deg in FRAME_ANGLES:
+        a = math.radians(deg)
+        p.add(lathe(frame, 1, closed=True, a0=a - half, a1=a + half), "HullDark")
+    collars = [(a, COLLAR_SPAN / 2 + 1.5) for a in COLLAR_ANGLES]
+    frames = [(a, FRAME_SPAN / 2 + 1.0) for a in FRAME_ANGLES]
+    modules = [(a, 3.5) for a in MODULE_ANGLES]
+    fins = [(a, FIN_COUNT / 2 * FIN_STEP + 1.5) for a in FIN_ANGLES]
+
+    # Side faces (what you see head on): a conduit between the window rows.
+    for side in (-1, 1):
+        conduit_runs(p, rng, collars + frames, (RING_IN + RING_OUT) / 2, side * (RING_HALF + 0.5), (3.0, 1.0))
+
+    # Outside: a plate on each lathe segment (flush with its flat face) in
+    # one of the two tones its arc isn't, a conduit either side of them, and
+    # clusters of radiator fins, which break up the wheel's silhouette.
+    segments = RING_ARCS * RING_ARC_SEGMENTS
+    seg = 360.0 / segments
+    for j in range(segments):
+        deg = (j + 0.5) * seg
+        if rng.random() < 0.25 or any(near_angle(deg, [a], w + seg / 2) for a, w in collars + modules + fins):
+            continue
+        base = "Hull" if (j // RING_ARC_SEGMENTS) % 2 else "HullLight"
+        tone = rng.choice([t for t in ("Hull", "HullLight", "HullDark") if t != base])
+        p.add(ring_box(deg, RING_OUT * math.cos(math.radians(seg / 2)) + 0.25, 0.0,
+                       (0.5, 1.6 * RING_OUT * math.sin(math.radians(seg / 2)), 13.0)), tone)
+    for z in (-9.5, 9.5):
+        conduit_runs(p, rng, collars + modules, RING_OUT + 1.0, z, (2.0, 2.2))
+    for c in FIN_ANGLES:
+        span = math.radians(FIN_COUNT / 2 * FIN_STEP + 0.6)
+        p.add(ring_box(c, RING_OUT + 0.5, 0.0, (1.0, 2.0 * RING_OUT * math.sin(span), 18.0)), "HullDark")
+        for i in range(FIN_COUNT):
+            p.add(ring_box(c + (i - (FIN_COUNT - 1) / 2) * FIN_STEP, RING_OUT + 5.0, 0.0, (9.0, 0.8, 16.0)),
+                  "HullLight")
+
+    # Inside (what you see flying through): a rail down the middle, lit every
+    # other segment, broken where the spokes meet the wheel.
+    in_r = RING_IN * math.cos(math.radians(seg / 2))
+    chord = 2.0 * RING_IN * math.sin(math.radians(seg / 2))
+    for j in range(segments):
+        deg = (j + 0.5) * seg
+        if any(near_angle(deg, [a], w) for a, w in collars):
+            continue
+        p.add(ring_box(deg, in_r - 0.6, 0.0, (1.2, chord * 0.96, 3.0)), "Dark")
+        if j % 2 == 0:
+            p.add(ring_box(deg, in_r - 1.4, 0.0, (0.6, 1.6, 1.6)), "Window")
+
+
+def add_core_detail(p):
+    """Ribs down the hub's cones, cargo containers and tanks on the spindle."""
+    rng = random.Random(53)
+    # Ribs down both cones, on the lathe's vertex lines (where the surface is
+    # at its full radius), standing out along the cone's normal.
+    aft = [(30.0, HUB_RADIUS), (40.0, 56.0), (70.0, 46.0), (80.0, 34.0)]
+    for cone in (aft, [(-z, r) for z, r in reversed(aft)]):
+        for k in range(16):
+            d = radial(22.5 * k)
+            for (za, ra), (zb, rb) in zip(cone, cone[1:]):
+                n = Vector((-(rb - ra), zb - za)).normalized()   # (z, r)
+                a = Z * (za + n.x * 0.8) + d * (ra + n.y * 0.8)
+                b = Z * (zb + n.x * 0.8) + d * (rb + n.y * 0.8)
+                p.add(beam(a, b, 2.2, 1.6, up=d), "HullLight")
+    # Cargo containers in two rows round the narrow section ahead of the hub,
+    # each with a dark band round its middle.
+    for z in CONTAINER_ROWS:
+        for k in range(8):
+            if rng.random() < 0.15:
+                continue
+            deg = 22.5 + 45.0 * k
+            p.add(ring_box(deg, 38.1, z, (9.0, 12.0, 20.0)),
+                  rng.choice(("Hull", "HullLight", "HullDark", "HullLight", "Accent")))
+            p.add(ring_box(deg, 38.1, z, (9.4, 12.4, 1.2)), "Dark")
+    # Tanks round the narrow section behind it, with a blue band.
+    z0, z1 = TANK_Z
+    for k in range(6):
+        o = radial(30.0 + 60.0 * k) * 41.0
+        p.add(lathe([(z0, 3.0), (z0 + 4, 7.0), (z1 - 4, 7.0), (z1, 3.0)], 12, origin=o), "HullLight")
+        mid = (z0 + z1) / 2
+        p.add(lathe([(mid - 3, 7.3), (mid + 3, 7.3)], 12, origin=o), "Accent")
+
+
+def add_hangar_detail(p):
+    """Plates under the hangar, machinery on its roof (clear of the pylon)."""
+    rng = random.Random(71)
+    cx, cy, cz = HANGAR_CENTER
+    sx, sy, sz = HANGAR_SIZE
+    front = cz - sz / 2
+    for i in range(4):
+        for j in range(6):
+            if rng.random() < 0.2:
+                continue
+            p.add(box((cx + (i - 1.5) * 14.0, cy - sy / 2 - 0.25, front + 8.0 + j * 15.0), (12.5, 0.5, 13.5)),
+                  rng.choice(("Hull", "HullDark")))
+    top = cy + sy / 2
+    placed = 0
+    for _ in range(200):
+        if placed >= 9:
+            break
+        w, length = rng.uniform(4.0, 9.0), rng.uniform(4.0, 10.0)
+        x = rng.uniform(cx - sx / 2 + w / 2 + 2, cx + sx / 2 - w / 2 - 2)
+        z = rng.uniform(front + length / 2 + 2, cz + sz / 2 - length / 2 - 2)
+        # The pylon (30 x 50, centred 6 m aft of the hangar's centre).
+        if abs(x - cx) < 15 + w / 2 + 2 and abs(z - (cz + 6)) < 25 + length / 2 + 2:
+            continue
+        h = rng.uniform(1.5, 4.0)
+        p.add(box((x, top + h / 2, z), (w, h, length)), rng.choice(("Dark", "HullDark", "Hull")))
+        placed += 1
+
+
 def build():
-    scene = bpy.data.scenes.get("SpaceStation") or bpy.data.scenes.new("SpaceStation")
+    scene =bpy.data.scenes.get("SpaceStation") or bpy.data.scenes.new("SpaceStation")
     if bpy.context.window:
         bpy.context.window.scene = scene
     col = bpy.data.collections.get("SpaceStation")
@@ -526,6 +723,9 @@ def proxies():
     while z < SPINDLE_PROFILE[-1][0]:
         half = SPINDLE_STEP / 2
         widest = max(spindle_radius(z + t * half / 4) for t in range(-4, 5))
+        for z0, z1, reach in FITTINGS:
+            if z0 < z + half and z1 > z - half:
+                widest = max(widest, reach)
         spheres.append((0.0, 0.0, z, round(math.hypot(widest, half) + 2.0)))
         z += SPINDLE_STEP
     spheres.append((0.0, 0.0, -312.0, 22.0))     # bow antennas

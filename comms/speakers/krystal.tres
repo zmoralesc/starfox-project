@@ -1,9 +1,11 @@
 [gd_resource type="Resource" script_class="Pilot" format=3]
 
 [ext_resource type="Script" path="res://comms/pilot.gd" id="1_pilot"]
+[ext_resource type="Texture2D" path="res://comms/portraits/krystal.png" id="2_portrait"]
 
 [resource]
 script = ExtResource("1_pilot")
+portrait = ExtResource("2_portrait")
 display_name = "Krystal"
 color = Color(1, 0.45, 0.75, 1)
 beep_pitch = 1.35
