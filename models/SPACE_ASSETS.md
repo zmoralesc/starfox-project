@@ -47,6 +47,8 @@ Read the **global brief** first: every asset depends on it.
 - **Facing.** Ships and the station point their **bow/nose along Blender +Y** (the game's forward, −Z). (This is the opposite of the Corneria kit, whose fronts faced −Y.) Up is +Z.
 - **Normals point outwards.** The game draws **only the front of each face**. Check every asset with **Viewport Shading → Backface Culling** on. Thin parts (panels, fins, dishes) need real thickness.
 - **Closed meshes.** Solid parts are closed: no holes, no loose internal faces, no zero-area faces, seams merged.
+- **Nothing floats.** Every piece touches or sinks into the body it belongs to, with no gap at all, not even centimetres. Work out the height and width of the surface under a piece at its exact position (lofts narrow and slope, chamfers cut corners) rather than reusing a nearby number; on a sloping surface, make the piece thick enough to sink in at both ends. Turret pads and anything a turret stands on must be fully supported. (The Juggernaut's first export had its stern castle 6 m above the deck, turret pads hovering 18 m up or hanging off an edge, and windows hanging in the air where the hull side sloped away beneath them.)
+- **No shared face planes.** Two visible faces of different pieces must never lie in the same plane where they overlap: the game can't tell which is in front, and the spot flickers. When pieces meet face to face, make one stand slightly proud (0.3–0.5 m) or sink it in. Watch for boxes with equal depths at the same position (a lintel and its legs, a cowl and its lip) and for "recessed" panels whose front face sits exactly on the surface.
 - **Apply all transforms** (scale 1, rotation 0) on mesh data, except where an object's origin is a required pivot (then the object origin sits at the pivot and the mesh is modelled around it).
 - **Not included:** no unapplied modifiers, armatures, animation, lights or cameras in exported files.
 - **Polygon budget:** each asset has one. Stay within it.
@@ -347,6 +349,60 @@ Constraints:
 - **Part objects and pivots:** `Juggernaut_ThrusterPod` stays the model used for both side engines, so update its pivot positions and report them. If the pod's housing becomes part of the hull's engine block, keep only the nozzle and core in the part object, so a destroyed engine chars without charring the hull.
 
 Re-render from the **final** saved file (the previous screenshots were saved 20 minutes before the `.blend`): `C1_silhouette`, `C1_top`, `C1_rear`, `C1_below`, `C1_hero` and `C1_side`. Look at them yourself before reporting. Report the new bounding box, portal clearance, thruster pivots, the exposure measurements and triangle counts. **Then stop.**
+
+### C1 review 3: redo the stern from the approved version, at 1.5× size
+The review 2 run got the stern right but also changed things it was told to keep: it removed the green radiator trench and its arches, changed the material colours, flattened the flanks and changed the render look. That version is rejected. Start again from the approved version, and make two changes only.
+
+**Start from the approved script.** The script that built the approved model (your `build_c1_juggernaut_v8.py`) is now in the project as `models/destroyer/source/juggernaut_c1_approved.py`. Your review 2 script is beside it as `juggernaut_c1_stern_attempt.py`, for reference: reuse its stern code if it helps. Copy the approved script to a **new file**, `models/destroyer/source/juggernaut_c1.py`, make the changes below in that copy, and run it. Leave `juggernaut_c1_approved.py` and `juggernaut_c1_stern_attempt.py` unchanged.
+
+**Change 1: the stern** (as in review 2, numbers before scaling):
+- The pylons and struts are removed.
+- The side thrusters move to X = ±62 m, at Z = 36 m.
+- The stern widens into an armoured engine block about 170 m across, flaring over the last ~100 m, with all three engines built in.
+- The nozzles stick out at least 15 m (before scaling) past the block's back face.
+- `Juggernaut_ThrusterPod` keeps only the nozzle and core.
+
+**Change 2: scale the ship by 1.5.** The user wants the destroyer 1.5 times its current size: about 1,030 m long instead of 685 m.
+- Add a `SCALE = 1.5` constant and apply it to **everything that defines the ship's size and layout**: the hull, bridge, thrusters, hangar doors and bays, the part pivots, the launch points and the turret mount positions.
+- **Don't scale the turret** (`Turret_Base`, `Turret_Yaw`, `Turret_Pitch`, the muzzles) or the 10 m turret mount pads. They stay at their real size, so a bigger ship carries the same-sized guns.
+- The simplest way: keep every layout number in the script as it is, and multiply by `SCALE` where geometry and positions are created (as `G()` did in the old `build_destroyer.py`).
+
+**Everything else stays exactly as in the approved script**, including:
+- the radiator trench, its green glow and its arches;
+- the hull forms, the bridge and the turret;
+- the material names and **colours** (`COLORS`);
+- the render setup (lighting, background, outline) and the camera framing, adjusted only for the bigger size.
+
+The user will check this: I'll compare `juggernaut_c1.py` with `juggernaut_c1_approved.py` line by line. **Every difference must belong to one of the two changes.** If you find you need any other change, don't make it: describe it in your report instead.
+
+**Measure on the final geometry, after scaling:**
+- the bounding box;
+- the portal clearance: it should come out at about 215 m against the 220 m limit, and if it's over 220 m say so rather than shrinking the ship;
+- the nozzle exposure from behind and from 45° above and below;
+- the four hangar checks, with the strafing line **60 m out from the hull's side** (the brief allows 40–100 m; the last run measured 17 m);
+- the part pivots, turret mount positions and triangle counts.
+
+**Then:**
+1. Save the `.blend`.
+2. Re-render **all nine** `C1_*.png` views from the saved file, and delete the stray `test_hero.png`.
+3. Look at the renders before reporting.
+4. Report, then stop.
+
+### C1 approved; notes for C2
+The user approved the C1 form pass built by `juggernaut_c1.py` (review 3: the armoured stern, at 1.5× size). Pass C2 builds on it as follows:
+
+- **Work in a new script.** Copy `juggernaut_c1.py` to `models/destroyer/source/juggernaut_c2.py` and make all C2 changes there. Leave `juggernaut_c1.py` and the other scripts unchanged. The script must rebuild the whole ship by itself when run, with no runtime patches or wrappers: whatever you need to change goes into the script.
+- **Fix the two script bugs you found** in that copy:
+  - `object_outline_color` takes three values in Blender 5.2;
+  - `setup_all_materials()` must not reset the faces' material indices.
+- **Keep the C1 forms.** C2 adds detail and refines; it doesn't remove or reshape what was approved, apart from the three refinements below. I'll compare `juggernaut_c2.py` with `juggernaut_c1.py` again: every difference must be detail, one of these refinements, the two bug fixes, collision, markers or export code.
+- **Three refinements** carried over from the C1 review:
+  1. **Flanks:** the flank "volumes" are still mostly flat rectangular panels on one smooth hull. Give the flanks real stepped volumes: armour blocks that stand out several metres and change the cross-section, as the Style section describes.
+  2. **Belly:** the keel is a single beam with ribs. Do the same there: two or three keel tiers and a few big blocks.
+  3. **Bridge:** it reads as a stack of slabs (plinth, amber band, lid, roof). Give the command head more character: shape the visor brow, give the window band some depth, make the head distinct from its neck. It's the main target, so it should be the most recognisable shape on the ship.
+- **Scale:** the ship is built at `SCALE = 1.5`. **Tertiary detail is sized in real metres**: windows about 1.8 × 0.9 m, lights 1–3 m, hatches and vents a few metres. Don't multiply detail by `SCALE`: a bigger ship gets more windows, not bigger ones. The turret and its mount pads stay unscaled, as in C1.
+- **Collision pieces** are in the scaled ship's real size, covering it within a few metres.
+- **Report the portal clearance as measured**, as in C1: it's about 229.5 m against the 220 m limit, and the game's portal will be enlarged to fit.
 
 ### Pass C2: the detail pass (only after the user approves C1)
 Add the tertiary detail and painted variation by the rules above. Then build:

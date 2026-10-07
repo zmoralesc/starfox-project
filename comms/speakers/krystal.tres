@@ -12,4 +12,4 @@ beep_pitch = 1.35
 accent_color = Color(1, 0.45, 0.75, 1)
 acknowledgements = PackedStringArray("Yessir!", "Yes, captain!")
 celebrations = PackedStringArray("Woo! Did you see that?", "Got 'em! Too easy.", "Enemy ship down!")
-praise = PackedStringArray("That's my Fox!", "Impressive work!")
+praise = PackedStringArray("That's my Fox!", "Nicely done, love!")

@@ -18,7 +18,8 @@ extends AnimatableBody3D
 ##
 ## The hull itself (this body) is on the World layer: it stops all shots,
 ## blocks line of sight and is solid. A grid of ObstacleProxy spheres filling
-## hull_outline lets the AI steer around it.
+## hull_outline (and any extra_proxies or obstacle_boxes) lets the AI steer
+## around it.
 ##
 ## The model is built in Blender by models/destroyer/source/build_destroyer.py
 ## (one .glb for the hull, one per part type); its materials are cel-shaded at
@@ -30,14 +31,22 @@ const TOON := preload("res://effects/toon.gdshader")
 const TOON_CLIP := preload("res://effects/toon_clip.gdshader")
 ## Clip-plane copies of toon materials, shared by every destroyer.
 static var _clip_copies := {}
+## Trimesh shapes built from hull models (hull_collision_from_model), by mesh,
+## shared by every destroyer.
+static var _hull_shapes := {}
 
 @export_group("Hull shape")
+## Build the hull's collision from the triangles of the `Hull` model at load,
+## so it matches the model exactly (for hand-made models), in addition to any
+## CollisionShape3D children.
+@export var hull_collision_from_model := false
 ## The hull's outline seen from above, as (x, z) points in this node's space
 ## (-Z is the bow), matching the model. Avoidance spheres fill it and death
 ## explosions are scattered inside it. Gaps in the outline (between the prongs)
 ## stay open.
 @export var hull_outline := PackedVector2Array()
-## Height of the avoidance spheres' centres, and their radius...
+## Height of the avoidance spheres' centres, and their radius (0 = no grid
+## over hull_outline: only extra_proxies and the thrusters' spheres)...
 @export var proxy_height := -2.0
 @export var proxy_radius := 16.0
 ## ...and their spacing across (x) and along (z) the hull.
@@ -45,6 +54,11 @@ static var _clip_copies := {}
 ## Extra spheres for parts that stand out of the hull outline (the bridge
 ## tower, hangar housings): local position in xyz, radius in w.
 @export var extra_proxies: Array[Vector4] = []
+## Avoidance boxes (ObstacleBox) in this node's space, for hulls that spheres
+## fit badly: the AI keeps box_margin (plus its own avoid_margin) from their
+## faces. The thrusters keep their spheres either way.
+@export var obstacle_boxes: Array[AABB] = []
+@export var box_margin := 10.0
 
 @export_group("Behaviour")
 @export var cruise_speed := 8.0
@@ -109,6 +123,7 @@ var _dying := false
 var _launch_timer := 0.0
 var _next_hangar := 0
 var _proxies: Array[ObstacleProxy] = []
+var _boxes: Array[ObstacleBox] = []
 ## hull_outline's bounding rectangle (x, z).
 var _hull_bounds := Rect2()
 var _meshes: Array[GeometryInstance3D] = []
@@ -147,6 +162,8 @@ func _ready() -> void:
 	_hull_bounds = Rect2(hull_outline[0], Vector2.ZERO) if not hull_outline.is_empty() else Rect2()
 	for point in hull_outline:
 		_hull_bounds = _hull_bounds.expand(point)
+	if hull_collision_from_model:
+		_build_hull_collision()
 	_build_obstacle_proxies()
 	# Cel-shade the imported models' materials to match the rest of the game.
 	ToonMaterial.convert_tree(self)
@@ -411,18 +428,25 @@ func _smash_asteroids() -> void:
 			continue
 		if global_position.distance_to(asteroid.global_position) > reach + asteroid.radius:
 			continue
+		var hit := false
 		for proxy in _proxies:
 			if proxy.global_position.distance_to(asteroid.global_position) < proxy.radius + asteroid.radius * 0.85:
-				asteroid.shatter()
+				hit = true
 				break
+		for box in _boxes:
+			if hit:
+				break
+			hit = box.contains(asteroid.global_position, asteroid.radius * 0.85)
+		if hit:
+			asteroid.shatter()
 
 
-## Cover the hull with spheres so AI ships steer around its real shape: a grid
+## Cover the hull with spheres (and boxes) so AI ships steer around its real shape: a grid
 ## over hull_outline (symmetric about the centre line), keeping only points
-## inside it, plus extra_proxies and one per thruster.
+## inside it, plus extra_proxies and one per thruster; then obstacle_boxes.
 func _build_obstacle_proxies() -> void:
 	var z := _hull_bounds.position.y + proxy_spacing.y * 0.5
-	while z <= _hull_bounds.end.y:
+	while proxy_radius > 0.0 and z <= _hull_bounds.end.y:
 		var x := 0.0
 		while x <= _hull_bounds.end.x:
 			for side: float in ([1.0] if x == 0.0 else [1.0, -1.0]):
@@ -434,6 +458,33 @@ func _build_obstacle_proxies() -> void:
 		_add_proxy(Vector3(extra.x, extra.y, extra.z), extra.w)
 	for thruster in thrusters:
 		_add_proxy(thruster.position, thruster.radius)
+	for aabb in obstacle_boxes:
+		var box := ObstacleBox.new()
+		box.size = aabb.size
+		box.margin = box_margin
+		box.position = aabb.get_center()
+		add_child(box)
+		_boxes.append(box)
+
+
+## One trimesh collision shape (on this body, the World layer) per mesh in the
+## `Hull` model. Trimeshes are fine here: the body only moves kinematically,
+## and fighters, bolts and rays all collide with them.
+func _build_hull_collision() -> void:
+	var hull := get_node_or_null(^"Hull") as Node3D
+	if hull == null:
+		push_warning("Destroyer: hull_collision_from_model is on but there's no Hull node")
+		return
+	for node in hull.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		var shape: Shape3D = _hull_shapes.get(mesh_instance.mesh)
+		if shape == null:
+			shape = mesh_instance.mesh.create_trimesh_shape()
+			_hull_shapes[mesh_instance.mesh] = shape
+		var collision := CollisionShape3D.new()
+		collision.shape = shape
+		collision.transform = global_transform.affine_inverse() * mesh_instance.global_transform
+		add_child(collision)
 
 
 func _add_proxy(local_position: Vector3, sphere_radius: float) -> void:

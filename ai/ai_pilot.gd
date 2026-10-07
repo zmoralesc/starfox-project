@@ -32,6 +32,11 @@ const VIEW_MARGIN := 3.0
 ## Seconds of flight ahead to check for obstacles.
 @export var avoid_lookahead_time := 1.5
 @export var avoid_margin := 6.0
+## Attacking a structure (a destroyer part): where our path runs into an
+## ObstacleBox (its hull) within this distance (m, plus the target's radius) of
+## the target, the box is what the target is mounted on and is ignored, so we
+## can line up a shot. Farther along the path, the box still counts.
+@export var mount_ignore_distance := 60.0
 ## Seconds spent steering away from a surface after scraping it.
 @export var recover_duration := 0.8
 ## While engaging, also turn at the rate the target is moving across our view,
@@ -264,6 +269,13 @@ func _clear_of_obstacles(point: Vector3) -> Vector3:
 	for node in get_tree().get_nodes_in_group("obstacles"):
 		if node == self:
 			continue
+		var box := node as ObstacleBox
+		if box:
+			# Out through the nearest face, a little beyond the clearance.
+			var out := box.way_out(point, box.margin + avoid_margin)
+			if out != Vector3.ZERO:
+				point += out + out.normalized() * 1.0
+			continue
 		var obstacle := node as Node3D
 		var clearance := radius_of(obstacle) * 1.3 + avoid_margin
 		var offset := point - obstacle.global_position
@@ -311,6 +323,28 @@ func _avoid_obstacles(goal: Vector3) -> Vector3:
 	for node in get_tree().get_nodes_in_group("obstacles"):
 		# A fighter we're chasing is handled by the pursuit logic instead.
 		if node == self or (node == _engage and node is Fighter):
+			continue
+		var box := node as ObstacleBox
+		if box:
+			var grow := box.margin + avoid_margin
+			if global_position.distance_to(box.global_position) > look + box.radius + grow:
+				continue
+			var entry_t := box.entry_distance(global_position, forward, minf(look, nearest), grow)
+			if entry_t == INF or entry_t >= nearest:
+				continue
+			# (Nudged in, so the point counts as inside despite rounding.)
+			var entry := global_position + forward * (entry_t + 0.01)
+			# A box is often a whole hull, so it can't be skipped outright like a
+			# sphere holding the target: only where our path meets it near the target.
+			if structure and entry.distance_to(structure.global_position) < mount_ignore_distance + radius_of(structure):
+				continue
+			nearest = entry_t
+			# Round its nearest side: out of the clearance zone sideways, plus half
+			# the clearance again (as for spheres).
+			var out := box.way_out(entry, grow, forward)
+			if out == Vector3.ZERO:
+				out = global_basis.y * grow
+			result = entry + out + out.normalized() * grow * 0.5
 			continue
 		var obstacle := node as Node3D
 		var rel := obstacle.global_position - global_position

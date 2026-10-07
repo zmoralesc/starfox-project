@@ -1,0 +1,219 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://enemies/destroyer.gd" id="1_destroyer"]
+[ext_resource type="Script" path="res://enemies/destroyer_part.gd" id="2_part"]
+[ext_resource type="Script" path="res://enemies/destroyer_hangar.gd" id="3_hangar"]
+[ext_resource type="PackedScene" path="res://enemies/juggernaut_turret.tscn" id="4_turret"]
+[ext_resource type="PackedScene" path="res://models/destroyer/juggernaut_hull.glb" id="5_hull"]
+[ext_resource type="PackedScene" path="res://models/destroyer/juggernaut_bridge.glb" id="6_bridge"]
+[ext_resource type="PackedScene" path="res://models/destroyer/juggernaut_thruster_keel.glb" id="7_keel"]
+[ext_resource type="PackedScene" path="res://models/destroyer/juggernaut_thruster_pod.glb" id="8_pod"]
+[ext_resource type="PackedScene" path="res://models/destroyer/juggernaut_hangar_door.glb" id="9_door"]
+
+[sub_resource type="StandardMaterial3D" id="Mat_bay"]
+albedo_color = Color(1, 0.6, 0.25, 1)
+emission_enabled = true
+emission = Color(1, 0.55, 0.2, 1)
+emission_energy_multiplier = 1.5
+
+[sub_resource type="BoxMesh" id="Mesh_bay"]
+material = SubResource("Mat_bay")
+size = Vector3(0.15, 48, 108)
+
+[sub_resource type="BoxShape3D" id="Shape_bridge"]
+size = Vector3(66, 62, 60)
+
+[sub_resource type="CylinderShape3D" id="Shape_keel"]
+height = 66.0
+radius = 33.0
+
+[sub_resource type="CylinderShape3D" id="Shape_pod"]
+height = 60.0
+radius = 27.0
+
+[sub_resource type="BoxShape3D" id="Shape_door"]
+size = Vector3(4.8, 51, 114)
+
+[node name="Juggernaut" type="AnimatableBody3D"]
+collision_mask = 0
+script = ExtResource("1_destroyer")
+hull_collision_from_model = true
+hull_outline = PackedVector2Array(-120.0, 525.0, -120.0, 500.0, -127.0, 500.0, -127.0, 475.0, -128.0, 475.0, -128.0, 425.0, -126.0, 425.0, -126.0, 400.0, -110.0, 400.0, -110.0, 375.0, -112.0, 375.0, -112.0, 350.0, -114.0, 350.0, -114.0, 325.0, -116.0, 325.0, -116.0, 300.0, -118.0, 300.0, -118.0, 275.0, -120.0, 275.0, -120.0, 250.0, -122.0, 250.0, -122.0, 225.0, -123.0, 225.0, -123.0, 200.0, -153.0, 200.0, -153.0, 175.0, -152.0, 175.0, -152.0, 150.0, -153.0, 150.0, -153.0, 125.0, -152.0, 125.0, -152.0, 100.0, -153.0, 100.0, -153.0, 75.0, -134.0, 75.0, -134.0, 50.0, -133.0, 50.0, -133.0, -25.0, -134.0, -25.0, -134.0, -50.0, -153.0, -50.0, -153.0, -75.0, -152.0, -75.0, -152.0, -125.0, -153.0, -125.0, -153.0, -150.0, -152.0, -150.0, -152.0, -175.0, -153.0, -175.0, -153.0, -200.0, -131.0, -200.0, -131.0, -225.0, -120.0, -225.0, -120.0, -250.0, -116.0, -250.0, -116.0, -275.0, -114.0, -275.0, -114.0, -300.0, -111.0, -300.0, -111.0, -325.0, -101.0, -325.0, -101.0, -350.0, -91.0, -350.0, -91.0, -375.0, -82.0, -375.0, -82.0, -400.0, -72.0, -400.0, -72.0, -425.0, -65.0, -425.0, -65.0, -450.0, -56.0, -450.0, -56.0, -475.0, -42.0, -475.0, -42.0, -500.0, -35.0, -500.0, -35.0, -525.0, -23.0, -525.0, -23.0, -550.0, 23.0, -550.0, 23.0, -525.0, 35.0, -525.0, 35.0, -500.0, 42.0, -500.0, 42.0, -475.0, 56.0, -475.0, 56.0, -450.0, 65.0, -450.0, 65.0, -425.0, 72.0, -425.0, 72.0, -400.0, 82.0, -400.0, 82.0, -375.0, 91.0, -375.0, 91.0, -350.0, 101.0, -350.0, 101.0, -325.0, 111.0, -325.0, 111.0, -300.0, 114.0, -300.0, 114.0, -275.0, 116.0, -275.0, 116.0, -250.0, 120.0, -250.0, 120.0, -225.0, 131.0, -225.0, 131.0, -200.0, 153.0, -200.0, 153.0, -175.0, 152.0, -175.0, 152.0, -150.0, 153.0, -150.0, 153.0, -125.0, 152.0, -125.0, 152.0, -75.0, 153.0, -75.0, 153.0, -50.0, 134.0, -50.0, 134.0, -25.0, 133.0, -25.0, 133.0, 50.0, 134.0, 50.0, 134.0, 75.0, 153.0, 75.0, 153.0, 100.0, 152.0, 100.0, 152.0, 125.0, 153.0, 125.0, 153.0, 150.0, 152.0, 150.0, 152.0, 175.0, 153.0, 175.0, 153.0, 200.0, 123.0, 200.0, 123.0, 225.0, 122.0, 225.0, 122.0, 250.0, 120.0, 250.0, 120.0, 275.0, 118.0, 275.0, 118.0, 300.0, 116.0, 300.0, 116.0, 325.0, 114.0, 325.0, 114.0, 350.0, 112.0, 350.0, 112.0, 375.0, 110.0, 375.0, 110.0, 400.0, 126.0, 400.0, 126.0, 425.0, 128.0, 425.0, 128.0, 475.0, 127.0, 475.0, 127.0, 500.0, 120.0, 500.0, 120.0, 525.0)
+proxy_radius = 0.0
+obstacle_boxes = Array[AABB]([AABB(-97.0, -44.0, -324.4, 192.0, 176.0, 800.0), AABB(-89.0, -44.0, 139.6, 176.0, 256.0, 248.0), AABB(-81.0, -36.0, -420.4, 160.0, 160.0, 896.0), AABB(-57.0, -36.0, -516.4, 112.0, 128.0, 1000.0), AABB(-153.0, -12.0, -220.4, 312.0, 152.0, 440.0), AABB(-57.0, -52.0, 131.6, 112.0, 320.0, 112.0), AABB(-49.0, -36.0, -548.4, 96.0, 120.0, 1032.0), AABB(-137.0, -36.0, -244.4, 280.0, 88.0, 536.0), AABB(-113.0, -28.0, -388.4, 224.0, 88.0, 864.0), AABB(-49.0, -60.0, -300.4, 96.0, 208.0, 688.0), AABB(-73.0, -12.0, -484.4, 152.0, 96.0, 968.0), AABB(-129.0, -28.0, 363.6, 264.0, 136.0, 112.0), AABB(-65.0, -52.0, -284.4, 136.0, 208.0, 672.0), AABB(-105.0, -36.0, -372.4, 208.0, 136.0, 848.0), AABB(-121.0, -36.0, -348.4, 240.0, 112.0, 824.0)])
+cruise_speed = 10.0
+stop_distance = 375.0
+portal_radius = 190.0
+portal_height = 95.0
+death_blast_height = 150.0
+death_blast_size = Vector2(60, 125)
+final_blast_position = Vector3(0, 90, 120)
+final_blast_size = 290.0
+
+[node name="Hull" parent="." instance=ExtResource("5_hull")]
+
+[node name="Bridge" type="StaticBody3D" parent="."]
+position = Vector3(0, 204, 195)
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("2_part")
+kind = 0
+max_health = 70
+radius = 50.0
+score = 3
+display_name = "BRIDGE"
+
+[node name="Model" parent="Bridge" instance=ExtResource("6_bridge")]
+
+[node name="Shape" type="CollisionShape3D" parent="Bridge"]
+position = Vector3(0, 31, -2)
+shape = SubResource("Shape_bridge")
+
+[node name="ThrusterL" type="StaticBody3D" parent="."]
+position = Vector3(-93, 54, 502.5)
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("2_part")
+kind = 1
+max_health = 46
+radius = 34.0
+score = 2
+display_name = "THRUSTER"
+
+[node name="Model" parent="ThrusterL" instance=ExtResource("8_pod")]
+
+[node name="Light" type="OmniLight3D" parent="ThrusterL"]
+position = Vector3(0, 0, 50)
+light_color = Color(1, 0.45, 0.2, 1)
+light_energy = 5.0
+omni_range = 180.0
+
+[node name="Shape" type="CollisionShape3D" parent="ThrusterL"]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, -30)
+shape = SubResource("Shape_pod")
+
+[node name="ThrusterC" type="StaticBody3D" parent="."]
+position = Vector3(0, 30, 502.5)
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("2_part")
+kind = 1
+max_health = 46
+radius = 40.0
+score = 2
+display_name = "THRUSTER"
+
+[node name="Model" parent="ThrusterC" instance=ExtResource("7_keel")]
+
+[node name="Light" type="OmniLight3D" parent="ThrusterC"]
+position = Vector3(0, 0, 50)
+light_color = Color(1, 0.45, 0.2, 1)
+light_energy = 5.0
+omni_range = 180.0
+
+[node name="Shape" type="CollisionShape3D" parent="ThrusterC"]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, -33)
+shape = SubResource("Shape_keel")
+
+[node name="ThrusterR" type="StaticBody3D" parent="."]
+position = Vector3(93, 54, 502.5)
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("2_part")
+kind = 1
+max_health = 46
+radius = 34.0
+score = 2
+display_name = "THRUSTER"
+
+[node name="Model" parent="ThrusterR" instance=ExtResource("8_pod")]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+
+[node name="Light" type="OmniLight3D" parent="ThrusterR"]
+position = Vector3(0, 0, 50)
+light_color = Color(1, 0.45, 0.2, 1)
+light_energy = 5.0
+omni_range = 180.0
+
+[node name="Shape" type="CollisionShape3D" parent="ThrusterR"]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, -30)
+shape = SubResource("Shape_pod")
+
+[node name="BayGlowL" type="MeshInstance3D" parent="."]
+position = Vector3(-132.3, 36, 15)
+mesh = SubResource("Mesh_bay")
+
+[node name="LaunchL" type="Marker3D" parent="."]
+position = Vector3(-138, 36, 15)
+rotation = Vector3(0, 1.5708, 0)
+
+[node name="HangarL" type="StaticBody3D" parent="." node_paths=PackedStringArray("launch_point", "bay_glow")]
+position = Vector3(-132, 36, 15)
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("3_hangar")
+launch_point = NodePath("../LaunchL")
+bay_glow = NodePath("../BayGlowL")
+open_height = 54.0
+kind = 3
+max_health = 29
+radius = 40.0
+score = 2
+display_name = "HANGAR"
+
+[node name="Model" parent="HangarL" instance=ExtResource("9_door")]
+
+[node name="Shape" type="CollisionShape3D" parent="HangarL"]
+shape = SubResource("Shape_door")
+
+[node name="BayGlowR" type="MeshInstance3D" parent="."]
+position = Vector3(132.3, 36, 15)
+mesh = SubResource("Mesh_bay")
+
+[node name="LaunchR" type="Marker3D" parent="."]
+position = Vector3(138, 36, 15)
+rotation = Vector3(0, -1.5708, 0)
+
+[node name="HangarR" type="StaticBody3D" parent="." node_paths=PackedStringArray("launch_point", "bay_glow")]
+position = Vector3(132, 36, 15)
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("3_hangar")
+launch_point = NodePath("../LaunchR")
+bay_glow = NodePath("../BayGlowR")
+open_height = 54.0
+kind = 3
+max_health = 29
+radius = 40.0
+score = 2
+display_name = "HANGAR"
+
+[node name="Model" parent="HangarR" instance=ExtResource("9_door")]
+rotation = Vector3(0, 3.14159, 0)
+
+[node name="Shape" type="CollisionShape3D" parent="HangarR"]
+shape = SubResource("Shape_door")
+
+[node name="TurretBowL" parent="." instance=ExtResource("4_turret")]
+position = Vector3(-22.5, 112.692, -360)
+
+[node name="TurretBowR" parent="." instance=ExtResource("4_turret")]
+position = Vector3(22.5, 112.692, -360)
+
+[node name="TurretFwdL" parent="." instance=ExtResource("4_turret")]
+position = Vector3(-112.5, 121, -165)
+
+[node name="TurretFwdR" parent="." instance=ExtResource("4_turret")]
+position = Vector3(112.5, 121, -165)
+
+[node name="TurretMidL" parent="." instance=ExtResource("4_turret")]
+position = Vector3(-78, 115, -82.5)
+
+[node name="TurretMidR" parent="." instance=ExtResource("4_turret")]
+position = Vector3(78, 115, -82.5)
+
+[node name="TurretAftL" parent="." instance=ExtResource("4_turret")]
+position = Vector3(-63, 188.5, 195)
+
+[node name="TurretAftR" parent="." instance=ExtResource("4_turret")]
+position = Vector3(63, 188.5, 195)

@@ -18,6 +18,7 @@
 [ext_resource type="Resource" path="res://comms/speakers/krystal.tres" id="17_krystal"]
 [ext_resource type="Script" path="res://comms/mission_control.gd" id="18_mission_control"]
 [ext_resource type="Resource" path="res://comms/speakers/peppy.tres" id="19_peppy"]
+[ext_resource type="PackedScene" path="res://enemies/juggernaut.tscn" id="20_juggernaut"]
 
 [node name="Level" type="Node3D"]
 script = ExtResource("1_main")
@@ -74,6 +75,7 @@ leader = NodePath("../Ship")
 [node name="EnemySpawner" type="Node" parent="."]
 script = ExtResource("10_spawner")
 enemy_scene = ExtResource("12_light")
+destroyer_scene = ExtResource("20_juggernaut")
 
 [node name="HUD" parent="." instance=ExtResource("6_hud")]
 

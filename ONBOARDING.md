@@ -57,11 +57,14 @@ enemies/
   hurtbox.gd               Hurtbox: enlarged hit zone (Area3D) on enemy fighters; bolts and crosshair hit it, crashes don't
   fighter_model.gd         FighterModel: on the imported fighter model; cel-shades it, paints accent + lights per fighter type
   enemy_spawner.gd         EnemySpawner: waves, destroyer every 5th wave, global fighter cap
-  destroyer.gd / .tscn     Destroyer: capital ship (warp arrival, movement, launches, kill rule)
+  destroyer.gd / .tscn     Destroyer: capital ship (warp arrival, movement, launches, kill rule); destroyer.tscn is the previous ship
+  juggernaut.tscn          The Juggernaut: the current destroyer (Destroyer script), spawned by every mission
+  juggernaut_turret.tscn   The Juggernaut's turret (DestroyerTurret, meshes saved out of juggernaut_turret.glb)
   destroyer_part.gd        DestroyerPart: a destructible subsystem (bridge / thruster / turret / hangar)
   destroyer_turret.*       DestroyerTurret: hull turret (extends DestroyerPart)
   destroyer_hangar.gd      DestroyerHangar: hangar door that launches squadrons (extends DestroyerPart)
-  obstacle_proxy.gd        ObstacleProxy: invisible sphere the AI steers around (covers the destroyer hull)
+  obstacle_proxy.gd        ObstacleProxy: invisible sphere the AI steers around (covers the old destroyer hull)
+  obstacle_box.gd          ObstacleBox: invisible box the AI steers around (covers the Juggernaut hull)
 weapons/
   laser.gd                 Laser: bolt movement + hit detection (shared by both sides); splash on water (water_splash)
   laser.tscn               Player-side bolt (green, 1800 m/s on ship.tscn, 16 m streak; Bolt + Glow, see laser_bolt/laser_glow)
@@ -141,8 +144,9 @@ comms/
 models/
   arwing_assault/          Imported Arwing (glTF, CC-BY 4.0, credit in license.txt): the player and wingman model
   great_fox/               Imported Great Fox III (glTF, textures cut to 1024 px; no licence came with it, see README.txt)
-  destroyer/               The destroyer (our own model): hull, bridge, thruster and hangar-door .glb files
-    source/                build_destroyer.py (builds and exports them in Blender) + collision.txt (hull collision pieces) + proxies.txt (AI avoidance spheres)
+  destroyer/               Both destroyers: destroyer_*.glb (previous ship), juggernaut_*.glb (current: hull, bridge, keel/pod thrusters, door, turret, collision, markers) + juggernaut_turret_*.res (turret meshes saved by its import settings)
+    source/                build_destroyer.py (previous ship) + collision.txt + proxies.txt; juggernaut_c2.py (builds and exports the Juggernaut in Blender; _c1*.py are earlier passes) + juggernaut.blend; concepts/ and juggernaut_preview/ (design rounds, renders)
+  SPACE_ASSETS.md          Asset brief for the Space Station mission's models (the Juggernaut's design stages; station, fighter, asteroids still to do)
   enemy_fighter/           The Venomian "Mantis" enemy fighter (our own model), one .glb for every fighter type
     source/                build_enemy_fighter.py (builds and exports it in Blender)
   corneria/                The Corneria map (our own): corneria_map.tres (TerrainMap) + corneria_props.glb (everything on the ground); ASSETS.md (the kit's spec)
@@ -243,7 +247,7 @@ Defined as constants on `Fighter`.
 | `wingmen` | `Wingman` ×3 | WingCommand, HUD |
 | `enemies` | `EnemyFighter` | HUD, Cover Me |
 | `targets` | Asteroids, enemies, intact destroyer parts | Order targeting (`WingCommand.pick_target()`) |
-| `obstacles` | Asteroids, enemies, destroyer and space station `ObstacleProxy` spheres | AI obstacle avoidance |
+| `obstacles` | Asteroids, enemies, destroyer and space station `ObstacleProxy` spheres, Juggernaut `ObstacleBox` boxes | AI obstacle avoidance |
 | `hud` | HUD overlay | `call_group("hud", "add_score", n)` |
 | `comms` | `Comms` | `Comms.find(get_tree())` from anything that talks |
 | `wing_command` | `WingCommand` | HUD |
@@ -377,6 +381,20 @@ Any hit triggers `EVADE` (outside the cooldown), through `notify_shot`. **Astero
 **Waves (`EnemySpawner`):** `enemy_scene` sets the level's fighter type for both waves and destroyer hangars. The base level (`levels/level_base.tscn`, so every mission) uses `light_fighter.tscn`; the script default is the elite `enemy_fighter.tscn`. 3 fighters, then one more per wave up to 8. Each wave spawns 600 m out, roughly ahead of the player and facing random directions, pushed `spawn_station_margin` (100 m) clear of a space station if there is one. Every 5th wave also brings a destroyer (`destroyer_every`, 0 = never). The next wave comes 6 s after every enemy is gone, destroyer included. At most `max_fighters` (12) enemy fighters can be alive at once, counting hangar launches. Anything that should hold up the next wave must be registered with `spawner.track(node)`. Waves don't start until `start()` is called.
 
 ### Destroyer (`Destroyer`)
+- **Which ship:** every mission spawns the **Juggernaut** (`enemies/juggernaut.tscn`, set as `destroyer_scene` on the `EnemySpawner` in `level_base.tscn`); the previous ship, `destroyer.tscn`, is kept (set `destroyer_scene` back to switch). The values in the bullets below are `destroyer.tscn`'s unless marked; the Juggernaut's are in the table.
+
+  | Juggernaut | Value |
+  |---|---|
+  | Size | about 1,050 × 306 × 329 m |
+  | Bridge | (0, 204, 195), `radius` 50, health 70, score 3 |
+  | Thrusters | keel (0, 30, 502.5) `radius` 40; sides (±93, 54, 502.5) `radius` 34; health 46, score 2 |
+  | Hangar doors | (±132, 36, 15), 114 × 51 m, `open_height` 54; health 29, score 2 |
+  | Turrets | 8, `juggernaut_turret.tscn` (same values as the old turret): bow glacis (±22.5, 112.7, −360), sponson plates (±112.5, 121, −165), main deck (±78, 115, −82.5), castle bastions (±63, 188.5, 195); positions from `MOUNT_PADS` in `juggernaut_c2.py` |
+  | Hull collision | trimesh from the model (`hull_collision_from_model`) |
+  | AI avoidance | 15 `obstacle_boxes` fitted to the hull and bridge (no face more than ~25 m off the hull), `box_margin` 10; spheres only on the thrusters (`proxy_radius` 0, no `extra_proxies`) |
+  | Warp | `portal_radius` 190, `portal_height` 95; through at 12 s, active at 17 s |
+  | Parking | `stop_distance` 375 (bow 560–600 m from the station's centre, parked at 130 s) |
+  | Death | `death_blast_height` 150, `death_blast_size` 60–125, `final_blast_size` 290 |
 - **Arrival (warp in, `warp_in` on by default):** placed on `zone_radius` (3000 m on the Space Station mission, inside its 4000 m boundary; elsewhere usually the boundary itself) in a random direction, then moved out to a `WarpPortal` (`effects/warp_portal.gd`) `portal_margin` 50 m beyond that (`portal_radius` 230 m, centre `portal_height` 30 m up). The portal opens over 1.5 s (crimson flash, deep rumble); after `warp_charge_time` 1 s the ship comes through at `warp_speed` 100 m/s, hidden behind the portal plane by a clip plane (`toon_clip.gdshader`, `clip_plane` instance uniform) and with collision off; once the stern is out (8.9 s) the portal shuts and the parts can be shot (`is_damageable()`); it brakes to cruise over `warp_brake_time` 5 s, then turns solid and goes active (13.9 s: turrets, hangars). With `warp_in` off: fades in over `fade_in_time` 4 s where it was placed. Then it crawls inward at `cruise_speed` (10 m/s on `destroyer.tscn`; script default 8) and stops `stop_distance` (200 m) from the centre (in a level without a space station). **On the Space Station mission** the centre holds the space station, so `EnemySpawner` sends it to a point `destroyer_station_clearance` (300 m) outside the station's bounding sphere (427 m) on the side it came from: it parks about 158 s after spawning with its centre about 930 m from the station (closest approach between its avoidance spheres and the station's over 30 arrivals: 135 m). It smashes asteroids in its path with `Asteroid.shatter()`, which awards no score. Fewer working thrusters make it slower.
 - **Model:** our own, about 737 × 350 m, 278 m tall (`SCALE` 2.0 in the script; was 552 × 263 at 1.5, and 368 × 175 before that): forked prow with an open gap, bridge tower, three thrusters, side hangars; gunmetal, crimson, amber, red-orange engines. Surface detail from `add_detail()`: armour plates with panel lines, lit window rows, red running lights, conduits and machinery; underneath (`add_underside()`), a stepped two-tier keel (the lower tier is solid, with collision), large plates, a crimson spine with floodlights, a glowing ventral bay, keel windows and radiator fins (decoration only: no collision, clear of turrets, seeded, batched per material; hull about 42,500 triangles). Built in Blender by `models/destroyer/source/build_destroyer.py` (game coordinates; colours are the sRGB values the game shows), exported as four `.glb` files and cel-shaded at load (`ToonMaterial`).
 - **Hull and parts:** the hull is the `AnimatableBody3D` root, on the World layer. All damage goes through `DestroyerPart` children on the Enemy layer, and the parts ignore hits until `is_damageable()` (out of the portal, or faded in, and not dying), and the Attack order can't pick them before that. Turrets and hangars wait for `is_vulnerable()` (active and not dying).
@@ -561,7 +579,7 @@ Two tips:
 - **Physics interpolation is off.** Ships and the camera update at 60 Hz, so there may be slight judder on high-refresh monitors.
 - **Wingmen and enemies only see the player.** Enemies never target wingmen, and nothing damages wingmen. (Destroyer turrets shoot at wingmen only when the player is out of range, purely for show.)
 - **The destroyer moves itself** with `sync_to_physics` off. Leave it off, or transforms set outside the physics step get overwritten.
-- **AI and big obstacles:** obstacle avoidance treats everything as a sphere, so large non-spherical things need covering with `ObstacleProxy` spheres (see `Destroyer._build_obstacle_proxies()`). While attacking, the AI ignores obstacles at or beyond its target, and after scraping a surface it steers off along the normal for `recover_duration` (the sum of every surface hit, mixed with the previous direction while still recovering, so it can't flip between a wall and a ledge in a corner).
+- **AI and big obstacles:** obstacle avoidance knows spheres and boxes, so large non-spherical things need covering with `ObstacleProxy` spheres or `ObstacleBox` boxes (see `Destroyer._build_obstacle_proxies()`; the AI keeps radius × 1.3 + `avoid_margin` 6 from a sphere's centre and `margin` + `avoid_margin` from a box's faces). While attacking, the AI ignores obstacles at or beyond its target, and a box (hull) where its path meets it within `mount_ignore_distance` (60 m) + the target's radius of a structure it attacks, and after scraping a surface it steers off along the normal for `recover_duration` (the sum of every surface hit, mixed with the previous direction while still recovering, so it can't flip between a wall and a ledge in a corner).
 - **Toon shadow floor is sun-only.** `toon.gdshader` gives shadowed sides a minimum brightness, but only for directional lights. If a non-directional light got it too, it would light whole lighting clusters, showing up as blocky squares.
 - **Outlines vanish against space.** Ink lines are near-black, so silhouettes against the sky blend in. Lines show where objects overlap and on creases. Lines fade out between 220 and 520 m so distant ships stay readable.
 - **Asteroid layout is seeded** (`main.gd → field_seed`), so the field is the same every run apart from the intro lane.

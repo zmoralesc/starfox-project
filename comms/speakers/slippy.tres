@@ -11,5 +11,5 @@ display_name = "Slippy"
 color = Color(0.3, 0.85, 0.35, 1)
 beep_pitch = 1.15
 acknowledgements = PackedStringArray("Right away!", "Understood!")
-celebrations = PackedStringArray("Another one bites the dust!", "That's how it's done!", "Got 'em! Who's next?")
-praise = PackedStringArray("Great shot, Fox!", "That's how you do it!")
+celebrations = PackedStringArray("Another one bites the dust!", "That's how it's done!", "Got 'em!")
+praise = PackedStringArray("Nice shot, Fox!", "You show 'em, Fox!")
