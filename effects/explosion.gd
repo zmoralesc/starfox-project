@@ -169,10 +169,12 @@ func _add_light(size: float) -> void:
 ## `start_size` to `end_size` metres, born within `emit_radius` of the emitter
 ## and drifting off at up to `drift` m/s, within `spread` degrees of the
 ## emitter's +Y (180 = every way). Add it to the scene and move it with whatever
-## trails it (Wreck, WreckDebris, HitReaction's damage smoke).
+## trails it (Wreck, WreckDebris, HitReaction's damage smoke). `near_fade`
+## breaks puffs up near the camera (see the shader's uniform; zero = off), for
+## a trail the camera follows.
 static func trail(style: ExplosionStyle, rate: float, puff_lifetime: float, start_size: float,
 		end_size: float, burn: float, dissolve_from: float, emit_radius := 0.0,
-		drift := 2.0, spread := 180.0) -> GPUParticles3D:
+		drift := 2.0, spread := 180.0, near_fade := Vector2.ZERO) -> GPUParticles3D:
 	var material := ShaderMaterial.new()
 	material.shader = PUFF_SHADER
 	material.set_shader_parameter("hot_color", style.hot_color)
@@ -184,6 +186,7 @@ static func trail(style: ExplosionStyle, rate: float, puff_lifetime: float, star
 	material.set_shader_parameter("dissolve_from", dissolve_from)
 	material.set_shader_parameter("glint", 0.0)
 	material.set_shader_parameter("shadow_tone", 0.35)
+	material.set_shader_parameter("near_fade", near_fade)
 
 	var quad := QuadMesh.new()
 	quad.material = material

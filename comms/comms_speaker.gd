@@ -10,3 +10,6 @@ extends Resource
 @export var portrait: Texture2D
 ## Pitch of this character's text beeps (1 = the base beep).
 @export var beep_pitch := 1.0
+## Cried out when the player's ship is lost, as its wreck explodes (Level
+## picks a random character among the wingmen and the advisor who have any).
+@export_multiline var laments: PackedStringArray = []

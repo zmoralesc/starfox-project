@@ -343,7 +343,9 @@ func _update_provoked(delta: float) -> void:
 func _update_escorts() -> void:
 	if escorts.is_empty():
 		return
-	escorts.assign(escorts.filter(func(e: Object) -> bool: return is_instance_valid(e)))
+	# Untyped on purpose: a freed escort can't convert to a typed parameter,
+	# and the failed call would make filter() return an empty array.
+	escorts.assign(escorts.filter(func(e) -> bool: return is_instance_valid(e)))
 	var center := global_transform * escort_offset
 	for escort in escorts:
 		escort.patrol_center = center

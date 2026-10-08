@@ -25,12 +25,27 @@ func is_fading() -> bool:
 
 
 func change_scene(path: String) -> void:
+	await _transition(get_tree().change_scene_to_file.bind(path))
+
+
+## Fades out, restarts the current scene (Level, after the player's death),
+## and fades back in.
+func reload_scene() -> void:
+	await _transition(get_tree().reload_current_scene)
+
+
+## Fades to black, calls `swap` (which changes the scene), then fades back in
+## over the new one.
+func _transition(swap: Callable) -> void:
 	if _busy:
 		return
 	_busy = true
 	_rect.mouse_filter = Control.MOUSE_FILTER_STOP
 	await _fade_to(1.0, fade_out_time)
-	get_tree().change_scene_to_file(path)
+	# Paused during the fade-out (the fade runs regardless): don't carry it
+	# over into the new scene, whose pause menu would be closed.
+	get_tree().paused = false
+	swap.call()
 	# The new scene is added at the end of this frame; start fading in once it's there.
 	await get_tree().process_frame
 	await get_tree().process_frame

@@ -12,6 +12,9 @@ render_mode cull_disabled, depth_draw_always;
 //
 // The puff's age comes from the particle system (INSTANCE_CUSTOM.y, 0 to 1
 // over its life).
+//
+// Near the camera, a puff breaks up the same way (near_fade), so a trail the
+// camera follows (the player's wreck) doesn't fill the screen.
 
 uniform vec4 hot_color : source_color = vec4(1.0, 0.96, 0.7, 1.0);
 uniform vec4 fire_color : source_color = vec4(1.0, 0.62, 0.15, 1.0);
@@ -25,11 +28,16 @@ uniform float cool_at = 0.5;
 uniform float dissolve_from = 0.55;
 // How lumpy the outline is (fraction of the radius).
 uniform float lumpiness = 0.22;
+// Near-camera break-up, by the distance from the camera to the puff's edge
+// (metres): all gone closer than x, whole from y on. y <= x = off.
+uniform vec2 near_fade = vec2(0.0);
 
 #include "res://effects/toon_light.gdshaderinc"
 
 varying float v_age;
 varying float v_seed;
+// 0 = whole, 1 = gone: how far near_fade has broken this puff up.
+varying float v_near;
 
 // Integer hash for a grid corner (see water.gdshader: a float hash loses
 // precision at large inputs, like the per-puff seed offsets, and breaks the
@@ -62,6 +70,10 @@ void vertex() {
 	MODELVIEW_NORMAL_MATRIX = mat3(MODELVIEW_MATRIX);
 	v_age = INSTANCE_CUSTOM.y;
 	v_seed = float(INSTANCE_ID) * 7.31;
+	// The quad is 1 m across before scaling, so the puff's radius is half its scale.
+	float edge_distance = length(MODELVIEW_MATRIX[3].xyz) - length(MODEL_MATRIX[0].xyz) * 0.5;
+	v_near = near_fade.y > near_fade.x
+		? 1.0 - smoothstep(near_fade.x, near_fade.y, edge_distance) : 0.0;
 }
 
 // Hard edge, blended over about one pixel.
@@ -83,6 +95,7 @@ void fragment() {
 	}
 	// Breaking up: growing holes, then nothing.
 	float breakup = clamp((v_age - dissolve_from) / max(1.0 - dissolve_from, 1e-3), 0.0, 1.0);
+	breakup = max(breakup, v_near);
 	if (breakup > 0.0 && noise(p * 2.5 + seed * 3.0) * 0.9 + 0.1 * (1.0 - r) < breakup) {
 		discard;
 	}

@@ -10,6 +10,13 @@ extends Node3D
 ## group, so it can't damage or block anything, and the AI, radar and orders
 ## don't see it. Friendly bolts can hit its hurtbox (take_hit), which sets off
 ## the second explosion; enemy bolts can't (their mask leaves out hurtboxes).
+##
+## The player's ship leaves one too (Ship._die(), effects/player_wreck.tscn),
+## which the ChaseCamera follows through flight_basis, so the camera doesn't
+## spin with it.
+
+## Emitted at the second explosion, just before the wreck is freed.
+signal exploded(at: Vector3)
 
 ## Size for aim assist and wingmen joining your fire (Fighter.radius_of).
 @export var radius := 3.0
@@ -25,6 +32,18 @@ extends Node3D
 ## every axis looked wrong for a ship), at a random rate in this range
 ## (radians per second), either way round.
 @export var roll_rate := Vector2(1.5, 3.5)
+## Spiralling: its flight path corkscrews, the nose circling round the way it
+## was going, as if the pilot were still fighting for control. This is how
+## fast the nose turns (degrees per second; 0 = no spiral, flies straight)...
+@export var spiral_turn := 0.0
+## ...and how fast that turn goes round (radians per second: one loop every
+## 2π / spiral_rate seconds), the same way as the roll. The cone the nose
+## circles is about spiral_turn / spiral_rate radians wide (half-angle).
+@export var spiral_rate := 2.2
+## How much the turn surges and eases (0 = steady, 1 = from nothing to double),
+## like a pilot pulling against it and losing, over spiral_surge_period seconds.
+@export_range(0.0, 1.0) var spiral_surge := 0.5
+@export var spiral_surge_period := 1.7
 ## Downward acceleration on planet missions (where there is a `terrain`
 ## group), so wrecks fall and crash. Space has none. 0 = keep flying level.
 @export var planet_gravity := 15.0
@@ -48,11 +67,18 @@ extends Node3D
 @export_range(0.01, 1.0) var smoke_burn := 0.12
 ## Fraction of a puff's life after which it starts breaking up.
 @export_range(0.0, 1.0) var smoke_dissolve_from := 0.4
+## Puffs break up near the camera, by the distance from it to their edge
+## (metres): all gone closer than x, whole from y on. Zero = off. Only the
+## player's wreck uses it: the camera follows it, right in its plume.
+@export var smoke_near_fade := Vector2.ZERO
 
 @export_group("Final explosion")
 ## Style and fireball radius (m) of the second explosion.
 @export var explosion: ExplosionStyle = preload("res://effects/explosions/fighter.tres")
 @export var explosion_size := 6.0
+## Camera shake (0..1) at the second explosion. Only the player's wreck sets
+## it: the camera is following it.
+@export_range(0.0, 1.0) var explosion_shake := 0.0
 
 @export_group("Debris")
 ## How many smoking pieces (WreckDebris) the second explosion throws out
@@ -83,6 +109,10 @@ static var _dead_lights: ShaderMaterial
 var velocity := Vector3.ZERO
 ## True once it has exploded (read by the crosshair and Wingman.target_gone()).
 var is_destroyed := false
+## The wreck's orientation without its roll: nose along its flight, "up" kept
+## from the fighter's at the moment it died. The ChaseCamera follows this
+## rather than the spinning wreck.
+var flight_basis := Basis.IDENTITY
 
 var _roll := 0.0
 var _age := 0.0
@@ -97,9 +127,9 @@ var _exclude: Array[RID] = []
 ## Turns `model` (a dying fighter's Model node) into a wreck flying at
 ## `start_velocity`, taking over the fighter's hurtbox (if it has one) so it's
 ## exactly as easy to hit. Both are moved out of `fighter`, so the fighter can
-## be freed straight after. `sound` plays at the second explosion.
+## be freed straight after. `sound` plays at the second explosion. Returns the wreck.
 static func spawn(scene: PackedScene, parent: Node, fighter: CollisionObject3D, model: Node3D,
-		start_velocity: Vector3, sound: AudioStream) -> void:
+		start_velocity: Vector3, sound: AudioStream) -> Wreck:
 	var wreck := scene.instantiate() as Wreck
 	parent.add_child(wreck)
 	wreck.global_transform = model.global_transform
@@ -111,6 +141,7 @@ static func spawn(scene: PackedScene, parent: Node, fighter: CollisionObject3D, 
 	# The fighter's body stays in the physics world until it's freed: don't crash into it.
 	wreck._exclude = [fighter.get_rid()]
 	wreck._start(model, start_velocity, sound)
+	return wreck
 
 
 func _start(model: Node3D, start_velocity: Vector3, sound: AudioStream) -> void:
@@ -127,6 +158,7 @@ func _start(model: Node3D, start_velocity: Vector3, sound: AudioStream) -> void:
 	_smoke = _make_smoke(smoke_rate, smoke_puff_lifetime, smoke_start_size, smoke_end_size)
 	get_parent().add_child(_smoke)
 	_smoke.global_position = global_position
+	flight_basis = global_basis.orthonormalized()
 	_align_with_velocity()
 
 
@@ -141,6 +173,7 @@ func take_hit(_damage: int, at: Vector3) -> void:
 func _physics_process(delta: float) -> void:
 	_age += delta
 	velocity += Vector3.DOWN * _gravity * delta
+	_spiral(delta)
 	var from := global_position
 	var to := from + velocity * delta
 	var query := PhysicsRayQueryParameters3D.create(from, to, crash_mask)
@@ -161,14 +194,34 @@ func _physics_process(delta: float) -> void:
 		_explode(global_position)
 
 
-## Aligns the wreck's nose (-basis.z) with its flight direction while preserving roll.
+## Turns the velocity a little about an axis across the flight direction that
+## itself goes round (flight_basis keeps x and y across it), so the heading
+## circles and the path corkscrews. The roll sets which way round.
+func _spiral(delta: float) -> void:
+	if spiral_turn <= 0.0 or velocity.length_squared() <= 0.001:
+		return
+	var phase := _age * spiral_rate * signf(_roll)
+	var axis := (flight_basis.x * cos(phase) + flight_basis.y * sin(phase)).normalized()
+	var surge := 1.0 + spiral_surge * sin(_age * TAU / maxf(spiral_surge_period, 0.01))
+	velocity = velocity.rotated(axis, deg_to_rad(spiral_turn) * surge * delta)
+
+
+## Aligns the wreck's nose (-basis.z) with its flight direction while
+## preserving roll; flight_basis turns the same way, without the roll.
 func _align_with_velocity() -> void:
-	if velocity.length_squared() > 0.001:
-		var heading := velocity.normalized()
-		var current_forward := -global_basis.z
-		if not current_forward.is_equal_approx(heading):
-			var q := Quaternion(current_forward, heading)
-			global_basis = (Basis(q) * global_basis).orthonormalized()
+	global_basis = _aligned(global_basis)
+	flight_basis = _aligned(flight_basis)
+
+
+## `b` turned the shortest way so its nose points along the velocity.
+func _aligned(b: Basis) -> Basis:
+	if velocity.length_squared() <= 0.001:
+		return b
+	var heading := velocity.normalized()
+	var current_forward := -b.z
+	if current_forward.is_equal_approx(heading):
+		return b
+	return (Basis(Quaternion(current_forward, heading)) * b).orthonormalized()
 
 
 func _explode(at: Vector3) -> void:
@@ -182,6 +235,11 @@ func _explode(at: Vector3) -> void:
 	_smoke.emitting = false
 	get_tree().create_timer(smoke_puff_lifetime, false).timeout.connect(_smoke.queue_free)
 	_throw_debris(at)
+	if explosion_shake > 0.0:
+		var cam := get_viewport().get_camera_3d()
+		if cam and cam.has_method("add_shake"):
+			cam.add_shake(explosion_shake)
+	exploded.emit(at)
 	queue_free()
 
 
@@ -217,4 +275,5 @@ func _douse_lights(node: Node) -> void:
 
 ## The wreck's own plume, or a debris trail (see Explosion.trail()).
 func _make_smoke(rate: float, puff_lifetime: float, start_size: float, end_size: float) -> GPUParticles3D:
-	return Explosion.trail(smoke_style, rate, puff_lifetime, start_size, end_size, smoke_burn, smoke_dissolve_from)
+	return Explosion.trail(smoke_style, rate, puff_lifetime, start_size, end_size, smoke_burn,
+		smoke_dissolve_from, 0.0, 2.0, 180.0, smoke_near_fade)

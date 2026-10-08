@@ -12,6 +12,8 @@ extends CanvasLayer
 ##   is on screen is dropped (chatter like "Aye aye." goes stale fast).
 ## - HIGH lines (story, important callouts) interrupt LOW ones at once. A HIGH
 ##   line arriving during another HIGH line waits its turn, so none is lost.
+## - URGENT lines (the lament when the player's ship is lost) interrupt
+##   anything and drop every line still waiting.
 ##
 ## It's its own layer, separate from the HUD, so lines can play during
 ## cutscenes while the HUD is hidden. It pauses with the game.
@@ -27,7 +29,7 @@ extends CanvasLayer
 ## speaker interrupting an open box gets a short burst of static over the
 ## portrait (SWITCHING) instead.
 
-enum Priority { LOW, HIGH }
+enum Priority { LOW, HIGH, URGENT }
 
 enum Phase { IDLE, OPENING, SWITCHING, TYPING, HOLDING, CLOSING }
 
@@ -123,6 +125,12 @@ func say(speaker: CommsSpeaker, text: String, priority := Priority.LOW, voice: A
 	line.text = text
 	line.priority = priority
 	line.voice = voice
+	if priority == Priority.URGENT:
+		_queue.clear()
+		if _phase == Phase.TYPING or _phase == Phase.HOLDING or _phase == Phase.OPENING \
+				or _phase == Phase.SWITCHING:
+			_interrupt(line)
+			return true
 	if _phase == Phase.IDLE:
 		_start(line)
 		return true

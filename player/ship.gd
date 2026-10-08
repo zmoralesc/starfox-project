@@ -2,7 +2,11 @@ class_name Ship
 extends Fighter
 ## The player's ship: mouse / gamepad input on top of the shared Fighter model.
 
+## The ship has been destroyed: it's a wreck now (`wreck`), out of control.
 signal died
+## The wreck has blown up (or, with no wreck_scene, straight after `died`):
+## the end of the death sequence. Level restarts the mission after this.
+signal wreck_destroyed
 signal shields_depleted
 signal shields_online
 signal thrusters_overheated
@@ -86,6 +90,13 @@ const TURN_BACK_GOAL_DISTANCE := 150.0
 ## Camera shake at the crash (0..1).
 @export_range(0.0, 1.0) var crash_shake := 0.6
 
+@export_group("Death")
+## Destroyed, the ship becomes this Wreck (like the enemy fighters): it flies
+## on out of control, tumbling and smoking, with the camera following it,
+## until it crashes or its lifetime runs out. Empty = it just vanishes in the
+## first explosion.
+@export var wreck_scene: PackedScene = preload("res://effects/player_wreck.tscn")
+
 ## When false the player has no control: the ship flies straight ahead at
 ## autopilot_speed (used by the intro cutscene).
 var controls_enabled := true
@@ -118,6 +129,9 @@ var thruster_heat := 0.0
 ## True from overheating until the thrusters have cooled down; the throttle is
 ## ignored meanwhile. Read by the HUD.
 var overheated := false
+## After death, the wreck the ship left (null once it has exploded). The
+## ChaseCamera follows it.
+var wreck: Wreck
 
 var _pad_active := false
 ## Throttle in use this tick (-1..1): the input, or 0 while overheated.
@@ -205,15 +219,27 @@ func _die() -> void:
 	is_firing = false
 	fire_target = null
 	Explosion.spawn(get_parent(), global_position, explosion, explosion_size, velocity)
-	velocity = Vector3.ZERO
 	SoundFX.play_at(get_parent(), explosion_sound, global_position)
-	# The ship stays in the scene (hidden), so its engine would keep humming.
+	# The ship stays in the scene (without its model), so its engine would keep humming.
 	if _engine_sound:
 		_engine_sound.stop()
-	_model.hide()
+	if wreck_scene:
+		# The shield bubble would otherwise ride along on the wreck.
+		_shield_fx.hide()
+		wreck = Wreck.spawn(wreck_scene, get_parent(), self, _model, velocity, explosion_sound)
+		wreck.exploded.connect(_on_wreck_exploded, CONNECT_ONE_SHOT)
+	else:
+		_model.hide()
+		_on_wreck_exploded.call_deferred(global_position)
+	velocity = Vector3.ZERO
 	collision_layer = 0
 	set_physics_process(false)
 	died.emit()
+
+
+func _on_wreck_exploded(_at: Vector3) -> void:
+	wreck = null
+	wreck_destroyed.emit()
 
 
 func _unhandled_input(event: InputEvent) -> void:

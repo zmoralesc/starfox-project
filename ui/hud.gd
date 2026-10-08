@@ -228,8 +228,7 @@ func _draw() -> void:
 			HORIZONTAL_ALIGNMENT_CENTER, size.x, 24, COLOR_SHIELD_DOWN)
 
 	if _ship.is_dead:
-		draw_string(_font, Vector2(0.0, size.y * 0.5), "SHIP DESTROYED",
-			HORIZONTAL_ALIGNMENT_CENTER, size.x, 40, COLOR_TARGET)
+		# No crosshair or markers while the wreck goes down (see Level's death sequence).
 		_draw_gauges()
 		return
 

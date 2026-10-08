@@ -10,8 +10,11 @@ extends Node3D
 ## adds its own world on top and, if it builds anything in code, extends this
 ## script and overrides _build_world().
 
-## Seconds between the player's ship exploding and the level restarting.
-@export var restart_delay := 3.0
+## Seconds between the player's wreck exploding and someone crying out for them.
+@export var lament_delay := 0.5
+## Seconds between that lament starting and the screen starting to fade to
+## black before the restart.
+@export var restart_delay := 2.5
 ## Off = no enemy waves (test missions).
 @export var spawn_enemies := true
 ## The soundtrack (lead + loop). Empty = no music. Keeps playing across
@@ -64,7 +67,7 @@ func _ready() -> void:
 	for burst in prewarm_hit_bursts:
 		HitBurst.prewarm(burst, self)
 	Music.play(music)
-	($Ship as Ship).died.connect(_on_player_died)
+	($Ship as Ship).wreck_destroyed.connect(_on_player_lost)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if _skip_intro_once:
 		_skip_intro_once = false
@@ -112,10 +115,46 @@ func _say_intro_advisor_line() -> void:
 		mission_control.say(intro_advisor_line)
 
 
-func _on_player_died() -> void:
+## The death sequence, from the wreck's explosion on (the ship's died signal
+## came earlier, when it became a wreck: Ship._die()): after lament_delay someone cries out,
+## then the screen fades to black and the mission restarts.
+func _on_player_lost() -> void:
+	await get_tree().create_timer(lament_delay, false).timeout
+	if not is_inside_tree():
+		return
+	_say_lament()
 	await get_tree().create_timer(restart_delay, false).timeout
+	if not is_inside_tree():
+		return
+	_restart()
+
+
+## Restarts the mission after the player's death, behind a fade to black.
+## Anything that should happen between losing the ship and trying again (lives,
+## a game over instead of a restart) belongs here.
+func _restart() -> void:
 	_skip_intro_once = true
-	get_tree().reload_current_scene()
+	SceneFader.reload_scene()
+
+
+## A random character (a wingman or the mission's advisor) cries out for the
+## lost leader, Star Fox 64 style, cutting off whatever else was being said.
+func _say_lament() -> void:
+	var comms := Comms.find(get_tree())
+	if comms == null:
+		return
+	var speakers: Array[CommsSpeaker] = []
+	for wingman in get_tree().get_nodes_in_group("wingmen"):
+		var speaker := wingman.get("speaker") as CommsSpeaker
+		if speaker and not speaker.laments.is_empty():
+			speakers.append(speaker)
+	var mission_control := get_tree().get_first_node_in_group("mission_control") as MissionControl
+	if mission_control and mission_control.advisor and not mission_control.advisor.laments.is_empty():
+		speakers.append(mission_control.advisor)
+	if speakers.is_empty():
+		return
+	var chosen: CommsSpeaker = speakers.pick_random()
+	comms.say(chosen, Array(chosen.laments).pick_random(), Comms.Priority.URGENT)
 
 
 func _unhandled_input(event: InputEvent) -> void:

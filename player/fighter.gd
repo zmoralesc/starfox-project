@@ -207,6 +207,12 @@ func _get_pitch_rate() -> float:
 func _get_acceleration(fast: bool) -> float:
 	return boost_acceleration if fast else acceleration
 
+
+## Highest target speed allowed right now. Normally boost_speed; wingmen
+## sprint faster to catch up with the formation.
+func _get_top_speed() -> float:
+	return boost_speed
+
 #endregion
 
 
@@ -226,7 +232,7 @@ func _update_rotation(delta: float) -> void:
 
 
 func _update_speed(delta: float) -> void:
-	var target_speed := clampf(_get_target_speed(), min_speed, boost_speed)
+	var target_speed := clampf(_get_target_speed(), min_speed, _get_top_speed())
 	var fast := speed > max_speed or target_speed > max_speed
 	var accel := _get_acceleration(fast)
 	speed = move_toward(speed, target_speed, accel * delta)

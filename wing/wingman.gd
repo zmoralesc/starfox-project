@@ -33,7 +33,9 @@ enum Status { NORMAL, EVADING, DISENGAGED }
 enum Order { FORM_UP, ATTACK, COVER_ME, WEAPONS_FREE }
 ## Stages of the somersault rejoin: looping up and over, flying back past the
 ## leader, pulling through the rest of the loop, rolling upright if needed.
-enum Stunt { NONE, PULL_UP, BACK, PULL_THROUGH, ROLL_OUT }
+## Then the stages of the U-turn: rolling the canopy towards the way to turn,
+## pulling round, rolling upright.
+enum Stunt { NONE, PULL_UP, BACK, PULL_THROUGH, ROLL_OUT, U_ROLL, U_PULL, U_ROLL_OUT }
 
 @export var leader: Ship
 ## Formation slot in the leader's local space (-Z is forward, +X is right).
@@ -55,6 +57,13 @@ enum Stunt { NONE, PULL_UP, BACK, PULL_THROUGH, ROLL_OUT }
 @export var formation_lookahead := 30.0
 ## Extra speed per unit the wingman is behind its slot.
 @export var catch_up_gain := 1.5
+## Catching up with the formation, the wingman may go this fast (m/s) instead
+## of boost_speed. The arrival limit below keeps it to far from the slot: a
+## closing speed v needs v² / (2 · arrival_deceleration) m to shed, so behind a
+## cruising leader (60 m/s) it passes boost_speed beyond about 135 m and
+## sprints flat out beyond about 240 m; behind a faster leader, nearer. The
+## engine glow grows with it (see engine_glow_range in wingman.tscn).
+@export var rejoin_sprint_speed := 180.0
 ## Joining from behind, close in no faster than lets us brake at this rate
 ## (m/s²) to match the leader's speed exactly at the slot, instead of arriving
 ## fast and stopping hard. Also caps formation flight's pull towards the slot.
@@ -149,6 +158,40 @@ enum Stunt { NONE, PULL_UP, BACK, PULL_THROUGH, ROLL_OUT }
 @export var somersault_exit_behind := 20.0
 ## Flying back past the leader, keep at least this far off its flight line.
 @export var somersault_pass_clearance := 20.0
+
+@export_group("U-turn")
+## Rejoining while pointing well away from the way to the slot (just finished
+## an attack run, say), the wingman U-turns like in Star Fox 64 instead of
+## turning flat: it rolls its canopy towards the way it wants to go, tilted up
+## and out (our slot's side, or up for a centre slot) so the turn goes over
+## the top and never across the leader's path, pulls round at
+## somersault_pitch_rate, then rolls upright.
+##
+## U-turn when the nose points more than acos(this) away from the way to the
+## slot (0 = more than 90°)...
+@export_range(-1.0, 1.0) var u_turn_alignment := 0.0
+## ...and the slot is at least this far away (closer, it turns normally).
+@export var u_turn_min_distance := 50.0
+## How far the turn tilts over the top: 0 = straight towards the slot (a
+## level turn when the slot is level with us), 1 = halfway between that and
+## up-and-out.
+@export var u_turn_climb := 0.6
+## Speed through the turn (m/s), at most. Lower = tighter.
+@export var u_turn_speed := 100.0
+## Pull round until the nose is within acos(this) of the way to the slot.
+@export_range(-1.0, 1.0) var u_turn_exit_alignment := 0.85
+
+@export_group("Victory roll")
+## Back in formation after an Attack order (its target destroyed), the wingman
+## does a quick aileron roll in its slot. Only the model rolls: the ship stays
+## in its slot, and holds its fire with the leader meanwhile.
+@export var victory_roll := true
+## Seconds for the whole roll.
+@export var victory_roll_time := 0.8
+## Roll once settled in formation (is_in_formation()) for this many seconds...
+@export var victory_roll_delay := 0.4
+## ...as long as that happens within this many seconds of the order ending.
+@export var victory_roll_expiry := 15.0
 
 @export_group("Cover me")
 ## On Cover Me, wait this much farther behind the leader than the normal slot
@@ -361,9 +404,23 @@ var _stunt_time := 0.0
 ## and which way to roll for that or for rolling upright again.
 var _rolling := false
 var _roll_direction := 1.0
+## The somersault's second half loops up rather than down (set as it starts
+## flying back: see _formation_near_ground()).
+var _loop_up := false
 ## Arrived too fast to stop at the slot gently: sailing past it while slowing
 ## down (see overshoot_margin).
 var _overshooting := false
+## Rejoining the formation this frame: may sprint (rejoin_sprint_speed).
+var _sprint_allowed := false
+## Victory roll (see the Victory roll group): seconds left to get back into
+## formation for one (0 = none due), how long we've been in formation since,
+## progress through the roll (0..1, negative when not rolling), which way
+## (positive rolls left) and the angle it adds to the model's bank now.
+var _victory_due := 0.0
+var _victory_settled := 0.0
+var _victory_progress := -1.0
+var _victory_direction := 1.0
+var _victory_angle := 0.0
 ## Set while obstacle avoidance is steering us; formation flight lets go then.
 var _avoiding := false
 ## Current camera fade (see _process) and the model meshes it applies to.
@@ -411,6 +468,9 @@ const TRAIL_BREAK := 50.0
 ## formation, the heading stays within about 20°.
 const ASSIST_MIN_ALIGNMENT := 0.3
 const ASSIST_FULL_ALIGNMENT := 0.8
+## A U-turn starts pulling round once the canopy is within acos(0.7) ≈ 45° of
+## the way to pull (it turns that way while rolling, too).
+const U_TURN_ROLL_ALIGNMENT := 0.7
 ## Accent colour when the speaker isn't a Pilot.
 const DEFAULT_ACCENT := Color(0.95, 0.7, 0.15)
 
@@ -742,10 +802,12 @@ func command_follow() -> void:
 
 func _decide(delta: float) -> Vector3:
 	_free_cooldown -= delta
+	_sprint_allowed = false
 	_update_status(delta)
 	if leader == null:
 		return super(delta)
 	_track_leader(delta)
+	_update_victory_roll(delta)
 	if status == Status.EVADING:
 		return _evade_goal(delta)
 	if status == Status.DISENGAGED:
@@ -756,6 +818,9 @@ func _decide(delta: float) -> Vector3:
 			# Attack order done: back to what we were doing before it.
 			order = standing_order
 			order_changed.emit()
+			if victory_roll:
+				_victory_due = victory_roll_expiry
+				_victory_settled = 0.0
 	if state == State.ATTACK:
 		_stunt = Stunt.NONE
 		_overshooting = false
@@ -954,6 +1019,40 @@ func _update_rotation(delta: float) -> void:
 	if delta > 0.0:
 		var turn := (before.inverse() * global_basis).get_euler()
 		_turn_rates = Vector2(turn.x, turn.y) / delta
+
+
+## Victory roll: due after an Attack order, started once settled in formation,
+## dropped if we're sent off again or don't get back in time.
+func _update_victory_roll(delta: float) -> void:
+	if _victory_progress >= 0.0:
+		_victory_progress += delta / maxf(victory_roll_time, 0.01)
+		if _victory_progress >= 1.0:
+			_victory_progress = -1.0
+		return
+	if _victory_due <= 0.0:
+		return
+	_victory_due -= delta
+	if status != Status.NORMAL or state != State.FOLLOW:
+		_victory_due = 0.0
+		return
+	_victory_settled = _victory_settled + delta if is_in_formation() else 0.0
+	if _victory_settled >= victory_roll_delay:
+		_victory_due = 0.0
+		_victory_progress = 0.0
+		# Away from the leader (a left slot rolls left); the centre slot either way.
+		var side := signf(slot_offset.x) if absf(slot_offset.x) > 0.5 else (1.0 if randf() < 0.5 else -1.0)
+		_victory_direction = -side
+
+
+## The victory roll goes on top of the bank _update_model() smooths towards:
+## taken off before that smoothing and put back after, so the two don't mix.
+func _update_model(delta: float) -> void:
+	_model.rotation.z -= _victory_angle
+	super(delta)
+	_victory_angle = 0.0
+	if _victory_progress >= 0.0:
+		_victory_angle = TAU * smoothstep(0.0, 1.0, _victory_progress) * _victory_direction
+	_model.rotation.z += _victory_angle
 
 
 func _visual_turn_rates() -> Vector2:
@@ -1232,8 +1331,9 @@ func is_in_formation() -> bool:
 ## formation position. Covering wingmen hold their fire for threats.
 func joins_leader_fire() -> bool:
 	# Not tucked in behind the leader: we'd be shooting through it.
+	# Nor mid victory roll: the guns are pointing all over.
 	return status == Status.NORMAL and order == Order.FORM_UP and is_in_formation() \
-			and _tuck_amount <= 0.0
+			and _tuck_amount <= 0.0 and _victory_progress < 0.0
 
 
 func _wants_idle_fire() -> bool:
@@ -1247,8 +1347,12 @@ func _follow_goal() -> Vector3:
 	var slot := slot_position()
 	_level_up = leader_basis.y
 	_engage = null
+	_sprint_allowed = true
 
 	var behind := (slot - global_position).dot(forward)
+	# How far the slot is off to the side of (or above or below) the leader's
+	# heading through us.
+	var lateral := (slot - global_position - forward * behind).length()
 	_target_speed = leader.speed + behind * catch_up_gain
 	if behind > 0.0:
 		# Never faster than we can shed by the slot at arrival_deceleration.
@@ -1263,8 +1367,13 @@ func _follow_goal() -> Vector3:
 	# from either side (negative = drifting back towards it from ahead).
 	var wanted_closing := _arrival_speed(behind) if behind > 0.0 else -_arrival_speed(-behind)
 	# Only when arriving: holding the slot, braking or turning hard can briefly
-	# look like closing fast, and must not drop formation flight.
-	if _stunt == Stunt.NONE and closing > maxf(wanted_closing, 0.0) + overshoot_margin \
+	# look like closing fast, and must not drop formation flight. Nor with the
+	# slot far out to the side: flying on in its lane, slowing down, takes ages
+	# to cover that (and keeps us from U-turning when pointing away from it).
+	var sideways := lateral > maxf(absf(behind), assist_fade_range)
+	if sideways:
+		_overshooting = false
+	elif _stunt == Stunt.NONE and closing > maxf(wanted_closing, 0.0) + overshoot_margin \
 			and distance > assist_full_range:
 		_overshooting = true
 	elif _overshooting:
@@ -1276,10 +1385,17 @@ func _follow_goal() -> Vector3:
 		if (behind > 0.0 and on_profile) or settled or stuck:
 			_overshooting = false
 	# Far ahead of the slot: somersault back behind it, then the normal goal
-	# brings us into the formation. Not while still sailing past at speed:
-	# slow down first.
-	if _stunt == Stunt.NONE and behind < -20.0 and distance > rejoin_turn_distance and not _overshooting:
+	# brings us into the formation. Only when the slot is more behind us than
+	# off to the side: the loops only move us back along the leader's heading,
+	# so with the slot far out to the side (the leader turning) we would loop
+	# on the spot while it flies round us. Sailing past at speed, slow down
+	# first, but no further than somersault_speed: drifting back from far
+	# ahead at the leader's speed less ours takes far longer than the loop.
+	var abeam := lateral > -behind
+	if _stunt == Stunt.NONE and behind < -20.0 and distance > rejoin_turn_distance \
+			and not abeam and closing <= somersault_speed:
 		var facing := (-global_basis.z).dot(forward)
+		_overshooting = false
 		_set_stunt(Stunt.PULL_UP if facing > ASSIST_MIN_ALIGNMENT else Stunt.BACK)
 	if _overshooting:
 		# Straight on in the slot's lane, never changing speed faster than
@@ -1287,17 +1403,25 @@ func _follow_goal() -> Vector3:
 		goal = slot + forward * (maxf(-behind, 0.0) + formation_lookahead)
 		_target_speed = move_toward(speed, _slot_velocity.dot(forward) + wanted_closing,
 			arrival_deceleration * get_physics_process_delta_time())
-	elif _stunt != Stunt.NONE:
+	elif _is_somersault():
 		goal = _somersault_goal(behind)
-	elif behind < -20.0:
-		# Just ahead, within formation flight's reach: fly parallel in the
-		# slot's lane and let the leader catch up rather than U-turn.
-		goal = slot + forward * (-behind + 100.0)
-	elif (-global_basis.z).dot(forward) < ASSIST_MIN_ALIGNMENT:
-		# Behind the slot but facing away (just turned back to rejoin): turn
-		# round on our slot's outer side. Turning the other way swings us
-		# across the leader's path.
-		goal = global_position + _outward() * rejoin_turn_out + forward * formation_lookahead
+	else:
+		if behind < -20.0 and not abeam:
+			# Just ahead, within formation flight's reach: fly parallel in the
+			# slot's lane and let the leader catch up rather than U-turn.
+			goal = slot + forward * (-behind + 100.0)
+		# Pointing well away from where we're going: U-turn (see the U-turn
+		# group).
+		if _stunt == Stunt.NONE and distance > u_turn_min_distance \
+				and (-global_basis.z).dot(global_position.direction_to(goal)) < u_turn_alignment:
+			_set_stunt(Stunt.U_ROLL)
+		if _stunt != Stunt.NONE:
+			goal = _u_turn_goal(goal)
+		elif behind >= -20.0 and (-global_basis.z).dot(forward) < ASSIST_MIN_ALIGNMENT:
+			# Behind the slot but facing away (just turned back to rejoin, too
+			# close for a U-turn): turn round on our slot's outer side. Turning
+			# the other way swings us across the leader's path.
+			goal = global_position + _outward() * rejoin_turn_out + forward * formation_lookahead
 
 
 	# Help with the leader's target, but only from a proper formation position.
@@ -1315,14 +1439,33 @@ func _follow_goal() -> Vector3:
 	return goal
 
 
-#region Somersault
+#region Stunts (somersault, U-turn)
 
 func _set_stunt(stunt: Stunt) -> void:
 	_stunt = stunt
 	_stunt_time = 0.0
 	_rolling = false
-	if stunt == Stunt.ROLL_OUT:
+	if stunt == Stunt.ROLL_OUT or stunt == Stunt.U_ROLL_OUT:
 		_roll_direction = _continue_roll()
+	if stunt == Stunt.BACK:
+		_loop_up = _formation_near_ground()
+
+
+## True when the formation flies too low for the somersault's second half to
+## pull down into it: diving through that half, the nose points at the ground
+## and the ground check (ground_lookahead_time ahead along it) would pull us
+## out of the loop facing the wrong way.
+func _formation_near_ground() -> bool:
+	if _terrain == null:
+		return false
+	var approach := slot_position()
+	var floor_height := _terrain.clearance_height(approach.x, approach.z)
+	return approach.y - floor_height < ground_clearance + somersault_speed * ground_lookahead_time
+
+
+## One of the somersault's stages (not the U-turn's).
+func _is_somersault() -> bool:
+	return _stunt in [Stunt.PULL_UP, Stunt.BACK, Stunt.PULL_THROUGH, Stunt.ROLL_OUT]
 
 
 ## Goal and speed for the current stage of the somersault rejoin. `behind`:
@@ -1342,14 +1485,16 @@ func _somersault_goal(behind: float) -> Vector3:
 	# ...back far enough that the second half (which brings us down by one
 	# loop's height while the slot moves on) comes out just behind the slot.
 	# Straight away if it already would: one whole loop. Upside down only, so
-	# the second half always pulls down out of the lane above the formation.
+	# the second half always pulls down out of the lane above the formation;
+	# near the ground (_loop_up), right way up only, so it pulls up instead and
+	# we come down to the slot from above afterwards.
 	# Also wait until we're most of the way up to the lane (see below): a short
 	# trip back may not have climbed there yet, and pulling through too low
 	# brings us out under the slot, then up past the leader.
 	var loop_height := 2.0 * somersault_speed / somersault_pitch_rate
 	var approach := slot_position() + _outward() * join_approach_offset
 	var high_enough := (global_position - approach).dot(up) >= 0.75 * loop_height
-	if _stunt == Stunt.BACK and heading < -0.7 and not upright \
+	if _stunt == Stunt.BACK and heading < -0.7 and upright == _loop_up \
 			and behind + slot_travel >= somersault_exit_behind \
 			and (high_enough or behind > somersault_exit_behind + rejoin_behind_distance):
 		_set_stunt(Stunt.PULL_THROUGH)
@@ -1364,8 +1509,12 @@ func _somersault_goal(behind: float) -> Vector3:
 	_target_speed = somersault_speed
 	var was_rolling := _rolling
 	# Turned back the right way up (we were facing away to begin with): half
-	# roll onto our back for the pull through, as in a split-S.
-	_rolling = _stunt == Stunt.BACK and heading < -0.3 and global_basis.y.dot(up) > -0.5
+	# roll onto our back for the pull through, as in a split-S. Near the
+	# ground, the other way: upright after the first half loop (as in an
+	# Immelmann), to pull up through the second.
+	var canopy_up := global_basis.y.dot(up)
+	_rolling = _stunt == Stunt.BACK and heading < -0.3 \
+		and (canopy_up < 0.5 if _loop_up else canopy_up > -0.5)
 	if _rolling and not was_rolling:
 		_roll_direction = _continue_roll()
 	match _stunt:
@@ -1399,8 +1548,49 @@ func _somersault_goal(behind: float) -> Vector3:
 	return global_position + forward * 100.0
 
 
+## Goal and speed for the current stage of the U-turn towards `goal` (where
+## normal flight would head for).
+func _u_turn_goal(goal: Vector3) -> Vector3:
+	_stunt_time += get_physics_process_delta_time()
+	var nose := -global_basis.z
+	var up := leader.global_basis.y
+	var to_goal := global_position.direction_to(goal)
+	# Which way to pull: towards the goal, tilted over the top. Recomputed at
+	# right angles to the nose each frame, so as the nose comes round the
+	# pull follows it through a loop from facing away to facing the goal.
+	var over := (up + _outward()).normalized()
+	var pull := to_goal + over * u_turn_climb
+	pull -= nose * pull.dot(nose)
+	pull = pull.normalized() if pull.length_squared() > 0.0001 else global_basis.y
+	if _stunt == Stunt.U_ROLL and (global_basis.y.dot(pull) > U_TURN_ROLL_ALIGNMENT or _stunt_time > 1.5):
+		_set_stunt(Stunt.U_PULL)
+	if _stunt == Stunt.U_PULL and (nose.dot(to_goal) > u_turn_exit_alignment \
+			or _stunt_time > TAU / somersault_pitch_rate):
+		_set_stunt(Stunt.NONE if global_basis.y.dot(up) > 0.5 else Stunt.U_ROLL_OUT)
+	if _stunt == Stunt.U_ROLL_OUT and (global_basis.y.dot(up) > 0.5 or _stunt_time > 2.5):
+		_set_stunt(Stunt.NONE)
+
+	match _stunt:
+		Stunt.U_ROLL:
+			# Roll the shorter way towards the pull (positive rolls left),
+			# turning that way meanwhile.
+			if not _rolling:
+				_rolling = true
+				_roll_direction = -1.0 if global_basis.x.dot(pull) > 0.0 else 1.0
+			_target_speed = minf(_target_speed, u_turn_speed)
+			return global_position + pull * 100.0
+		Stunt.U_PULL:
+			# Full stick back, keeping the canopy on the pull.
+			_level_up = pull
+			_target_speed = minf(_target_speed, u_turn_speed)
+			return global_position + global_basis.y * 100.0
+	# Rolling upright (or done): carry on towards the goal.
+	return goal
+
+
+
 func _get_pitch_rate() -> float:
-	if _stunt == Stunt.PULL_UP or _stunt == Stunt.PULL_THROUGH:
+	if _stunt == Stunt.PULL_UP or _stunt == Stunt.PULL_THROUGH or _stunt == Stunt.U_PULL:
 		return somersault_pitch_rate
 	return pitch_rate
 
@@ -1410,8 +1600,12 @@ func _get_acceleration(fast: bool) -> float:
 	return maxf(normal, somersault_acceleration) if _stunt != Stunt.NONE else normal
 
 
+func _get_top_speed() -> float:
+	return maxf(boost_speed, rejoin_sprint_speed) if _sprint_allowed else boost_speed
+
+
 func _get_roll() -> float:
-	return _roll_direction if _rolling or _stunt == Stunt.ROLL_OUT else 0.0
+	return _roll_direction if _rolling or _stunt == Stunt.ROLL_OUT or _stunt == Stunt.U_ROLL_OUT else 0.0
 
 
 ## Roll direction (Fighter: positive rolls left) that keeps tilting us the way

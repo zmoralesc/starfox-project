@@ -19,3 +19,4 @@ bridge_down = PackedStringArray("Bridge is down! Now finish off those engines!",
 last_thruster = PackedStringArray("One engine left!", "Just one more engine!")
 thrusters_down = PackedStringArray("Engines are out! Hit the bridge!", "It's dead in space! Now the bridge!")
 destroyer_killed = PackedStringArray("That's how it's done, team!", "Great work, everyone!", "And there it goes. Brilliant work, team.")
+laments = PackedStringArray("FOOOOOOOX!", "Fox! NOOOOOOO!")
