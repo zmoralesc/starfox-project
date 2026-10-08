@@ -21,3 +21,18 @@ extends CommsSpeaker
 ## Lines this pilot may say when the player shoots down an enemy fighter, with
 ## the same celebration_chance per kill (one random wingman is asked).
 @export_multiline var praise: PackedStringArray = []
+## Lines this pilot may say instead when a kill was teamwork: you finished off
+## an enemy fighter this pilot had just hit, or the other way round
+## (WingCommand.teamwork_window)...
+@export_multiline var teamwork: PackedStringArray = []
+## ...with this chance per such kill (any order, Form Up included).
+@export_range(0.0, 1.0) var teamwork_chance := 0.3
+## Lines said when breaking away from an enemy on their tail (Wingman evasion).
+@export_multiline var under_fire: PackedStringArray = []
+## Lines confirming an order that has to wait until they've shaken their
+## pursuer (said in place of an acknowledgement).
+@export_multiline var order_queued: PackedStringArray = []
+## Lines said when their shields fail and they pull out of the fight.
+@export_multiline var disengaging: PackedStringArray = []
+## Lines said when their shields are back and they rejoin.
+@export_multiline var back_online: PackedStringArray = []

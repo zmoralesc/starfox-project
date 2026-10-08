@@ -12,10 +12,24 @@ extends AIPilot
 ##
 ## `order` is what the player told it to do; `state` is what it's physically
 ## doing right now (flying in formation, or attacking something).
+##
+## Enemies can target and shoot it (`status`), but it is never destroyed:
+## - Shields soak every hit and recharge after a while without one.
+## - EVADING: an enemy fighter hit it evade_hits times within evade_window.
+##   It jinks away until the pursuer is gone (or evade_max_time). Orders given
+##   meanwhile wait until it's done (queue_order()).
+## - DISENGAGED: its shields ran out. It pulls out towards the Great Fox, then
+##   flies back; after disengage_time its shields are back and it rejoins.
+##   Meanwhile it takes no orders, no hits and no pursuers.
 
 signal order_changed
+## `status` changed (see Status).
+signal status_changed
 
 enum State { FOLLOW, ATTACK }
+## Whether it's free to fight: NORMAL; EVADING an enemy on its tail (orders
+## wait); DISENGAGED with its shields down (no orders, not a target).
+enum Status { NORMAL, EVADING, DISENGAGED }
 enum Order { FORM_UP, ATTACK, COVER_ME, WEAPONS_FREE }
 ## Stages of the somersault rejoin: looping up and over, flying back past the
 ## leader, pulling through the rest of the loop, rolling upright if needed.
@@ -231,6 +245,49 @@ enum Stunt { NONE, PULL_UP, BACK, PULL_THROUGH, ROLL_OUT }
 ## After shooting down an enemy fighter, wait a random time in this range
 ## (seconds, min..max) before picking a new target, roaming meanwhile.
 @export var free_kill_cooldown := Vector2(2.0, 3.5)
+## An enemy chasing another wingman counts as this much nearer (m) when
+## picking a target, so Weapons Free wingmen go to each other's rescue.
+@export var free_rescue_bonus := 300.0
+
+@export_group("Shields")
+## Hits take this off; at zero the wingman disengages (it's never destroyed).
+## Enemy fighter bolts do 4, turret bolts 12.
+@export var max_shields := 100.0
+## Seconds without being hit before damaged shields start recharging.
+@export var shield_regen_delay := 4.0
+@export var shield_regen_rate := 10.0
+
+@export_group("Pursuers")
+## How many enemy fighters may chase this wingman at once (they pick someone
+## else when it's full)...
+@export var max_pursuers := 1
+## ...and on Weapons Free, where it goes looking for trouble.
+@export var weapons_free_max_pursuers := 2
+
+@export_group("Evasion")
+## Hits from enemy fighters (turret fire doesn't count) within evade_window
+## seconds that make it break away and evade.
+@export var evade_hits := 3
+@export var evade_window := 4.0
+## Evading lasts at least evade_min_time, then ends once nobody is chasing it,
+## or after evade_max_time at most.
+@export var evade_min_time := 1.0
+@export var evade_max_time := 8.0
+## Seconds after evading before it can be made to evade again.
+@export var evade_cooldown := 6.0
+## How often to change direction while evading.
+@export var evade_jink_interval := 0.7
+## While evading, stay within this distance (m) of the leader, so the player
+## can come to the rescue.
+@export var evade_leash := 300.0
+
+@export_group("Disengage")
+## Seconds out of the fight once the shields run out; then the shields are
+## back at full and it takes orders again.
+@export var disengage_time := 25.0
+## The first part of that, flying away (towards the Great Fox, if there is
+## one); the rest, flying back to the leader.
+@export var retreat_time := 8.0
 
 ## What the player told this wingman to do.
 var order := Order.FORM_UP
@@ -239,6 +296,9 @@ var order := Order.FORM_UP
 var standing_order := Order.FORM_UP
 var state := State.FOLLOW
 var target: Node3D
+## Free to fight, evading or disengaged (see Status). Read by the HUD.
+var status := Status.NORMAL
+var shields := 0.0
 
 ## Who flies this ship: the `speaker` export, when it's a Pilot (null for a
 ## plain CommsSpeaker or none).
@@ -257,6 +317,27 @@ var accent_color: Color:
 var _crowded_for := 0.0
 ## Weapons Free: seconds left before looking for a new target after a kill.
 var _free_cooldown := 0.0
+
+## Seconds since the last hit, and since `status` last changed.
+var _since_hit := 0.0
+var _status_time := 0.0
+## When (on _clock) recent hits from enemy fighters landed, for evade_hits.
+var _hit_times: Array[float] = []
+var _clock := 0.0
+var _evade_cooldown_left := 0.0
+var _jink_left := 0.0
+var _jink_direction := Vector3.ZERO
+## Whoever shot us last (set by the laser just before take_hit). Untyped: it
+## may have been freed since.
+var _last_attacker = null
+## An order given while evading, carried out when it ends (see queue_order).
+var _queued_order := Callable()
+## Disengaged: which way we're pulling out.
+var _retreat_direction := Vector3.FORWARD
+## Our collision layer, put back when we rejoin (disengaged: none, so bolts
+## fly through).
+var _normal_layer := 0
+@onready var _shield_fx := get_node_or_null("Model/Shield") as ShieldEffect
 
 ## 0 = normal flight, 1 = full formation flight.
 var _assist := 0.0
@@ -337,6 +418,8 @@ const DEFAULT_ACCENT := Color(0.95, 0.7, 0.15)
 func _ready() -> void:
 	super()
 	add_to_group("wingmen")
+	shields = max_shields
+	_normal_layer = collision_layer
 	# Move after the leader so formation follows this frame's position.
 	process_physics_priority = 5
 	_paint_accent()
@@ -435,6 +518,202 @@ static func target_label(node: Node) -> String:
 #endregion
 
 
+#region Shields and status
+
+## True unless disengaged: enemies may chase it and turrets shoot at it.
+func is_targetable() -> bool:
+	return status != Status.DISENGAGED
+
+
+## True unless disengaged. Orders given while evading wait (queue_order()).
+func can_take_orders() -> bool:
+	return status != Status.DISENGAGED
+
+
+## True if `enemy` may start chasing us: we're a target, and fewer than
+## pursuer_limit() others are already on us.
+func can_take_pursuer(enemy: Node) -> bool:
+	if not is_targetable():
+		return false
+	var others := pursuers()
+	others.erase(enemy)
+	return others.size() < pursuer_limit()
+
+
+## How many enemy fighters may chase us at once right now.
+func pursuer_limit() -> int:
+	return weapons_free_max_pursuers if order == Order.WEAPONS_FREE else max_pursuers
+
+
+## Enemy fighters chasing us right now.
+func pursuers() -> Array[EnemyFighter]:
+	var result: Array[EnemyFighter] = []
+	for node in get_tree().get_nodes_in_group("enemies"):
+		var enemy := node as EnemyFighter
+		if enemy and enemy.state == EnemyFighter.State.CHASE and enemy.quarry == self:
+			result.append(enemy)
+	return result
+
+
+## Shield bar for the HUD, 0..1: the shields; disengaged, how far the
+## reboot has got.
+func shield_fraction() -> float:
+	if status == Status.DISENGAGED:
+		return clampf(_status_time / maxf(disengage_time, 0.01), 0.0, 1.0)
+	return shields / maxf(max_shields, 1.0)
+
+
+## Carries out `assign` (a WingCommand order: a function taking this wingman)
+## once we've stopped evading. A later order replaces an earlier one.
+func queue_order(assign: Callable) -> void:
+	_queued_order = assign
+
+
+## Called by a laser that hit us, with whoever fired it (before take_hit).
+func notify_attacker(shooter: Node3D) -> void:
+	_last_attacker = shooter
+
+
+## Shields take the hit. Out of shields, we disengage; hit often enough by
+## enemy fighters, we evade. Never destroyed.
+func take_hit(damage: int, at: Vector3) -> void:
+	var attacker = _last_attacker
+	_last_attacker = null
+	if status == Status.DISENGAGED:
+		return
+	_since_hit = 0.0
+	shields = maxf(shields - damage, 0.0)
+	if _shield_fx:
+		_shield_fx.flash(at)
+	if shields < 1.0:
+		_disengage()
+		return
+	if status != Status.NORMAL or _evade_cooldown_left > 0.0 \
+			or not is_instance_valid(attacker) or not attacker is EnemyFighter:
+		return
+	_hit_times.append(_clock)
+	while not _hit_times.is_empty() and _clock - _hit_times[0] > evade_window:
+		_hit_times.pop_front()
+	if _hit_times.size() >= evade_hits:
+		_set_status(Status.EVADING)
+		_jink_left = 0.0
+		_say(pilot.under_fire if pilot else PackedStringArray(), Comms.Priority.HIGH)
+
+
+func _update_status(delta: float) -> void:
+	_clock += delta
+	_since_hit += delta
+	_status_time += delta
+	_evade_cooldown_left -= delta
+	match status:
+		Status.EVADING:
+			if _status_time >= evade_max_time \
+					or (_status_time >= evade_min_time and pursuers().is_empty()):
+				_evade_cooldown_left = evade_cooldown
+				_set_status(Status.NORMAL)
+				if _queued_order.is_valid():
+					var assign := _queued_order
+					_queued_order = Callable()
+					assign.call(self)
+		Status.DISENGAGED:
+			if _status_time >= disengage_time:
+				_rejoin()
+		_:
+			if _since_hit >= shield_regen_delay:
+				shields = minf(shields + shield_regen_rate * delta, max_shields)
+
+
+func _set_status(new_status: Status) -> void:
+	status = new_status
+	_status_time = 0.0
+	_hit_times.clear()
+	status_changed.emit()
+
+
+## Shields gone: drop out of the fight. Nothing can hit or chase us until we
+## rejoin; an Attack order is dropped (back to the standing order).
+func _disengage() -> void:
+	shields = 0.0
+	if _shield_fx:
+		_shield_fx.collapse()
+	_queued_order = Callable()
+	command_follow()
+	if order == Order.ATTACK:
+		order = standing_order
+		order_changed.emit()
+	_stunt = Stunt.NONE
+	_overshooting = false
+	collision_layer = 0
+	# Towards the Great Fox if there is one, otherwise up and away from the leader.
+	var great_fox := get_tree().get_first_node_in_group("great_fox") as Node3D
+	var away := global_position - leader.global_position if leader else global_basis.z
+	if great_fox:
+		away = great_fox.global_position - global_position
+	_retreat_direction = (away.normalized() + Vector3.UP * 0.2).normalized()
+	_set_status(Status.DISENGAGED)
+	_say(pilot.disengaging if pilot else PackedStringArray(), Comms.Priority.HIGH)
+
+
+## Shields back online: take hits, orders and pursuers again.
+func _rejoin() -> void:
+	shields = max_shields
+	collision_layer = _normal_layer
+	if _shield_fx:
+		_shield_fx.shimmer()
+	_set_status(Status.NORMAL)
+	_say(pilot.back_online if pilot else PackedStringArray())
+
+
+## Hard, randomly changing turns, mostly sideways and never far from the
+## leader, so the player can see who's on our tail and help.
+func _evade_goal(delta: float) -> Vector3:
+	_engage = null
+	_stunt = Stunt.NONE
+	_overshooting = false
+	_level_up = Vector3.UP
+	_target_speed = boost_speed
+	_jink_left -= delta
+	if _jink_left <= 0.0:
+		_jink_left = evade_jink_interval
+		var sideways := global_basis.x * (1.0 if randf() < 0.5 else -1.0) \
+			+ global_basis.y * randf_range(-0.6, 0.6)
+		_jink_direction = (sideways.normalized() - global_basis.z * 0.5).normalized()
+	var direction := _jink_direction
+	var to_leader := leader.global_position - global_position
+	if to_leader.length() > evade_leash:
+		direction = (direction + to_leader.normalized() * 1.5).normalized()
+	return global_position + direction * 100.0
+
+
+## Disengaged: away for retreat_time, then back to the leader, at full speed.
+func _disengage_goal() -> Vector3:
+	_engage = null
+	_stunt = Stunt.NONE
+	_overshooting = false
+	_level_up = Vector3.UP
+	_target_speed = boost_speed
+	if _status_time < retreat_time:
+		return global_position + _retreat_direction * 200.0
+	return leader.global_position - leader.global_basis.z * 60.0
+
+
+## True if `enemy` is chasing another wingman.
+func _chasing_teammate(enemy: Node) -> bool:
+	var fighter := enemy as EnemyFighter
+	return fighter != null and fighter.state == EnemyFighter.State.CHASE \
+		and fighter.quarry is Wingman and fighter.quarry != self
+
+
+## Says one of `lines` over the comms, if there are any.
+func _say(lines: PackedStringArray, priority := Comms.Priority.LOW) -> bool:
+	var comms := Comms.find(get_tree())
+	if comms == null or pilot == null or lines.is_empty():
+		return false
+	return comms.say(pilot, lines[randi() % lines.size()], priority)
+
+#endregion
+
+
 ## Low-level: start an attack run on `new_target` (no change of order). Used
 ## by assign_attack and by Cover Me to send a covering wingman after a threat.
 ## `split`: peel off to the side first so wingmen sent together fan out. Cover
@@ -463,9 +742,14 @@ func command_follow() -> void:
 
 func _decide(delta: float) -> Vector3:
 	_free_cooldown -= delta
+	_update_status(delta)
 	if leader == null:
 		return super(delta)
 	_track_leader(delta)
+	if status == Status.EVADING:
+		return _evade_goal(delta)
+	if status == Status.DISENGAGED:
+		return _disengage_goal()
 	if state == State.ATTACK and target_gone(target):
 		command_follow()
 		if order == Order.ATTACK:
@@ -559,8 +843,11 @@ func _pick_free_target() -> Node3D:
 		var distance := global_position.distance_to(enemy.global_position)
 		if distance > free_detect_range:
 			continue
-		# Any untaken enemy beats any taken one; then the nearest wins.
+		# Any untaken enemy beats any taken one; then the nearest wins, an
+		# enemy on another wingman's tail counting as nearer.
 		var score := distance + 10000.0 * _wingmen_attacking(enemy)
+		if _chasing_teammate(enemy):
+			score -= free_rescue_bonus
 		if score < best_score:
 			best = enemy
 			best_score = score
@@ -609,7 +896,8 @@ func _track_leader(delta: float) -> void:
 	_tracking_started = true
 
 	var wanted := 0.0
-	if formation_flight and state == State.FOLLOW and order != Order.WEAPONS_FREE and not leader.is_dead:
+	if formation_flight and status == Status.NORMAL and state == State.FOLLOW \
+			and order != Order.WEAPONS_FREE and not leader.is_dead:
 		var distance := global_position.distance_to(slot)
 		wanted = 1.0 - smoothstep(assist_full_range, assist_fade_range, distance)
 		# Not while pointing the wrong way (still finishing a turn back towards
@@ -944,7 +1232,8 @@ func is_in_formation() -> bool:
 ## formation position. Covering wingmen hold their fire for threats.
 func joins_leader_fire() -> bool:
 	# Not tucked in behind the leader: we'd be shooting through it.
-	return order == Order.FORM_UP and is_in_formation() and _tuck_amount <= 0.0
+	return status == Status.NORMAL and order == Order.FORM_UP and is_in_formation() \
+			and _tuck_amount <= 0.0
 
 
 func _wants_idle_fire() -> bool:
@@ -1183,12 +1472,20 @@ func _paint_accent() -> void:
 
 ## Called by a laser this wingman fired when it destroys `victim`. Only enemy
 ## fighters count: rocks and destroyer parts get no celebration or cooldown.
+## If you hit it within WingCommand.teamwork_window, it may say a teamwork line
+## instead of a celebration.
 func notify_kill(victim: Node) -> void:
 	if not victim is EnemyFighter:
 		return
 	if order == Order.WEAPONS_FREE:
 		# Break off and roam for a moment before picking the next target.
 		_free_cooldown = randf_range(free_kill_cooldown.x, free_kill_cooldown.y)
+	# You hit it too, just before: a teamwork line instead (any order, Form Up
+	# included).
+	var wing := get_tree().get_first_node_in_group("wing_command") as WingCommand
+	if wing and wing.shared_with_leader(victim):
+		wing.say_teamwork(self)
+		return
 	if order == Order.FORM_UP or pilot == null or pilot.celebrations.is_empty() \
 			or randf() > pilot.celebration_chance:
 		return

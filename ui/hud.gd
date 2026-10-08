@@ -31,6 +31,15 @@ const JOIN_BLINK_DELAY := 0.4
 const JOIN_BLINK_PERIOD := 1.2
 ## ...down to this fraction of its normal opacity (0 = gone at the low point).
 const JOIN_BLINK_MIN_ALPHA := 0.0
+## An evading wingman's card outline blinks red once every this many seconds.
+const EVADE_BLINK_PERIOD := 0.5
+## A disengaged wingman's card is drawn at this opacity (its shield bar, red
+## and refilling, stays bright).
+const DISENGAGED_CARD_ALPHA := 0.35
+## Shield bar under each wingman's name: width as a fraction of the card, and
+## height (base layout px, times WING_PANEL_SCALE).
+const WING_BAR_WIDTH := 0.7
+const WING_BAR_HEIGHT := 3.0
 ## Within this many degrees above or below you, an enemy shows as level.
 const RADAR_LEVEL_DEG := 15.0
 ## ...or within this many metres, for enemies close by.
@@ -145,11 +154,16 @@ var _hidden_enemies := {}
 ## Seconds each wingman has been joining on Form Up (0 once it fires with you),
 ## keyed by Wingman. Drives the order icon blink (JOIN_BLINK_DELAY).
 var _joining_for := {}
+## Seconds each wingman has been evading (0 otherwise), keyed by Wingman. Times
+## the blink of its card outline (EVADE_BLINK_PERIOD).
+var _evading_for := {}
 ## Seconds since the thrusters overheated (0 while they work): times the
 ## thruster bar's blink.
 var _overheated_for := 0.0
 ## Background of the wing panel cards (_draw_card_frame() sets its colour).
 var _card_style := StyleBoxFlat.new()
+## Blinking outline round an evading wingman's card.
+var _alert_style := StyleBoxFlat.new()
 ## The flame icon's fill as two hole-free halves (see _split_ring()).
 var _flame_halves: Array = []
 
@@ -163,6 +177,10 @@ func _ready() -> void:
 	_bold_font.variation_embolden = 0.9
 	get_viewport().size_changed.connect(_clear_marker_cache)
 	_card_style.set_corner_radius_all(roundi(CARD_CORNER_RADIUS * WING_PANEL_SCALE))
+	_alert_style.set_corner_radius_all(roundi(CARD_CORNER_RADIUS * WING_PANEL_SCALE))
+	_alert_style.draw_center = false
+	_alert_style.set_border_width_all(roundi(2.0 * WING_PANEL_SCALE))
+	_alert_style.border_color = COLOR_SHIELD_DOWN
 	_flame_halves = _split_ring(FLAME_ICON, FLAME_HOLE, FLAME_BOTTOM, FLAME_HOLE_BOTTOM)
 
 
@@ -182,8 +200,11 @@ func _process(delta: float) -> void:
 		_wing = get_tree().get_first_node_in_group("wing_command") as WingCommand
 	if is_instance_valid(_wing):
 		for wingman in _wing.wingmen():
-			var joining := wingman.order == Wingman.Order.FORM_UP and not wingman.joins_leader_fire()
+			var joining := wingman.order == Wingman.Order.FORM_UP and wingman.status == Wingman.Status.NORMAL \
+					and not wingman.joins_leader_fire()
 			_joining_for[wingman] = _joining_for.get(wingman, 0.0) + delta if joining else 0.0
+			var evading := wingman.status == Wingman.Status.EVADING
+			_evading_for[wingman] = _evading_for.get(wingman, 0.0) + delta if evading else 0.0
 	if is_instance_valid(_ship):
 		_overheated_for = _overheated_for + delta if _ship.overheated else 0.0
 	queue_redraw()
@@ -618,8 +639,11 @@ func _draw_gauges() -> void:
 ## Wing panel, bottom right, laid out like the D-pad that selects the wingmen:
 ## Falco on the left, Slippy on top, Krystal on the right, ALL below. Each card
 ## shows an icon for the current order above the call sign; selected cards light
-## up. The middle shows who the next order will go to. (What a wingman is doing
-## right now isn't shown: you can see it.)
+## up, and a shield bar sits under the name. The middle shows who the next
+## order will go to. What a wingman is doing isn't shown (you can see it),
+## except what changes your orders: evading (zig-zag icon, blinking red
+## outline; orders wait) and disengaged (card dimmed, bar red and refilling;
+## no orders).
 func _draw_wing_panel() -> void:
 	# Wingman cards (and the middle) are W × H squares; ALL is W × ALL_H. All
 	# sizes are the base layout times WING_PANEL_SCALE (k).
@@ -650,7 +674,7 @@ func _draw_wing_panel() -> void:
 
 	# ALL, under the middle (D-pad down).
 	var all_rect := Rect2(left + W + GAP, top + 2.0 * (H + GAP), W, ALL_H)
-	var everyone := _wing.wingmen()
+	var everyone := _wing.available()
 	var all_selected := not everyone.is_empty() and _wing.selected.size() == everyone.size()
 	_draw_card_frame(all_rect, COLOR_IDLE, all_selected)
 	draw_string(_bold_font, all_rect.position + Vector2(0.0, 15.0 * k), "ALL", HORIZONTAL_ALIGNMENT_CENTER, W, roundi(13 * k),
@@ -671,6 +695,14 @@ func _draw_wing_panel() -> void:
 
 func _draw_wing_card(rect: Rect2, wingman: Wingman, selected: bool, key: String, stack_offset: float) -> void:
 	_draw_card_frame(rect, wingman.accent_color, selected)
+	var evading := wingman.status == Wingman.Status.EVADING
+	var disengaged := wingman.status == Wingman.Status.DISENGAGED
+	var fade := DISENGAGED_CARD_ALPHA if disengaged else 1.0
+	# Evading (orders wait): the outline blinks red, from full brightness.
+	if evading:
+		var wave := 0.5 + 0.5 * cos(TAU * _evading_for.get(wingman, 0.0) / EVADE_BLINK_PERIOD)
+		_alert_style.border_color = Color(COLOR_SHIELD_DOWN, COLOR_SHIELD_DOWN.a * wave)
+		draw_style_box(_alert_style, rect)
 	var order_color := COLOR_IDLE
 	match wingman.order:
 		Wingman.Order.ATTACK:
@@ -689,12 +721,36 @@ func _draw_wing_card(rect: Rect2, wingman: Wingman, selected: bool, key: String,
 	const k := WING_PANEL_SCALE
 	var icon_size := ORDER_ICON_SIZE * k
 	var icon_center := Vector2(rect.get_center().x, rect.position.y + stack_offset + 4.0 * k + icon_size)
-	_draw_order_icon(wingman.order, icon_center, icon_size, order_color)
+	if evading:
+		_draw_evade_icon(icon_center, icon_size, COLOR_SHIELD_DOWN)
+	else:
+		_draw_order_icon(wingman.order, icon_center, icon_size, Color(order_color, order_color.a * fade))
 	draw_string(_bold_font, rect.position + Vector2(0.0, stack_offset + 38.0 * k), wingman.call_sign.to_upper(),
-		HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, roundi(13 * k), Color(wingman.accent_color, 1.0))
+		HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, roundi(13 * k), Color(wingman.accent_color, fade))
+	# Shields under the name, like yours: green, or red and refilling while
+	# disengaged (the bar fills as its shields come back).
+	var bar_size := Vector2(rect.size.x * WING_BAR_WIDTH, WING_BAR_HEIGHT * k)
+	var bar_pos := Vector2(rect.get_center().x - bar_size.x * 0.5, rect.position.y + stack_offset + 43.0 * k)
+	draw_rect(Rect2(bar_pos, bar_size), Color(1, 1, 1, 0.12))
+	draw_rect(Rect2(bar_pos, Vector2(bar_size.x * clampf(wingman.shield_fraction(), 0.0, 1.0), bar_size.y)),
+		COLOR_SHIELD_DOWN if disengaged else COLOR_SHIELD)
 	if key != "":
 		draw_string(_bold_font, rect.position + Vector2(5.0, 13.0) * k, key, HORIZONTAL_ALIGNMENT_LEFT, -1, roundi(10 * k),
-			Color(1, 1, 1, 0.4))
+			Color(1, 1, 1, 0.4 * fade))
+
+
+## Evading: a zig-zag arrow (jinking away), `half_size` px from the centre to
+## the edge, in place of the order icon.
+func _draw_evade_icon(c: Vector2, half_size: float, color: Color) -> void:
+	var s := half_size
+	var tip := c + Vector2(0.85, -0.85) * s
+	draw_polyline(PackedVector2Array([
+		c + Vector2(-0.85, 0.85) * s, c + Vector2(-0.15, 0.35) * s, c + Vector2(-0.35, -0.05) * s,
+		c + Vector2(0.35, -0.45) * s, tip,
+	]), color, 1.5, true)
+	draw_colored_polygon(PackedVector2Array([
+		tip, tip + Vector2(-0.6, 0.05) * s, tip + Vector2(-0.05, 0.6) * s,
+	]), color)
 
 
 ## Small symbol for a wingman order, `half_size` px from the centre to the edge:

@@ -155,10 +155,11 @@ func notify_shot(from: Vector3) -> void:
 
 
 ## Called by a laser we fired when it destroys `victim`. Enemy fighters get a
-## chance of a compliment from a wingman (WingCommand.praise_player_kill).
+## chance of a compliment from a wingman, or a teamwork line from one who hit
+## it too (WingCommand.on_player_kill).
 func notify_kill(victim: Node) -> void:
 	if victim is EnemyFighter:
-		get_tree().call_group("wing_command", "praise_player_kill")
+		get_tree().call_group("wing_command", "on_player_kill", victim)
 
 
 func take_hit(damage: int, at: Vector3) -> void:

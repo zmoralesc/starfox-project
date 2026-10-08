@@ -28,6 +28,9 @@ signal order_feedback(message: String)
 ## How far off the crosshair (degrees, beyond the target's own size) a target
 ## can be and still get picked.
 @export var assist_angle_deg := 4.0
+## A kill is teamwork when the other side (you, or a wingman) also hit that
+## enemy fighter within this many seconds before it went down.
+@export var teamwork_window := 1.0
 
 ## Currently selected wingmen (in wing order).
 var selected: Array[Wingman] = []
@@ -39,6 +42,8 @@ const SELECT_ACTIONS := {&"select_wingman_1": 0, &"select_wingman_2": 1, &"selec
 var _last_ack := {}
 ## The last line said to praise one of the player's kills.
 var _last_praise := ""
+## Wingman -> the teamwork line it used last.
+var _last_teamwork := {}
 
 
 func _ready() -> void:
@@ -67,6 +72,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	_drop_unavailable()
 	_update_cover()
 
 
@@ -78,6 +84,21 @@ func wingmen() -> Array[Wingman]:
 		result.append(wingman)
 	result.sort_custom(func(a: Wingman, b: Wingman) -> bool: return a.wing_index < b.wing_index)
 	return result
+
+
+## The wingmen who can take orders now (not disengaged), in wing order.
+func available() -> Array[Wingman]:
+	var result: Array[Wingman] = []
+	result.assign(wingmen().filter(func(w: Wingman) -> bool: return w.can_take_orders()))
+	return result
+
+
+## Deselects anyone who has just disengaged.
+func _drop_unavailable() -> void:
+	var before := selected.size()
+	selected.assign(selected.filter(func(w: Wingman) -> bool: return is_instance_valid(w) and w.can_take_orders()))
+	if selected.size() != before:
+		selection_changed.emit()
 
 
 func wingman_at(index: int) -> Wingman:
@@ -94,15 +115,18 @@ func is_selected(wingman: Wingman) -> bool:
 func toggle_select(wingman: Wingman) -> void:
 	if wingman in selected:
 		selected.erase(wingman)
+	elif not wingman.can_take_orders():
+		return  # disengaged: can't be selected
 	else:
 		selected.append(wingman)
 		selected.sort_custom(func(a: Wingman, b: Wingman) -> bool: return a.wing_index < b.wing_index)
 	selection_changed.emit()
 
 
-## Selects everyone, or deselects everyone if they're all selected already.
+## Selects everyone who can take orders, or deselects everyone if they're all
+## selected already.
 func toggle_select_all() -> void:
-	var everyone := wingmen()
+	var everyone := available()
 	if selected.size() == everyone.size():
 		selected.clear()
 	else:
@@ -118,12 +142,12 @@ func clear_selection() -> void:
 
 
 ## Who an order goes to right now: the selection, or with nobody selected,
-## everyone not standing on Cover Me.
+## everyone not standing on Cover Me. Never a disengaged wingman.
 func recipients() -> Array[Wingman]:
 	if not selected.is_empty():
 		return selected.duplicate()
 	var result: Array[Wingman] = []
-	result.assign(wingmen().filter(func(w: Wingman) -> bool: return w.standing_order != Wingman.Order.COVER_ME))
+	result.assign(available().filter(func(w: Wingman) -> bool: return w.standing_order != Wingman.Order.COVER_ME))
 	return result
 
 #endregion
@@ -172,7 +196,11 @@ func _issue(assign: Callable, needs_change: Callable, what: String) -> void:
 		return
 		
 	for wingman in to:
-		assign.call(wingman)
+		# Shaking off a pursuer: it carries the order out once it's clear.
+		if wingman.status == Wingman.Status.EVADING:
+			wingman.queue_order(assign)
+		else:
+			assign.call(wingman)
 		
 	var names := PackedStringArray(to.map(func(w: Wingman) -> String: return w.call_sign))
 	order_feedback.emit("%s: %s" % [", ".join(names), what])
@@ -181,18 +209,73 @@ func _issue(assign: Callable, needs_change: Callable, what: String) -> void:
 
 
 ## One wingman confirms an order over the comms (never the same words twice in
-## a row). Low priority: dropped if someone's already talking.
+## a row). Low priority: dropped if someone's already talking. A wingman who
+## is evading says it'll do it once it's clear (Pilot.order_queued).
 func _acknowledge(wingman: Wingman) -> void:
 	var comms := Comms.find(get_tree())
 	var pilot := wingman.pilot
-	if comms == null or pilot == null or pilot.acknowledgements.is_empty():
+	if comms == null or pilot == null:
 		return
-	var options := Array(pilot.acknowledgements)
+	var lines := pilot.acknowledgements
+	if wingman.status == Wingman.Status.EVADING and not pilot.order_queued.is_empty():
+		lines = pilot.order_queued
+	if lines.is_empty():
+		return
+	var options := Array(lines)
 	if options.size() > 1:
 		options.erase(_last_ack.get(wingman, ""))
 	var line: String = options.pick_random()
 	if comms.say(pilot, line):
 		_last_ack[wingman] = line
+
+
+## Your shot destroyed an enemy fighter (Ship.notify_kill). If a wingman hit it
+## within teamwork_window, that wingman may call it teamwork (say_teamwork());
+## otherwise a random wingman may praise you (praise_player_kill()).
+func on_player_kill(victim: Node) -> void:
+	var helper := _recent_helper(victim)
+	if helper:
+		say_teamwork(helper)
+	else:
+		praise_player_kill()
+
+
+## True if you hit `victim` within teamwork_window: a wingman's kill of it is
+## teamwork (Wingman.notify_kill).
+func shared_with_leader(victim: Node) -> bool:
+	var fighter := victim as EnemyFighter
+	return fighter != null and leader != null \
+		and fighter.seconds_since_hit_by(leader) <= teamwork_window
+
+
+## `wingman` may say one of its pilot's `teamwork` lines, with its
+## teamwork_chance; never the same line twice in a row. Low priority.
+func say_teamwork(wingman: Wingman) -> void:
+	var comms := Comms.find(get_tree())
+	var pilot := wingman.pilot
+	if comms == null or pilot == null or pilot.teamwork.is_empty() or randf() > pilot.teamwork_chance:
+		return
+	var options := Array(pilot.teamwork)
+	if options.size() > 1:
+		options.erase(_last_teamwork.get(wingman, ""))
+	var line: String = options.pick_random()
+	if comms.say(pilot, line):
+		_last_teamwork[wingman] = line
+
+
+## The wingman who hit `victim` most recently, if within teamwork_window.
+func _recent_helper(victim: Node) -> Wingman:
+	var fighter := victim as EnemyFighter
+	if fighter == null:
+		return null
+	var best: Wingman = null
+	var best_age := teamwork_window
+	for wingman in wingmen():
+		var age := fighter.seconds_since_hit_by(wingman)
+		if age <= best_age:
+			best = wingman
+			best_age = age
+	return best
 
 
 ## The player shot down an enemy fighter: a random wingman may compliment it,
@@ -218,11 +301,12 @@ func praise_player_kill() -> void:
 #endregion
 
 
-## Enemies currently attacking the player, nearest to the player first.
+## Enemies currently attacking the player (not those after a wingman),
+## nearest to the player first.
 func threats() -> Array[EnemyFighter]:
 	var result: Array[EnemyFighter] = []
 	for enemy: EnemyFighter in get_tree().get_nodes_in_group("enemies"):
-		if enemy.state == EnemyFighter.State.CHASE:
+		if enemy.state == EnemyFighter.State.CHASE and enemy.quarry == leader:
 			result.append(enemy)
 	if leader:
 		var origin := leader.global_position
@@ -269,7 +353,9 @@ func pick_target() -> Node3D:
 ## Give each covering wingman a threat to deal with, or send it back to
 ## formation to wait.
 func _update_cover() -> void:
-	var covering := wingmen().filter(func(w: Wingman) -> bool: return w.order == Wingman.Order.COVER_ME)
+	# Not those evading or disengaged: they're busy (see Wingman.status).
+	var covering := wingmen().filter(func(w: Wingman) -> bool:
+		return w.order == Wingman.Order.COVER_ME and w.status == Wingman.Status.NORMAL)
 	if covering.is_empty():
 		return
 	var current_threats := threats()

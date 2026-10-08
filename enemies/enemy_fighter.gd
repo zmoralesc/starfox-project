@@ -3,10 +3,18 @@ extends AIPilot
 ## Hostile fighter with four behaviours:
 ##
 ## - PATROL: wanders around its patrol area, watching a forward view cone.
-## - CHASE: has spotted the player; pursues and attacks while it can see them.
+## - CHASE: has spotted its `quarry` (the player or a wingman); pursues and
+##   attacks while it can see them.
 ## - EVADE: just got hit; jinks away from the fire for a moment.
-## - SEEK: lost sight of the player; searches around where they were last
+## - SEEK: lost sight of its quarry; searches around where they were last
 ##   seen, then gives up and goes back to patrolling.
+##
+## It goes for the nearest ship it spots, a wingman counting as
+## wingman_distance_penalty farther than it is (so the player usually wins),
+## and only a wingman with room for another pursuer
+## (Wingman.can_take_pursuer()). Shot by a wingman with room, it turns on that
+## wingman at once instead of evading (retaliate_against_wingmen). A
+## disengaged wingman is no target: anyone chasing it gives up.
 ##
 ## Asteroids block line of sight, so hiding behind rocks is a way to escape.
 
@@ -58,13 +66,24 @@ enum State { PATROL, CHASE, EVADE, SEEK }
 ## After evading, ignore new hits for this long so they get to fight back.
 @export var evade_cooldown := 4.0
 
+@export_group("Targets")
+## Choosing whom to chase, a wingman counts as this much farther away (m)
+## than it is: the player is preferred unless a wingman is clearly nearer.
+@export var wingman_distance_penalty := 100.0
+## Shot by a wingman (with room for another pursuer and in sight): go after it
+## at once instead of evading. Makes the wingmen who do the most shooting draw
+## the most fire.
+@export var retaliate_against_wingmen := true
+
 var health := 0
 var state := State.PATROL
 ## Where this fighter patrols around. Defaults to its spawn point.
 var patrol_center := Vector3.ZERO
 var last_known_position := Vector3.ZERO
 
-var _player: Ship
+## Who this fighter is after (the player or a wingman), or was last after.
+## Only meaningful while CHASE; read by Wingman and WingCommand.
+var quarry: Fighter
 var _break_side := 1.0
 var _state_time := 0.0
 var _unseen_time := 0.0
@@ -77,6 +96,13 @@ var _search_center := Vector3.ZERO
 var _jink_timer := 0.0
 var _jink_direction := Vector3.ZERO
 var _launch_time_left := 0.0
+## Whoever shot us last (untyped: it may have been freed since).
+var _last_attacker = null
+## Who has hit us, and when (shooter -> _clock at their latest hit). Read
+## through seconds_since_hit_by(); WingCommand uses it for teamwork kills.
+var _hits_by := {}
+## Seconds since we spawned, paused with the game.
+var _clock := 0.0
 ## The mission's play boundary, if it has one.
 var _boundary: PlayBoundary
 ## Flash, flinch and damage smoke when shot (the Model flashes and flinches;
@@ -129,6 +155,7 @@ func begin_launch(duration: float) -> void:
 
 
 func _think(delta: float) -> void:
+	_clock += delta
 	if _launch_time_left > 0.0:
 		_launch_time_left -= delta
 		_stick = Vector2.ZERO
@@ -147,9 +174,28 @@ func _think(delta: float) -> void:
 func alert(player: Ship) -> void:
 	if player == null or player.is_dead or state == State.CHASE or _launch_time_left > 0.0:
 		return
-	_player = player
-	_remember_player()
+	quarry = player
+	_remember_quarry()
 	_enter_state(State.CHASE if _has_line_of_sight(chase_tracking_distance) else State.SEEK)
+
+
+## Called by a laser that hit us, with whoever fired it (after notify_shot).
+## A wingman who shot us gets chased at once, if we can (_can_retaliate()).
+func notify_attacker(shooter: Node3D) -> void:
+	_last_attacker = shooter
+	_hits_by[shooter] = _clock
+	if _launch_time_left > 0.0 or (state == State.CHASE and quarry == shooter):
+		return
+	if _can_retaliate():
+		quarry = shooter as Fighter
+		_remember_quarry()
+		_evade_cooldown_left = evade_cooldown
+		_enter_state(State.CHASE)
+
+
+## Seconds since `shooter` last hit us (INF if it never has).
+func seconds_since_hit_by(shooter: Node) -> float:
+	return _clock - _hits_by[shooter] if _hits_by.has(shooter) else INF
 
 
 ## Called by a laser that hit us, with the point it was fired from.
@@ -174,7 +220,7 @@ func _enter_state(new_state: State) -> void:
 		State.EVADE:
 			_jink_timer = 0.0
 		State.SEEK:
-			# Head for where the player was probably going.
+			# Head for where our quarry was probably going.
 			_search_center = last_known_position + _last_known_velocity * 2.0
 			_roam_point = _search_center
 			_roam_time = 0.0
@@ -183,13 +229,11 @@ func _enter_state(new_state: State) -> void:
 func _decide(delta: float) -> Vector3:
 	_state_time += delta
 	_evade_cooldown_left -= delta
-	if not is_instance_valid(_player):
-		_player = get_tree().get_first_node_in_group("player") as Ship
 	_update_state(delta)
 
 	match state:
 		State.CHASE:
-			return _attack_goal(_player, _break_side)
+			return _attack_goal(quarry, _break_side)
 		State.EVADE:
 			return _evade_goal(delta)
 		State.SEEK:
@@ -201,19 +245,18 @@ func _decide(delta: float) -> Vector3:
 func _update_state(delta: float) -> void:
 	match state:
 		State.PATROL:
-			if _can_spot(view_cone_deg, detection_distance):
-				_enter_state(State.CHASE)
+			_chase_if_spotted(view_cone_deg, detection_distance)
 		State.SEEK:
-			if _can_spot(seek_view_cone_deg, seek_detection_distance):
-				_enter_state(State.CHASE)
-			elif _state_time > seek_duration:
+			if not _chase_if_spotted(seek_view_cone_deg, seek_detection_distance) \
+					and _state_time > seek_duration:
 				_enter_state(State.PATROL)
 		State.CHASE:
-			if not _player_alive():
+			if not _quarry_valid():
+				# Shot down, or a wingman who has disengaged: let them go.
 				_enter_state(State.PATROL)
 			elif _has_line_of_sight(chase_tracking_distance):
 				_unseen_time = 0.0
-				_remember_player()
+				_remember_quarry()
 			else:
 				_unseen_time += delta
 				if _unseen_time > lose_sight_time:
@@ -221,12 +264,59 @@ func _update_state(delta: float) -> void:
 		State.EVADE:
 			if _state_time > evade_duration:
 				_evade_cooldown_left = evade_cooldown
-				# Look back towards the threat: chase if the player is in clear view.
-				if _has_line_of_sight(detection_distance):
-					_remember_player()
-					_enter_state(State.CHASE)
+				# Look back towards the threat: a wingman who shot us, if we
+				# can turn on them; otherwise the player if in clear view.
+				var player := _player()
+				if _can_retaliate():
+					quarry = _last_attacker
+				elif player and _sees(player, detection_distance):
+					quarry = player
 				else:
 					_enter_state(State.SEEK)
+					return
+				_remember_quarry()
+				_enter_state(State.CHASE)
+
+
+## Starts a chase if anyone is in the given view cone (see _spot()). Returns
+## whether it did.
+func _chase_if_spotted(cone_deg: float, max_distance: float) -> bool:
+	var seen := _spot(cone_deg, max_distance)
+	if seen == null:
+		return false
+	quarry = seen
+	_remember_quarry()
+	_enter_state(State.CHASE)
+	return true
+
+
+## Who we can see in the given forward cone, nearest first: the player, or a
+## wingman with room for another pursuer (counted wingman_distance_penalty
+## farther than it is). Null if nobody.
+func _spot(cone_deg: float, max_distance: float) -> Fighter:
+	var best: Fighter = null
+	var best_distance := INF
+	var player := _player()
+	if player and _can_spot(player, cone_deg, max_distance):
+		best = player
+		best_distance = global_position.distance_to(player.global_position)
+	for node in get_tree().get_nodes_in_group("wingmen"):
+		var wingman := node as Wingman
+		if wingman == null or not wingman.can_take_pursuer(self):
+			continue
+		var distance := global_position.distance_to(wingman.global_position) + wingman_distance_penalty
+		if distance < best_distance and _can_spot(wingman, cone_deg, max_distance):
+			best = wingman
+			best_distance = distance
+	return best
+
+
+## True if the last thing to shoot us was a wingman we can see and go after.
+func _can_retaliate() -> bool:
+	if not retaliate_against_wingmen or not is_instance_valid(_last_attacker):
+		return false
+	var wingman := _last_attacker as Wingman
+	return wingman != null and wingman.can_take_pursuer(self) and _sees(wingman, detection_distance)
 
 
 ## Wander between random points around `center`.
@@ -266,30 +356,45 @@ func _evade_goal(delta: float) -> Vector3:
 	return global_position + _jink_direction * 100.0
 
 
-func _remember_player() -> void:
-	last_known_position = _player.global_position
-	_last_known_velocity = _player.velocity
+func _remember_quarry() -> void:
+	last_known_position = quarry.global_position
+	_last_known_velocity = quarry.velocity
 
 
-func _player_alive() -> bool:
-	return is_instance_valid(_player) and not _player.is_dead
+## The player, unless they're dead (or there is none).
+func _player() -> Ship:
+	var player := get_tree().get_first_node_in_group("player") as Ship
+	return player if player and not player.is_dead else null
 
 
-## True if the player is inside the given forward cone, in range and not hidden.
-func _can_spot(cone_deg: float, max_distance: float) -> bool:
-	if not _player_alive():
+## True while our quarry is still worth chasing: alive, and not a wingman who
+## has disengaged.
+func _quarry_valid() -> bool:
+	if not is_instance_valid(quarry):
 		return false
-	var to_player := _player.global_position - global_position
-	if (-global_basis.z).angle_to(to_player) > deg_to_rad(cone_deg):
+	if quarry is Ship:
+		return not (quarry as Ship).is_dead
+	if quarry is Wingman:
+		return (quarry as Wingman).is_targetable()
+	return true
+
+
+## True if `ship` is inside the given forward cone, in range and not hidden.
+func _can_spot(ship: Fighter, cone_deg: float, max_distance: float) -> bool:
+	var to_ship := ship.global_position - global_position
+	if (-global_basis.z).angle_to(to_ship) > deg_to_rad(cone_deg):
 		return false
-	return _has_line_of_sight(max_distance)
+	return _sees(ship, max_distance)
 
 
-## True if the player is within `max_distance` with no asteroid in between.
+## True if our quarry is within `max_distance` with no asteroid in between.
 func _has_line_of_sight(max_distance: float) -> bool:
-	if not _player_alive():
-		return false
-	var target_pos := _player.global_position
+	return _quarry_valid() and _sees(quarry, max_distance)
+
+
+## True if `ship` is within `max_distance` with no asteroid in between.
+func _sees(ship: Fighter, max_distance: float) -> bool:
+	var target_pos := ship.global_position
 	if global_position.distance_to(target_pos) > max_distance:
 		return false
 	var query := PhysicsRayQueryParameters3D.create(global_position, target_pos, LAYER_WORLD)

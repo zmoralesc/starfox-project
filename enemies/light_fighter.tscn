@@ -3,13 +3,9 @@
 [ext_resource type="PackedScene" path="res://enemies/enemy_fighter.tscn" id="1_base"]
 
 [node name="LightFighter" instance=ExtResource("1_base")]
-lead_turns = false
-aim_scatter = 0.0
+lead_turns = true
+aim_scatter = 6.0
 max_health = 3
-cruise_speed = 55.0
-min_speed = 55.0
-max_speed = 55.0
-boost_speed = 55.0
 pitch_rate = 0.8
 yaw_rate = 0.7
 turn_response = 3.0

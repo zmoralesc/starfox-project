@@ -1,8 +1,9 @@
 class_name GreatFox
 extends Node3D
 ## Scenery: the Star Fox team's mothership, parked just outside a mission's
-## play area. Purely decorative: no collision, no AI awareness, not
-## shootable. Place it beyond the PlayBoundary's turn-back distance (or far
+## play area. Decorative: no collision, not shootable; the only AI that knows
+## of it is a disengaged wingman, which pulls out towards it (group
+## `great_fox`). Place it beyond the PlayBoundary's turn-back distance (or far
 ## outside the action on missions without one) so the player can't fly into it.
 ##
 ## The imported model (models/great_fox/) is rotated in great_fox.tscn so that
@@ -17,6 +18,11 @@ extends Node3D
 
 var _rest := Vector3.ZERO
 var _time := 0.0
+
+
+func _enter_tree() -> void:
+	# Disengaged wingmen pull out towards it (Wingman).
+	add_to_group("great_fox")
 
 
 func _ready() -> void:

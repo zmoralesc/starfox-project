@@ -120,9 +120,9 @@ func _update_lock(delta: float) -> void:
 	lock = move_toward(lock, 1.0, slowness * delta / maxf(lock_time, 0.01))
 
 
-## The player if within range; otherwise the nearest wingman in range. The
-## range is aggro_range, or the destroyer's retaliation_range for whoever has
-## shot it lately (Destroyer.reach_for).
+## The player if within range; otherwise the nearest wingman in range (not a
+## disengaged one). The range is aggro_range, or the destroyer's
+## retaliation_range for whoever has shot it lately (Destroyer.reach_for).
 func _pick_target() -> Node3D:
 	var player := get_tree().get_first_node_in_group("player") as Ship
 	if player and not player.is_dead \
@@ -131,6 +131,8 @@ func _pick_target() -> Node3D:
 	var best: Node3D = null
 	var best_distance := INF
 	for wingman: Node3D in get_tree().get_nodes_in_group("wingmen"):
+		if wingman is Wingman and not (wingman as Wingman).is_targetable():
+			continue  # disengaged
 		var d := global_position.distance_to(wingman.global_position)
 		if d <= destroyer.reach_for(wingman, aggro_range) and d < best_distance:
 			best_distance = d

@@ -87,7 +87,7 @@ world/
   clouds.gd                Clouds: flyable cartoon cloud clusters that fade near the camera (Corneria draws them with effects/cloud.gdshader)
   planet_environment.tres  Day sky + horizon fog for planet missions
   play_boundary.gd         PlayBoundary: edge of a mission area; HUD warning, then the ship turns itself back
-  great_fox.gd / .tscn     GreatFox: the team mothership as scenery outside a mission area (no collision; slow bob)
+  great_fox.gd / .tscn     GreatFox: the team mothership as scenery outside a mission area (no collision; slow bob; disengaged wingmen fly towards it)
   space_station.gd / .tscn SpaceStation: solid friendly scenery (Space Station mission centre): toon materials, trimesh collision, AI avoidance spheres; keeps asteroids, waves and destroyers out
 effects/
   hit_burst.gd/.tscn       HitBurst: a bolt hitting anything with take_hit: cartoon star (0.2 s, 5 poses, min on-screen size but at most star_max_grow 2.5× its own, so far hits still shrink) + 8 sparks back at the shooter; no ink; settings on the .tscn
@@ -245,7 +245,7 @@ Defined as constants on `Fighter`.
 | Group | Members | Used by |
 |---|---|---|
 | `player` | `Ship` | HUD, enemies, space dust |
-| `wingmen` | `Wingman` ×3 | WingCommand, HUD |
+| `wingmen` | `Wingman` ×3 | WingCommand, HUD, enemies (whom to chase), turrets |
 | `enemies` | `EnemyFighter` | HUD, Cover Me |
 | `targets` | Asteroids, enemies, intact destroyer parts | Order targeting (`WingCommand.pick_target()`) |
 | `obstacles` | Asteroids, enemies, destroyer and space station `ObstacleProxy` spheres, Juggernaut `ObstacleBox` boxes | AI obstacle avoidance |
@@ -257,6 +257,7 @@ Defined as constants on `Fighter`.
 | `terrain` | `Terrain` (planet missions only; joined in `_enter_tree`) | `ChaseCamera` ground clearance, AI ground avoidance, wingman slots, `EnemySpawner`, `Ship` turn back |
 | `boundary` | `PlayBoundary` (missions with an edge; joined in `_enter_tree`) | `Ship` turn back, HUD warning, enemy patrols, `EnemySpawner` |
 | `station` | `SpaceStation` (Space Station mission; joined in `_enter_tree`) | `main.gd` asteroid placement, `EnemySpawner` (wave spawn points, destroyer destination) |
+| `great_fox` | `GreatFox` (joined in `_enter_tree`) | Disengaged wingmen fly towards it |
 
 ### What makes something shootable
 There's no base class for this. Lasers and the AI check for methods and properties instead:
@@ -267,6 +268,7 @@ There's no base class for this. Lasers and the AI check for methods and properti
 | `radius: float` | Recommended | Aim assist, fire tolerance and avoidance (`Fighter.radius_of()` falls back to 5) |
 | `signal destroyed` | Recommended | Wingman orders end when it fires |
 | `notify_shot(from: Vector3)` | Optional | Told where the shot came from, just before `take_hit` (enemies use it to evade, the player's ship for the HUD's hit-direction arc) |
+| `notify_attacker(shooter: Node3D)` | Optional | Told who fired, after `notify_shot` and before `take_hit` (destroyer: retaliation; enemy fighters: turn on a wingman who shot them; wingmen: only enemy fighters' hits count towards evading) |
 | `is_destroyed: bool` | Optional | For things that stay in the scene after dying (destroyer parts): the crosshair ignores them when true |
 | `highlight_on_crosshair: bool` | Optional (default on) | Whether the crosshair turns red over it (`Fighter.highlights_crosshair()`). Off on asteroids; on, as exports, on enemy fighters and destroyer parts |
 | `attack_target: bool` | Optional (default on) | Whether the Attack order can pick it (`Fighter.is_attack_target()`, checked in `WingCommand.pick_target()` and `order_attack()`). Off on asteroids |
@@ -329,7 +331,7 @@ Gameplay numbers are `@export`s grouped in the Inspector (`Speed`, `Handling`, `
     - whenever the leader is dead.
   - **Sideways slide:** `velocity_heading_blend` points the nose partly along the direction of travel, hiding most of the slide. `vertical_heading_blend` 1.0 does the same for pitch: the nose climbs and dives with the slot (vertical slide 7.6° → 2.3° on city passes).
 - **ATTACK:** peel off and go after `target` until it's destroyed, then go back to the standing order.
-  - **Aiming at turning targets:** wingmen have `lead_turns` on (set in `wingman.tscn`). This adds a turn that matches how fast the target crosses their view (`AIPilot._tracking_stick()`). Without it, the plain steering trails a turning fighter by about 10°, which is outside the fire window, so they chase without shooting. Elite fighters (`enemy_fighter.tscn`) have it on too; light fighters override it off. Turning it on makes any pilot a much better shot.
+  - **Aiming at turning targets:** wingmen have `lead_turns` on (set in `wingman.tscn`). This adds a turn that matches how fast the target crosses their view (`AIPilot._tracking_stick()`). Without it, the plain steering trails a turning fighter by about 10°, which is outside the fire window, so they chase without shooting. Elite and light fighters have it on too (light fighters since this was tuned: see `aim_scatter` below). Turning it on makes any pilot a much better shot.
   - **Sharing a target:** wingmen on one target would otherwise settle into the same spot behind it.
     - Each one gives way to those with a lower `wing_index` and hangs back `pursuit_stagger` (30 m) per senior on the target (`_pursuit_offset()`).
     - If it still bunches up with a senior within `crowd_distance` for `crowd_time`, it peels off for a fresh run (`_check_crowding()`).
@@ -354,28 +356,41 @@ Gameplay numbers are `@export`s grouped in the Inspector (`Speed`, `Handling`, `
   - **Never disengages:** once engaged, it stays on the target until it dies, however far the chase goes, then returns to roaming.
 
 ### AI Pilots and Accuracy
-- `ai_pilot.gd` (base class for enemies and wingmen) uses `aim_scatter` (export) to add random noise to the true aim point. Wingmen default to 4.0, Elite fighters to 2.0.
-- `lead_turns = true` allows an AI to steer its nose ahead of moving targets. Elite fighters and wingmen have this on; light fighters have it off.
+- `ai_pilot.gd` (base class for enemies and wingmen) uses `aim_scatter` (export) to add random noise to the true aim point. Wingmen 4.0, elite fighters 2.0, light fighters 6.0 (one on a weaving player's tail for 40 s: 23 damage on average, 12–32; it was 6 with `lead_turns` off).
+- `lead_turns = true` allows an AI to steer its nose ahead of moving targets. Wingmen and both enemy fighters have it on.
   - **Off on this order:** formation flight and formation fire.
 - **Signals:** `selection_changed`, `order_feedback(message)` (emitted for orders that went out; nothing shows it) and `Wingman.order_changed`.
-- **Comms lines** (`acknowledgements`, `celebrations`, `praise`, `celebration_chance` in each character's `Pilot` file, `comms/speakers/*.tres`; spoken via `WingCommand` and `Wingman.notify_kill`):
+- **Comms lines** (`acknowledgements`, `celebrations`, `praise`, `celebration_chance`, `teamwork`, `teamwork_chance` in each character's `Pilot` file, `comms/speakers/*.tres`; spoken via `WingCommand` and `Wingman.notify_kill`):
   - **Acknowledgements:** after each order, one recipient picked at random says one of its own lines (never the same as its previous one): Falco "You got it!" / "On it!", Slippy "Right away!" / "Understood!", Krystal "Yessir!" / "Yes, captain!". Low priority, so it's dropped if someone's already talking. An order that reaches nobody gets no line.
   - **Destroyers** are called out by Peppy, not the wingmen (see *Peppy* under Comms).
   - **Kill celebrations:** when a wingman's shot destroys an enemy fighter (not rocks or destroyer parts), there's a `celebration_chance` (25%) it says a random line from its pilot's `celebrations`, never on Form Up. Low priority. The laser reports kills to its shooter with `notify_kill(victim)`.
-  - **Praise for your kills:** when your shot destroys an enemy fighter, a random wingman has its `celebration_chance` (25%) to say one of its pilot's `praise` lines (never the same twice in a row), on any order. Low priority. `Ship.notify_kill()` → `WingCommand.praise_player_kill()`.
-- **Wingmen are invulnerable:** they have no `take_hit`.
+  - **Praise for your kills:** when your shot destroys an enemy fighter, a random wingman has its `celebration_chance` (25%) to say one of its pilot's `praise` lines (never the same twice in a row), on any order. Low priority. `Ship.notify_kill()` → `WingCommand.on_player_kill()` → `praise_player_kill()`.
+  - **Teamwork kills** (`teamwork`, `teamwork_chance` 30%): when you finish off an enemy fighter a wingman hit within `WingCommand.teamwork_window` (1 s), or a wingman finishes off one you hit, that wingman may say a `teamwork` line instead of praise or a celebration (any order, Form Up included; low priority; never the same twice in a row). Hits are recorded on the enemy (`EnemyFighter.seconds_since_hit_by()`). Falco "Heh, that guy stood no chance against the two of us.", Slippy "Yay, teamwork!", Krystal "Hehe, we make a good team!".
+  - **Evading and disengaging lines** (`under_fire`, `order_queued`, `disengaging`, `back_online`, also in the pilot files): see *Shields* below.
+- **Shields** (`Wingman.status`; *Shields*, *Pursuers*, *Evasion*, *Disengage* exports in `wingman.gd`; GUIDE §8.8). Enemies chase and shoot wingmen, but they're never destroyed.
+
+  | | Value |
+  |---|---|
+  | Shields | `max_shields` 100; regen `shield_regen_rate` 10/s after `shield_regen_delay` 4 s without a hit; enemy bolt 4, turret bolt 12 |
+  | Pursuers | at most `max_pursuers` 1 enemy chasing a wingman, `weapons_free_max_pursuers` 2 on Weapons Free |
+  | **EVADING** | `evade_hits` 3 hits from enemy fighters (not turrets) within `evade_window` 4 s. Jinks at `boost_speed` every `evade_jink_interval` 0.7 s, within `evade_leash` 300 m of you. Ends once nobody chases it (after `evade_min_time` 1 s) or at `evade_max_time` 8 s; `evade_cooldown` 6 s. Orders wait (`queue_order()`), latest wins. No formation flight or formation fire |
+  | **DISENGAGED** | at 0 shields. `collision_layer` 0 (bolts pass through), no orders, can't be selected, not targeted (enemies give up, turrets skip it). Flies towards the Great Fox (`great_fox` group) for `retreat_time` 8 s, then back to you. After `disengage_time` 25 s: full shields, standing order resumed (an Attack order is dropped) |
+  | Lines | `under_fire`, `disengaging` high priority; `back_online`, `order_queued` (instead of an acknowledgement) low |
+  | Weapons Free rescues | an enemy chasing another wingman counts `free_rescue_bonus` 300 m nearer |
+
+  **Measured** (Weapons Free, player circling without firing, fighters only, 5 × 5 min each): before 3.0 kills/min (1.6–5.7), enemies chasing the player 0.14 on average; after 3.6 (2.2–5.9), chasing the player 0.04, chasing wingmen 0.38, and no wingman evaded or disengaged: light fighters die before landing 3 hits in 4 s. With light fighters' aim buffed (`lead_turns` on, `aim_scatter` 6): 4.5 (2.0–8.0), still no evasions (at 55 m/s they couldn't stay on a wingman's tail); at the elite's speeds as well: 4.2 (0.6–6.7), still none (they keep up in formation but land too few hits, and a Weapons Free wingman turns on them). So against light fighters it adds stakes but doesn't slow the wingmen down; at a Juggernaut (elite escorts) wingmen do evade and disengage. See the GUIDE for the numbers.
 
 ### Enemies (`EnemyFighter`)
 A state machine. The HUD doesn't show the state (every enemy marker is the same red); the player reads it from how the fighter flies.
 
 | State | Behaviour | Leaves when… |
 |---|---|---|
-| `PATROL` | Wanders within 250 m of `patrol_center` | Spots the player: within a 45° half-angle cone, within 400 m, and with clear line of sight → `CHASE` |
-| `CHASE` | `_attack_goal(player)` | No line of sight for 3 s → `SEEK`. Player dead → `PATROL` |
-| `EVADE` | Jinks away from the shooter at full speed for 2.5 s, then ignores hits for 4 s | Done → `CHASE` if the player is visible, else `SEEK` |
-| `SEEK` | Searches near where the player was heading (60° cone, 450 m) | Spots the player → `CHASE`. After 12 s → `PATROL` |
+| `PATROL` | Wanders within 250 m of `patrol_center` | Spots someone: within a 45° half-angle cone, within 400 m, and with clear line of sight → `CHASE` |
+| `CHASE` | `_attack_goal(quarry)` (the player or a wingman) | No line of sight for 3 s → `SEEK`. Quarry dead or disengaged → `PATROL` |
+| `EVADE` | Jinks away from the shooter at full speed for 2.5 s, then ignores hits for 4 s | Done → `CHASE` the wingman who shot it if it can, else the player if visible, else `SEEK` |
+| `SEEK` | Searches near where its quarry was heading (60° cone, 450 m) | Spots someone → `CHASE`. After 12 s → `PATROL` |
 
-Any hit triggers `EVADE` (outside the cooldown), through `notify_shot`. **Asteroids block line of sight.**
+Any hit triggers `EVADE` (outside the cooldown), through `notify_shot`, except a hit from a wingman it can go after: then it chases that wingman at once (`notify_attacker`, `retaliate_against_wingmen`). **Whom it chases** (`_spot()`): the nearest ship it spots, a wingman counting `wingman_distance_penalty` (100 m) farther, and only a wingman with room for another pursuer. `quarry` is public (`WingCommand.threats()` and `Wingman.pursuers()` read it). **Asteroids block line of sight.**
 
 **Model (the Venomian "Mantis"):** one `.glb` (`models/enemy_fighter/`, built by `source/build_enemy_fighter.py`) for both types, about 6.2 × 5.7 m. `FighterModel` on `Model/Mantis` paints `Fighter_Accent` and `Fighter_Lights` (eye, pincer tips, wing leading edges, tip-plate fronts): elite purple + red lights (energy 10), light fighter tan + orange (energy 8, overridden in `light_fighter.tscn`). Engine glow: `Model/Glow`, one oval over the twin nozzles. Muzzles at the gun tips (±0.95, −0.42, −2.15). Damage smoke from `Model/SmokePoint` at the engine (0, 0.3, 2.2). Hurtbox 6.6 × 3.8 × 5.2 m, centred 0.5 m forward (about the old 5.5 m cube's hit rate, slightly higher); collision box 6.2 × 2 × 5.6, same centre; `radius` 3.5.
 
@@ -462,7 +477,8 @@ The dialogue box, bottom left: a portrait square with the speaker's name under i
 - **Hit direction** (`_draw_hit_direction()`): a red arc around the screen centre on the side an enemy shot came from, fading over `Ship.shot_flash_time` (0.8 s). Set by `Ship.notify_shot(origin)`, which lasers call before `take_hit()`.
 - **Wing panel** (`_draw_wing_panel()`, bottom right): laid out like the D-pad, with Falco left, Slippy top, Krystal right and ALL below.
   - **Each card** (base layout 56 × 56 squares, 5 px apart, ALL 56 × 20, names 13 px, all scaled by `WING_PANEL_SCALE` 1.15 to about 64 × 64; translucent backgrounds with `CARD_CORNER_RADIUS` 6 px (scaled) rounded corners and no outline, one reused `StyleBoxFlat`): an icon for the current order on top, in the order's colour (`_draw_order_icon()`), with the call sign centred under it: Form Up three dots in a V (green), Attack a crosshair (orange), Cover Me a shield (blue), Weapons Free a burst (red). There's deliberately no live status (attacking, roaming...): the player can see that. The one exception: on Form Up, the icon fades slowly out and in while the wingman is still joining and not yet firing with you (`Wingman.joins_leader_fire()` false for over `JOIN_BLINK_DELAY` 0.4 s, so brief drops in hard turns don't flicker it; a `JOIN_BLINK_PERIOD` 1.2 s cycle down to `JOIN_BLINK_MIN_ALPHA` 0 (invisible), timed by `_joining_for`). Selected cards are tinted in the wingman's colour, and on keyboard the select key shows in the corner.
-  - **The middle:** who the next order would go to.
+  - **Shield bar** under each name (`WING_BAR_WIDTH` 0.7 of the card, `WING_BAR_HEIGHT` 3 px), green. **Evading:** red zig-zag icon instead of the order icon, outline blinking red every `EVADE_BLINK_PERIOD` 0.5 s. **Disengaged:** card at `DISENGAGED_CARD_ALPHA` 0.35, bar red and refilling as the shields reboot.
+  - **The middle:** who the next order would go to (never a disengaged wingman).
 - **Wingman markers:**
   - **Triangles:** a solid downward triangle over each wingman in its own colour, with its initial in bold white (`WINGMAN_MARKER_SIZE` 36 × 29 px, letter size `WINGMAN_INITIAL_SIZE` 15; cached as textures, see `_wingman_marker()`; bold through a `FontVariation` with `variation_embolden`). They look the same whether or not the wingman is selected (selection shows on the wing panel only).
   - **Targets:** only targets of an **Attack** order get an orange diamond listing who's on it (initials and distance). Targets picked by Cover Me or Weapons Free aren't marked.
@@ -504,7 +520,7 @@ The dialogue box, bottom left: a portrait square with the speaker's name under i
 - **Spawner (planet):** wave centre at least `spawn_altitude` 80 m up (each fighter at least 40 m over its own ground) and `spawn_boundary_margin` 250 m inside the boundary.
 - **`PlayBoundary`** (`world/play_boundary.gd`): Corneria `radius` 3300 m (horizontal) around (0, 0, 500), `turn_back_margin` 200 m (negative = warning only). HUD: "RETURN TO THE COMBAT AREA" past the radius, "TURNING BACK" during the automatic turn.
 - **Turn back (`Ship`, *Boundary* group):** past radius + margin the ship steers itself home (`turning_back`; roll ignored), pulling up hard if the ground is within `turn_back_clearance` 60 m; control returns within `turn_back_done_deg` 25° of the way home. About 3 s. A level, low run straight at a steep ridge can still clip it.
-- **`GreatFox`** (`world/great_fox.tscn`): on Corneria, scenery at (500, 700, 4500) over the sea, yaw 70°, about 730 m outside the boundary, behind the intro approach. No collision or groups; `bob_height` 3 m, `bob_period` 14 s. At full throttle straight at it, the turn-back stops you about 160 m short (farthest 3,644 m from the boundary centre; with the old 2.5 s boost it was 257 m short at 3,549 m). Keep it beyond the boundary + turn-back margin. Also on the Space Station mission (see Missions and levels).
+- **`GreatFox`** (`world/great_fox.tscn`): on Corneria, scenery at (500, 700, 4500) over the sea, yaw 70°, about 730 m outside the boundary, behind the intro approach. No collision; group `great_fox` (disengaged wingmen fly towards it); `bob_height` 3 m, `bob_period` 14 s. At full throttle straight at it, the turn-back stops you about 160 m short (farthest 3,644 m from the boundary centre; with the old 2.5 s boost it was 257 m short at 3,549 m). Keep it beyond the boundary + turn-back margin. Also on the Space Station mission (see Missions and levels).
 
 ---
 
@@ -597,7 +613,8 @@ Two tips:
 ## 9. Ideas and known gaps
 
 - Fades are only used for Start. Quit to Title and the restart after death cut straight to the next scene.
-- Wingmen can't be damaged or lost. There's no shield or health system for them.
+- Wingman shields: at the default values no wingman evaded or disengaged in 25 simulated minutes of Weapons Free (see *Shields* under Wingmen); tune before relying on it as a nerf. Peppy has no line yet for a wingman pulling out.
+- A disengaged wingman flying towards the Great Fox could pass through its hull (no collision) if it disengages within about 1.2 km of it.
 - Audio: comms beeps, laser shots, explosions, engine loops and level music (see docs/GUIDE.md, Sound). There is a Music bus but no volume settings yet; no tracks are assigned yet.
 - A destroyer's off-screen arrow can sit under the comms box when it points bottom left.
 - One level, endless waves. There's no win condition.
