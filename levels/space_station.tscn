@@ -1,24 +1,25 @@
 [gd_scene format=3]
 
 [ext_resource type="PackedScene" path="res://levels/level_base.tscn" id="1_base"]
-[ext_resource type="Script" path="res://main.gd" id="2_main"]
+[ext_resource type="Script" path="res://world/asteroid_field.gd" id="2_field"]
 [ext_resource type="Script" path="res://world/space_dust.gd" id="3_dust"]
 [ext_resource type="Script" path="res://world/play_boundary.gd" id="4_boundary"]
 [ext_resource type="PackedScene" path="res://world/great_fox.tscn" id="5_great_fox"]
 [ext_resource type="PackedScene" path="res://world/space_station.tscn" id="6_station"]
 [ext_resource type="Environment" path="res://world/asteroid_field_environment.tres" id="7_env"]
 
-[node name="Main" instance=ExtResource("1_base")]
-script = ExtResource("2_main")
+[node name="SpaceStationMission" instance=ExtResource("1_base")]
 intro_advisor_line = "Stay sharp, team. I'm reading multiple enemy squadrons approaching our position."
-asteroid_count = 640
-field_radius = 3800.0
-field_flatten = 0.25
 
 [node name="SpaceDust" type="MultiMeshInstance3D" parent="."]
 script = ExtResource("3_dust")
 
-[node name="Asteroids" type="Node3D" parent="."]
+[node name="AsteroidField" type="Node3D" parent="." node_paths=PackedStringArray("intro")]
+script = ExtResource("2_field")
+asteroid_count = 640
+field_radius = 3800.0
+field_flatten = 0.25
+intro = NodePath("../IntroCutscene")
 
 [node name="PlayBoundary" type="Node3D" parent="."]
 script = ExtResource("4_boundary")

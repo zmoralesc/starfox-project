@@ -34,10 +34,10 @@ This guide assumes you know Godot 4 basics: scenes, nodes, signals and GDScript.
 ## 2. Project map
 
 ```
-main.tscn / main.gd        Space Station mission: inherits levels/level_base.tscn, main.gd (extends Level) scatters the asteroids
 levels/
   level.gd                 Level: shared mission logic (build world, intro + line, spawner start, death/restart, mouse)
   level_base.tscn          Every shared node (ship, camera, wingmen, spawner, HUD, comms, pause, intro); missions inherit it
+  space_station.tscn       Space Station mission (plain Level): the station, an AsteroidField, space dust, the Great Fox, play boundary
   corneria.tscn            Corneria: the 8 km map (terrain + props: city, arches, base...), clouds, day sky, enemy waves (no destroyer), play boundary
 missions/
   mission.gd + *.tres      Mission: title, description, scene_path (listed by the mission selector)
@@ -74,6 +74,7 @@ weapons/
   laser_glow.gdshader      Soft halo along a bolt, even along it and fading towards the tail, laid out on screen; shrinks with distance (no minimum size)
 world/
   asteroid.gd              Asteroid: procedural, destructible rocks
+  asteroid_field.gd        AsteroidField: scatters a seeded asteroid field round itself, clear of the intro lane and the station
   intro_cutscene.gd        IntroCutscene: level intro fly-by
   space_dust.gd            Speed streaks around the camera
   space_sky.gdshader       Procedural starfield sky; optional distant planet (Corneria on the Space Station mission: `planet_*` uniforms; land biomes, mountain ranges and sun-lit relief: `land_*`, `dryness`, `mountain_amount`, `snow_line`, `relief_strength`)
@@ -167,7 +168,7 @@ Every script with a `class_name` (`Fighter`, `Ship`, `Wingman`, `EnemyFighter`, 
 ### Scene flow
 
 ```
-title_screen.tscn --Start--> MissionSelect --pick--> SceneFader.change_scene(mission.scene_path) --> main.tscn / levels/corneria.tscn
+title_screen.tscn --Start--> MissionSelect --pick--> SceneFader.change_scene(mission.scene_path) --> levels/space_station.tscn / levels/corneria.tscn
                                                               |
         main._ready(): spawn asteroids (input actions come from the Settings autoload)
                        |
@@ -258,7 +259,7 @@ Defined as constants on `Fighter`.
 | `wing_command`, `enemy_spawner`, `destroyer` | singletons in the level | HUD |
 | `terrain` | `Terrain` (planet missions only; joined in `_enter_tree`) | `ChaseCamera` ground clearance, AI ground avoidance, wingman slots, `EnemySpawner`, `Ship` turn back |
 | `boundary` | `PlayBoundary` (missions with an edge; joined in `_enter_tree`) | `Ship` turn back, HUD warning, enemy patrols, `EnemySpawner` |
-| `station` | `SpaceStation` (Space Station mission; joined in `_enter_tree`) | `main.gd` asteroid placement, `EnemySpawner` (wave spawn points, destroyer destination) |
+| `station` | `SpaceStation` (Space Station mission; joined in `_enter_tree`) | `AsteroidField` asteroid placement, `EnemySpawner` (wave spawn points, destroyer destination) |
 | `great_fox` | `GreatFox` (joined in `_enter_tree`) | Disengaged wingmen fly towards it |
 
 ### What makes something shootable
@@ -454,7 +455,7 @@ Any hit triggers `EVADE` (outside the cooldown), through `notify_shot`, except a
 3. Once the player is `handover_distance` past it, the camera flies to `ChaseCamera.chase_transform()`.
 4. Snaps the camera into place, enables controls, fades the HUD in and emits `finished`.
 
-`main.gd` keeps asteroids out of the fly-in lane (`_blocks_intro`), because ships on autopilot don't dodge. **Move the markers (`IntroStart`, `IntroCameraSpot`, in `levels/level_base.tscn`, overridden per mission) to reframe the shot.** The lane follows them automatically. On the Space Station mission they are overridden in `main.tscn` to fly in towards the space station.
+`AsteroidField` keeps asteroids out of the fly-in lane (`_blocks_intro`, from the cutscene set in its `intro` export), because ships on autopilot don't dodge. **Move the markers (`IntroStart`, `IntroCameraSpot`, in `levels/level_base.tscn`, overridden per mission) to reframe the shot.** The lane follows them automatically. On the Space Station mission they are overridden in `levels/space_station.tscn` to fly in towards the space station.
 
 ### Comms (`Comms`)
 The dialogue box, bottom left: a portrait square with the speaker's name under it, and the line typing out in a box to its right.
@@ -496,11 +497,11 @@ The dialogue box, bottom left: a portrait square with the speaker's name under i
 - **Mission selector** (`ui/mission_select.gd`, node `MissionSelect` in `title_screen.tscn`): Start opens it. One button per `Mission` in its `missions` array, the highlighted one's description underneath, Back (Esc / B) returns to the title menu.
 
 ### Missions and levels
-- **Missions:** `Mission` resources in `missions/` (`title`, `description`, `scene_path`). Space Station mission → `res://main.tscn`; Corneria → `res://levels/corneria.tscn`.
+- **Missions:** `Mission` resources in `missions/` (`title`, `description`, `scene_path`). Space Station mission (`space_station.tres`) → `res://levels/space_station.tscn`; Corneria → `res://levels/corneria.tscn`.
 - **Shared base:** every mission scene inherits `levels/level_base.tscn` (root script `Level`). It keeps flat node names (`Ship`, `Falco`...). Changes to the base reach every mission unless overridden.
-- **Space Station mission (`main.tscn`):** `PlayBoundary` radius 4000 m (turn back at 4200 m; at full throttle the ship gets about 4,345 m out; just past the 3800 m field). `asteroid_count` 640, `field_radius` 3800, `field_flatten` 0.25 (the same 640 rocks as at 1800 m, so about 9× sparser and twice as thick; history: 160 / 900 / 0.5, then 640 / 1800 / 0.25), `EnemySpawner.zone_radius` 3000 (destroyers warp in inside the area), `ChaseCamera.far` 10000 (base 5000). `GreatFox` at (0, 30, 5000), yaw -25°, behind `IntroStart`; the turn-back keeps you 384–394 m from its hull. Waves and patrols stay inside the boundary. `SpaceStation` at the origin, yaw 215° (bow and hangar towards the intro); the intro markers are overridden here (`IntroStart` (60, 30, 3700), 300 m inside the edge and about 1.3 km in front of the Great Fox; `IntroCameraSpot` (90, 34, 3400)) so the formation flies in from near the edge towards it and has it dead ahead (about 3.2 km away) at handover. `main.gd` `station_clearance` 40 m (asteroids from the station). `WorldEnvironment` uses `asteroid_field_environment.tres`: Corneria in the sky, `planet_direction` (-0.62, -0.42, -0.66), `planet_angular_radius` 22°, `night_brightness` 0.004 (near-black night side; city lights unaffected), `day_brightness` 2.5 and `day_saturation` 0.6 (sunlit side only).
+- **Space Station mission (`levels/space_station.tscn`, root `SpaceStationMission`, no script of its own):** `PlayBoundary` radius 4000 m (turn back at 4200 m; at full throttle the ship gets about 4,345 m out; just past the 3800 m field). `AsteroidField`: `asteroid_count` 640, `field_radius` 3800, `field_flatten` 0.25 (the same 640 rocks as at 1800 m, so about 9× sparser and twice as thick; history: 160 / 900 / 0.5, then 640 / 1800 / 0.25), `EnemySpawner.zone_radius` 3000 (destroyers warp in inside the area), `ChaseCamera.far` 10000 (base 5000). `GreatFox` at (0, 30, 5000), yaw -25°, behind `IntroStart`; the turn-back keeps you 384–394 m from its hull. Waves and patrols stay inside the boundary. `SpaceStation` at the origin, yaw 215° (bow and hangar towards the intro); the intro markers are overridden here (`IntroStart` (60, 30, 3700), 300 m inside the edge and about 1.3 km in front of the Great Fox; `IntroCameraSpot` (90, 34, 3400)) so the formation flies in from near the edge towards it and has it dead ahead (about 3.2 km away) at handover. `AsteroidField.station_clearance` 40 m (asteroids from the station). `WorldEnvironment` uses `asteroid_field_environment.tres`: Corneria in the sky, `planet_direction` (-0.62, -0.42, -0.66), `planet_angular_radius` 22°, `night_brightness` 0.004 (near-black night side; city lights unaffected), `day_brightness` 2.5 and `day_saturation` 0.6 (sunlit side only).
   - **Station detail** (`build_space_station.py`): wheel frames at the 16 arc joints without a collar or module (`FRAME_ANGLES`, 0.5° wide), side-face conduits at r 376, outer plates per lathe segment (75% of them) between conduits at z ±9.5, 8 radiator fin clusters (`FIN_ANGLES`, 4 fins 9 × 16 m, 1.2° apart), an inner rail lit every other segment; spoke frames every 28 m (`SPOKE_RIBS`); 16 ribs per hub cone; cargo containers (9 × 12 × 20 m) in two rows at z -124 / -102, 6 tanks (r 7) over z 86–144 (`FITTINGS` widen the AI spheres there); hangar underplates and roof machinery. Each detail pass has its own seed.
-- **`Level` exports:** `lament_delay` (0.5 s, wreck exploding to the lament), `restart_delay` (2.5 s, lament to the fade starting), `spawn_enemies` (off = no waves), `music` (a `LevelMusic`; empty = silence), `intro_line`, `intro_line_delay`, `intro_advisor_line` (said by MissionControl's advisor, Peppy, `intro_advisor_delay` 2 s after the player gets control, so not during the intro; empty = nothing; the Space Station mission sets "Stay sharp, team. I'm reading multiple enemy squadrons approaching our position."). The intro line is HIGH priority so that, if the intro was skipped and it is still on screen, the advisor's line queues behind it instead of cutting it off. Override `_build_world()` to generate a world (`main.gd` scatters asteroids there).
+- **`Level` exports:** `lament_delay` (0.5 s, wreck exploding to the lament), `restart_delay` (2.5 s, lament to the fade starting), `spawn_enemies` (off = no waves), `music` (a `LevelMusic`; empty = silence), `intro_line`, `intro_line_delay`, `intro_advisor_line` (said by MissionControl's advisor, Peppy, `intro_advisor_delay` 2 s after the player gets control, so not during the intro; empty = nothing; the Space Station mission sets "Stay sharp, team. I'm reading multiple enemy squadrons approaching our position."). The intro line is HIGH priority so that, if the intro was skipped and it is still on screen, the advisor's line queues behind it instead of cutting it off. Override `_build_world()` to generate a world in code (no mission does now: their world nodes build themselves).
 
 ### Planet terrain (Corneria)
 - **The Corneria map** (`models/corneria/`, built by `source/build_corneria.py` in Blender): 8 × 8 km, north = −Z. Sea and sea stacks south; a bay with six stone arches (openings ~80 × 120 m); a suspension bridge (30 m deck) over the river mouth; Corneria City (~170 blocks, towers to 340 m with the spire, red warning lights over 100 m); a 130 m plateau with a lake (surface 120 m) and a waterfall; hills, ridges, mesas, a canyon and coastal cliffs in the west; the military base (west) reached by a road through a graded valley; a harbour town with a lighthouse (east coast); irregular mountains on three sides; ~6,000 trees.
@@ -534,7 +535,7 @@ The dialogue box, bottom left: a portrait square with the speaker's name under i
 
 ## 6. Common tasks
 
-**Add a mission.** New inherited scene from `levels/level_base.tscn` under `levels/`; override start positions, environment, `spawn_enemies`, `intro_line`; add the world as child nodes, or a root script extending `Level` with `_build_world()`, plus a `PlayBoundary` for an edge; add a `Mission` .tres in `missions/` and put it in the `missions` array of `MissionSelect` in `ui/title_screen.tscn`. Details: GUIDE section 10.
+**Add a mission.** New inherited scene from `levels/level_base.tscn` under `levels/`; override start positions, environment, `spawn_enemies`, `intro_line`; add the world as child nodes (self-building ones like `AsteroidField`, `Terrain`), or a root script extending `Level` with `_build_world()`, plus a `PlayBoundary` for an edge; add a `Mission` .tres in `missions/` and put it in the `missions` array of `MissionSelect` in `ui/title_screen.tscn`. Details: GUIDE section 10.
 
 **Add level music.** Audio files in `audio/music/`; *New Resource → LevelMusic* (set `loop`, optional `lead`, `volume_db`); drag it onto `Music` on the mission scene's root (or the title screen root). The loop file needs no loop import setting; a loop offset on import is respected. Details: GUIDE section 10.
 
@@ -585,7 +586,7 @@ godot --headless --path . --fixed-fps 60 -s path/to/scenario.gd
 ```
 
 A scenario script `extends SceneTree`:
-1. In `_initialize()`, instantiates `res://main.tscn`, adds it to `root` and sets `current_scene`.
+1. In `_initialize()`, instantiates a mission scene (`res://levels/space_station.tscn`), adds it to `root` and sets `current_scene`.
 2. Drives the game from `_physics_process()`: moves nodes, calls `wing.order_attack(...)`, sends `Input.parse_input_event(...)`, and so on.
 3. Prints PASS/FAIL lines, and returns `true` to quit.
 
@@ -614,7 +615,7 @@ Two tips:
 - **AI and big obstacles:** obstacle avoidance knows spheres and boxes, so large non-spherical things need covering with `ObstacleProxy` spheres or `ObstacleBox` boxes (see `Destroyer._build_obstacle_proxies()`; the AI keeps radius × 1.3 + `avoid_margin` 6 from a sphere's centre and `margin` + `avoid_margin` from a box's faces). While attacking, the AI ignores obstacles at or beyond its target, and a box (hull) where its path meets it within `mount_ignore_distance` (60 m) + the target's radius of a structure it attacks, and after scraping a surface it steers off along the normal for `recover_duration` (the sum of every surface hit, mixed with the previous direction while still recovering, so it can't flip between a wall and a ledge in a corner).
 - **Toon shadow floor is sun-only.** `toon.gdshader` gives shadowed sides a minimum brightness, but only for directional lights. If a non-directional light got it too, it would light whole lighting clusters, showing up as blocky squares.
 - **Outlines vanish against space.** Ink lines are near-black, so silhouettes against the sky blend in. Lines show where objects overlap and on creases. Lines fade out between 220 and 520 m so distant ships stay readable.
-- **Asteroid layout is seeded** (`main.gd → field_seed`), so the field is the same every run apart from the intro lane.
+- **Asteroid layout is seeded** (`AsteroidField.field_seed`), so the field is the same every run apart from the intro lane.
 
 ---
 

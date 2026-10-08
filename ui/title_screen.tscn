@@ -6,7 +6,7 @@
 [ext_resource type="Script" uid="uid://c7k23bk88w1ke" path="res://effects/ink_outline.gd" id="4_ink"]
 [ext_resource type="PackedScene" path="res://ui/settings_menu.tscn" id="5_settings"]
 [ext_resource type="Script" uid="uid://4ocpoancmdo6" path="res://ui/mission_select.gd" id="6_missions"]
-[ext_resource type="Resource" path="res://missions/asteroid_field.tres" id="7_asteroid_field"]
+[ext_resource type="Resource" path="res://missions/space_station.tres" id="7_space_station"]
 [ext_resource type="Resource" path="res://missions/corneria.tres" id="8_corneria"]
 [ext_resource type="Script" uid="uid://vn1wl8vgk2xj" path="res://missions/mission.gd" id="9_mission"]
 
@@ -89,4 +89,4 @@ grow_horizontal = 2
 grow_vertical = 2
 theme = ExtResource("3_theme")
 script = ExtResource("6_missions")
-missions = Array[ExtResource("9_mission")]([ExtResource("7_asteroid_field"), ExtResource("8_corneria")])
+missions = Array[ExtResource("9_mission")]([ExtResource("7_space_station"), ExtResource("8_corneria")])

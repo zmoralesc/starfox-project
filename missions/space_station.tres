@@ -6,4 +6,4 @@
 script = ExtResource("1_mission")
 title = "Space Station"
 description = "Hold the line against wave after wave of fighters among the rocks. A destroyer joins every fifth wave."
-scene_path = "res://main.tscn"
+scene_path = "res://levels/space_station.tscn"

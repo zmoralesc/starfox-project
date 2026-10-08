@@ -7,8 +7,9 @@ extends Node3D
 ##
 ## Every mission scene inherits levels/level_base.tscn, which holds the shared
 ## nodes (ship, camera, wingmen, HUD, comms, pause menu, intro...). A mission
-## adds its own world on top and, if it builds anything in code, extends this
-## script and overrides _build_world().
+## adds its own world on top, preferably as nodes that build themselves
+## (AsteroidField, Terrain, Clouds); if the level itself must build anything in
+## code, it extends this script and overrides _build_world().
 
 ## Seconds between the player's wreck exploding and someone crying out for them.
 @export var lament_delay := 0.5
@@ -78,7 +79,7 @@ func _ready() -> void:
 		get_tree().create_timer(intro_line_delay, false).timeout.connect(_say_intro_line)
 
 
-## Override to generate the mission's world (asteroids, terrain...). Runs
+## Override to generate the mission's world in code. Runs
 ## first in _ready(), before the intro starts.
 func _build_world() -> void:
 	pass
