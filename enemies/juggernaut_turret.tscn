@@ -12,9 +12,11 @@ radius = 4.5
 collision_layer = 4
 collision_mask = 0
 script = ExtResource("1_turret")
-max_health = 12
+max_health = 60
 radius = 6.0
 display_name = "TURRET"
+aggro_range = 600.0
+bolt_speed = 450.0
 
 [node name="Base" type="MeshInstance3D" parent="."]
 mesh = ExtResource("2_base")

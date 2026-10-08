@@ -25,6 +25,7 @@ import bpy
 import bmesh
 import math
 import os
+import random
 import numpy as np
 from mathutils import Vector, Matrix, Euler
 from mathutils.bvhtree import BVHTree
@@ -49,6 +50,12 @@ MOUNT_PADS = [
     (-42.0, -130.0, 125.0), (42.0, -130.0, 125.0),  # on the castle bastions
 ]
 
+# Where the bridge stands, (y, z) in design units: centred on the castle's
+# upper pedestal (y -180 to -135, top at z 136), so its 38-long plinth sits
+# wholly on it and only the visor brow overhangs the front. At y -130 most of
+# the bridge hung in the air in front of the pedestal.
+BRIDGE_Y, BRIDGE_Z = -156.0, 136.0
+
 # -----------------------------------------------------------------------------
 # Materials Setup (Venom Palette)
 # -----------------------------------------------------------------------------
@@ -57,7 +64,7 @@ COLORS = {
     "HullLight": ((0.32, 0.34, 0.38), 0.0),
     "HullDark": ((0.13, 0.14, 0.17), 0.0),
     "Dark": ((0.07, 0.07, 0.09), 0.0),
-    "Crimson": ((0.55, 0.04, 0.05), 0.0),
+    "Crimson": ((0.30, 0.11, 0.11), 0.0),  # muted: the old 0.55, 0.04, 0.05 read as flat, saturated red
     "GlowGreen": ((0.35, 1.00, 0.20), 5.0),
     "Window": ((1.00, 0.65, 0.20), 4.0),
     "EngineGlow": ((1.00, 0.35, 0.10), 6.0),
@@ -66,6 +73,7 @@ COLORS = {
     "TurretEye": ((0.35, 1.00, 0.20), 5.0),
     "RunningLight": ((0.90, 0.05, 0.05), 5.0),
     "CorridorCyan": ((0.15, 0.80, 1.00), 1.0),
+    "HullMid": ((0.26, 0.28, 0.32), 0.0),  # hull detail panels only
 }
 
 def srgb_to_linear(c):
@@ -96,7 +104,182 @@ def get_or_create_material(name):
         if "Emission Strength" in bsdf.inputs:
             bsdf.inputs["Emission Strength"].default_value = emit
     mat.diffuse_color = (*rgb, 1.0)
+    if key in PLATING_MATS and bsdf:
+        add_plating_texture(mat, bsdf, rgb)
     return mat
+
+# -----------------------------------------------------------------------------
+# Hull plating texture: printed detail (seams, plate tones, hatches, vents)
+# -----------------------------------------------------------------------------
+# One tiling greyscale image multiplied over the hull greys (glTF base colour
+# texture times factor; Godot's ToonMaterial keeps both). It is printed on the
+# surface, so it adds no geometry. Every mesh gets UVs projected along its
+# faces' main axis at PLATING_TILE metres per repeat (add_plating_uvs).
+PLATING_MATS = {"Hull", "HullLight", "HullDark", "HullMid", "Crimson"}  # crimson: worn in game by toon_worn.gdshader
+PLATING_TILE = 16.0   # metres of hull per texture repeat
+PLATING_SIZE = 2048   # pixels per side (128 px per metre)
+PLATING_PNG = os.path.join(PREVIEW_DIR, "juggernaut_plating.png")
+
+# Brightness multipliers, in linear light (what the shader multiplies by).
+PLATE_TONES = (0.80, 1.0)  # each plate picks one: the large-scale variation
+SEAM_TONE = 0.30           # panel seams
+SEAM_PX = 7                # seam width (5.5 cm)
+EDGE_TONE = 1.0            # the lit lip beside each seam
+DETAIL_TONE = 0.42         # hatch outlines, vent slats, bolts
+
+_plating_image = None
+
+def build_plating_pixels(seed=11):
+    """The plating tile as an (S, S) array of linear multipliers. Rows run
+    across u (along the ship on decks and sides), so plates are long and
+    staggered like hull plating. Tiles seamlessly: rows split v exactly, and
+    plates wrap around u."""
+    S = PLATING_SIZE
+    px = S / PLATING_TILE
+    rng = random.Random(seed)
+    img = np.ones((S, S), dtype=np.float32)
+
+    def fill(u0, v0, w, h, val):
+        us = np.arange(u0, u0 + w) % S
+        vs = np.arange(v0, v0 + h) % S
+        img[np.ix_(vs, us)] = val
+
+    def scale(u0, v0, w, h, k):
+        us = np.arange(u0, u0 + w) % S
+        vs = np.arange(v0, v0 + h) % S
+        img[np.ix_(vs, us)] *= k
+
+    def plate_detail(u0, v0, w, h, tone):
+        # Rivets in the corners, then at most one feature.
+        b = 14
+        for cu, cv in ((u0 + b, v0 + b), (u0 + w - b - 5, v0 + b),
+                       (u0 + b, v0 + h - b - 5), (u0 + w - b - 5, v0 + h - b - 5)):
+            fill(cu, cv, 5, 5, DETAIL_TONE)
+        roll = rng.random()
+        if roll < 0.22 and w > 2.5 * px and h > 1.6 * px:
+            # Access hatch: an outlined, slightly darker rectangle.
+            hw = int(rng.uniform(0.9, 1.8) * px)
+            hh = int(rng.uniform(0.7, min(1.4, h / px - 0.6)) * px)
+            hu = u0 + rng.randint(int(0.3 * px), w - hw - int(0.3 * px))
+            hv = v0 + (h - hh) // 2
+            scale(hu, hv, hw, hh, 0.88)
+            for (a, c, ww, hh2) in ((hu, hv, hw, 4), (hu, hv + hh - 4, hw, 4),
+                                    (hu, hv, 4, hh), (hu + hw - 4, hv, 4, hh)):
+                fill(a, c, ww, hh2, tone * DETAIL_TONE)
+        elif roll < 0.38 and w > 3.4 * px and h > 1.4 * px:
+            # Vent grille: parallel dark slats.
+            gw = int(rng.uniform(1.4, 2.6) * px)
+            gh = int(rng.uniform(0.6, min(1.0, h / px - 0.6)) * px)
+            gu = u0 + rng.randint(int(0.3 * px), w - gw - int(0.3 * px))
+            gv = v0 + (h - gh) // 2
+            for s in range(gu, gu + gw - 6, 14):
+                fill(s, gv, 7, gh, tone * DETAIL_TONE)
+        elif roll < 0.48 and h > 1.2 * px:
+            # Inset strip along the plate.
+            sh = int(0.25 * px)
+            scale(u0 + int(0.4 * px), v0 + (h - sh) // 2, w - int(0.8 * px), sh, 0.86)
+
+    # Rows: 2-4 m bands summing exactly to the tile.
+    rows, v = [], 0
+    while v < S:
+        h = int(rng.choice((2.0, 2.5, 3.0, 4.0)) * px)
+        if S - (v + h) < 2 * px:
+            h = S - v
+        rows.append((v, h))
+        v += h
+    for v0, h in rows:
+        # Plates: 3-8 m long, starting at a random stagger, wrapping in u.
+        u, start = 0, rng.randint(0, S - 1)
+        while u < S:
+            w = int(rng.uniform(3.0, 8.0) * px)
+            if S - (u + w) < 3 * px:
+                w = S - u
+            # Some plates split into two across the row.
+            parts = [(v0, h)]
+            if h >= 3 * px and rng.random() < 0.3:
+                cut = int(h * rng.uniform(0.4, 0.6))
+                parts = [(v0, cut), (v0 + cut, h - cut)]
+            for pv, ph in parts:
+                tone = rng.uniform(*PLATE_TONES)
+                fill(start + u, pv, w, ph, tone)
+                plate_detail(start + u, pv, w, ph, tone)
+                # Seam on the plate's low edges, lit lip just inside it
+                # (the neighbours draw the other two edges).
+                fill(start + u, pv, w, SEAM_PX, SEAM_TONE)
+                fill(start + u, pv, SEAM_PX, ph, SEAM_TONE)
+                fill(start + u + SEAM_PX, pv + SEAM_PX, w - SEAM_PX, 3, EDGE_TONE)
+                fill(start + u + SEAM_PX, pv + SEAM_PX, 3, ph - SEAM_PX, EDGE_TONE)
+            u += w
+    return img
+
+def plating_image():
+    """The plating texture (built once per run, saved to the preview folder
+    and packed so the glTF export embeds it)."""
+    global _plating_image
+    if _plating_image is not None:
+        return _plating_image
+    lin = build_plating_pixels()
+    srgb = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.power(lin, 1.0 / 2.4) - 0.055)
+    S = PLATING_SIZE
+    rgba = np.ones((S, S, 4), dtype=np.float32)
+    rgba[..., 0] = rgba[..., 1] = rgba[..., 2] = srgb
+    old = bpy.data.images.get("Juggernaut_Plating")
+    if old:
+        bpy.data.images.remove(old)
+    img = bpy.data.images.new("Juggernaut_Plating", S, S, alpha=False)
+    img.pixels.foreach_set(rgba.ravel())
+    os.makedirs(PREVIEW_DIR, exist_ok=True)
+    img.filepath_raw = PLATING_PNG
+    img.file_format = 'PNG'
+    img.save()
+    img.pack()
+    _plating_image = img
+    return img
+
+def add_plating_texture(mat, bsdf, rgb):
+    """Base colour = plating texture x the material's colour (a Multiply mix,
+    which the glTF exporter writes as texture plus factor)."""
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    tex = next((n for n in nodes if n.type == 'TEX_IMAGE'), None) or nodes.new('ShaderNodeTexImage')
+    tex.image = plating_image()
+    mix = next((n for n in nodes if n.type == 'MIX'), None) or nodes.new('ShaderNodeMix')
+    mix.data_type = 'RGBA'
+    mix.blend_type = 'MULTIPLY'
+    mix.inputs['Factor'].default_value = 1.0
+    a = next(s for s in mix.inputs if s.identifier == 'A_Color')
+    b = next(s for s in mix.inputs if s.identifier == 'B_Color')
+    out = next(s for s in mix.outputs if s.identifier == 'Result_Color')
+    b.default_value = (*rgb, 1.0)
+    links.new(tex.outputs['Color'], a)
+    links.new(out, bsdf.inputs['Base Color'])
+
+# Per-projection offsets (in tiles) so opposite faces and the three axes don't
+# show the same stretch of plating.
+_PLATING_OFFSETS = {
+    (0, 1): (0.00, 0.00), (0, -1): (0.37, 0.61),
+    (1, 1): (0.13, 0.29), (1, -1): (0.71, 0.08),
+    (2, 1): (0.52, 0.44), (2, -1): (0.23, 0.83),
+}
+
+def add_plating_uvs(me):
+    """Box-project UVs at PLATING_TILE metres per repeat, in the mesh's own
+    coordinates (metres). Decks and sides run u along the ship (y), so the
+    long plates run fore and aft."""
+    uv = me.uv_layers[0] if me.uv_layers else me.uv_layers.new(name="UVMap")
+    verts = me.vertices
+    for poly in me.polygons:
+        n = poly.normal
+        ax = max(range(3), key=lambda i: abs(n[i]))
+        ou, ov = _PLATING_OFFSETS[(ax, 1 if n[ax] >= 0 else -1)]
+        for li in poly.loop_indices:
+            co = verts[me.loops[li].vertex_index].co
+            if ax == 2:
+                u, v = co.y, co.x
+            elif ax == 0:
+                u, v = co.y, co.z
+            else:
+                u, v = co.x, co.z
+            uv.data[li].uv = (u / PLATING_TILE + ou, v / PLATING_TILE + ov)
 
 STANDARD_MATS = [
     "Hull", "HullLight", "HullDark", "Dark", "Crimson",
@@ -585,7 +768,7 @@ def build_juggernaut_hull():
 def build_juggernaut_bridge():
     """
     Builds Juggernaut_Bridge with pivot at center of base (0, 0, 0 local).
-    Placed on hull at (0, -130 * SCALE, 136 * SCALE).
+    Placed on hull at (0, BRIDGE_Y * SCALE, BRIDGE_Z * SCALE).
     C2 Refinement 3:
     - Base Plinth with deck paneling.
     - Sculpted narrow neck waist (18m x 20m) with 4 diagonal corner buttresses,
@@ -969,7 +1152,7 @@ def build_markers(col_markers):
     - Turret mounts: TurretMount_1..8
     """
     marker_specs = [
-        ("Marker_Bridge", (0.0, -130.0 * SCALE, 136.0 * SCALE)),
+        ("Marker_Bridge", (0.0, BRIDGE_Y * SCALE, BRIDGE_Z * SCALE)),
         ("Marker_ThrusterKeel", (0.0, -335.0 * SCALE, 20.0 * SCALE)),
         ("Marker_ThrusterPod_L", (-62.0 * SCALE, -335.0 * SCALE, 36.0 * SCALE)),
         ("Marker_ThrusterPod_R", (62.0 * SCALE, -335.0 * SCALE, 36.0 * SCALE)),
@@ -994,6 +1177,449 @@ def build_markers(col_markers):
 # -----------------------------------------------------------------------------
 # Scene Assembly & Population
 # -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Hull Surface Detail (Pass C3): painted into the hull
+# -----------------------------------------------------------------------------
+# Armour panels, window bands, running lights and markings, painted flush into
+# Juggernaut_Hull itself: each one is a rectangle cut into the hull's faces,
+# whose faces inside it get another material. Nothing stands off the surface,
+# and a colour change draws no ink line, so they read as part of the hull.
+#
+# Placing: each rectangle is found by ray-casting onto the hull and turned to
+# the surface there. It's kept only if its whole footprint (plus a margin)
+# samples as one flat plane, outside the keep-out areas, and clear of other
+# rectangles, so it never wraps over an edge, a step or the existing detail.
+# Sizes are in real metres; area bounds in design units.
+#
+# Cutting: four planes through the rectangle's sides split the faces under it
+# (bmesh bisect). Hull quads that are bent (several are, by up to 3 m) are
+# first replaced by Blender's own triangles for them, so cutting them can't
+# move the surface. Afterwards, flat faces of one material are merged again,
+# which removes the cut lines running past each rectangle.
+
+PAINT_MATS = {
+    "hull": 0, "light": 1, "dark": 2, "crimson": 4,
+    "window": 6, "running_light": 11, "mid": 12,
+}
+# Panel greys, tried in this order of preference (after a per-panel shuffle);
+# a panel never takes the grey of the surface it's painted on.
+PANEL_GREYS = ["mid", "light", "dark", "hull"]
+
+THRUSTER_POINTS = [(0.0, -335.0, 20.0), (-62.0, -335.0, 36.0), (62.0, -335.0, 36.0)]
+
+
+def detail_keep_out(p):
+    """The keep-out area a world point is in (the C3 brief's list), or None."""
+    x, y, z = p.x / SCALE, p.y / SCALE, p.z / SCALE
+    for px, py, pz in MOUNT_PADS:
+        if (x - px) ** 2 + (y - py) ** 2 < 10.0 ** 2:
+            return "pad"
+    if abs(x) >= 84.0 and -56.0 <= y <= 36.0 and 0.0 <= z <= 80.0:
+        return "hangar"
+    # The trench's inside: fins, glow beds, arches, spine.
+    if abs(x) < 24.5 and -72.0 <= y <= 152.0 and z >= 76.0:
+        return "trench"
+    if abs(x) <= 22.0 and -180.0 <= y <= -135.0 and z >= 130.0:
+        return "pedestal"
+    for tx, ty, tz in THRUSTER_POINTS:
+        if (x - tx) ** 2 + (y - ty) ** 2 < 30.0 ** 2 and abs(z - tz) < 30.0:
+            return "engine"
+    return None
+
+
+def detail_frame(normal, along):
+    """Axes for a rectangle on a surface: z out of it, y as close to `along`
+    as the surface allows (they run along the ship), x across."""
+    z = normal.normalized()
+    y = along - z * along.dot(z)
+    if y.length < 1e-3:
+        y = Vector((1.0, 0.0, 0.0)) - z * z.x
+    y.normalize()
+    return y.cross(z), y, z
+
+
+class HullPaint:
+    def __init__(self, hull_obj, seed=1138):
+        self.mesh = hull_obj.data
+        self.mesh.calc_loop_triangles()
+        tris = self.mesh.loop_triangles
+        # Built from Blender's own triangles (what the export writes), so the
+        # triangle index also gives the polygon each hit lies on.
+        self.tri_poly = [t.polygon_index for t in tris]
+        self.bvh = BVHTree.FromPolygons([v.co.copy() for v in self.mesh.vertices],
+                                        [tuple(t.vertices) for t in tris])
+        self.rng = random.Random(seed)
+        self.decals = []   # dicts: center, x, y, z, sx, sy, paint, polys, roll
+        self.placed = []   # bounding boxes, for spacing
+        self.stats = {}
+
+    # --- placing -------------------------------------------------------------
+
+    def _bounds(self, center, x, y, sx, sy):
+        corners = [center + x * (dx * sx) + y * (dy * sy) for dx in (-0.5, 0.5) for dy in (-0.5, 0.5)]
+        lo = Vector((min(c.x for c in corners), min(c.y for c in corners), min(c.z for c in corners))) - Vector((0.2, 0.2, 0.2))
+        hi = Vector((max(c.x for c in corners), max(c.y for c in corners), max(c.z for c in corners))) + Vector((0.2, 0.2, 0.2))
+        return lo, hi
+
+    def _clashes(self, lo, hi, gap):
+        for plo, phi in self.placed:
+            if (lo.x - gap < phi.x and hi.x + gap > plo.x and lo.y - gap < phi.y and hi.y + gap > plo.y
+                    and lo.z - gap < phi.z and hi.z + gap > plo.z):
+                return True
+        return False
+
+    def _footprint(self, loc, x, y, z, sx, sy, tol, pad, step):
+        """(why the footprint can't take a rectangle or None, the hull
+        polygons under it)."""
+        wa, wb = sx + 2.0 * pad, sy + 2.0 * pad
+        na, nb = max(2, math.ceil(wa / step)), max(2, math.ceil(wb / step))
+        polys = set()
+        for i in range(na + 1):
+            for j in range(nb + 1):
+                p = loc + x * (-wa / 2.0 + wa * i / na) + y * (-wb / 2.0 + wb * j / nb)
+                hit, normal, index, _ = self.bvh.ray_cast(p + z * 25.0, -z, 28.0)
+                if hit is None:
+                    return "edge", polys
+                if normal.dot(z) < 0.0:
+                    normal = -normal
+                if abs((hit - loc).dot(z)) > tol or normal.dot(z) < 0.985:
+                    return "uneven", polys
+                if detail_keep_out(hit):
+                    return "keep-out", polys
+                polys.add(self.tri_poly[index])
+        return None, polys
+
+    def place(self, area, origin, direction, sx, sy, paint, along=Vector((0.0, 1.0, 0.0)),
+              tol=0.1, pad=0.6, step=1.0, gap=0.6, shrink=(1.0,)):
+        """Ray-casts from `origin` along `direction` onto the hull and records
+        a rectangle there (sx across, sy along), trying each `shrink` factor in
+        turn. True if one was recorded."""
+        stats = self.stats.setdefault(area, {})
+        hit, normal, _, _ = self.bvh.ray_cast(origin, direction)
+        if hit is None:
+            stats["miss"] = stats.get("miss", 0) + 1
+            return False
+        if normal.dot(direction) > 0.0:
+            normal = -normal
+        x, y, z = detail_frame(normal, along)
+        reason = "keep-out" if detail_keep_out(hit) else None
+        if reason is None:
+            for f in shrink:
+                a, b = sx * f, sy * f
+                reason, polys = self._footprint(hit, x, y, z, a, b, tol, pad, step)
+                if reason:
+                    continue
+                lo, hi = self._bounds(hit, x, y, a, b)
+                if self._clashes(lo, hi, gap):
+                    reason = "overlap"
+                    continue
+                self.placed.append((lo, hi))
+                self.decals.append({"center": hit, "x": x, "y": y, "z": z, "sx": a, "sy": b,
+                                    "paint": paint, "polys": polys, "roll": self.rng.random()})
+                stats["placed"] = stats.get("placed", 0) + 1
+                return True
+        stats[reason] = stats.get(reason, 0) + 1
+        return False
+
+    # --- patterns ------------------------------------------------------------
+
+    def panels_top(self, area, x0, x1, y0, y1, cw, cl, gap=2.0, skip=0.15, direction=-1.0):
+        """A grid of panels on the surfaces seen from above, cw across by cl
+        along (m), over design x0..x1 (x >= 0, mirrored to the other side) and
+        y0..y1. Some cells stay bare; a cell that doesn't fit shrinks once,
+        then gives up."""
+        xa, xb, ya, yb = x0 * SCALE, x1 * SCALE, y0 * SCALE, y1 * SCALE
+        nx = max(1, int((xb - xa + gap) // (cw + gap)))
+        ny = max(1, int((yb - ya + gap) // (cl + gap)))
+        for i in range(nx):
+            cx = xa + gap / 2.0 + cw / 2.0 + i * (cw + gap)
+            for j in range(ny):
+                cy = ya + cl / 2.0 + j * (cl + gap)
+                if self.rng.random() < skip:
+                    continue
+                for side in ((1.0, -1.0) if cx > 0.5 else (1.0,)):
+                    self.place(area, Vector((side * cx, cy, 300.0 * -direction)), Vector((0.0, 0.0, direction)),
+                               cw, cl, "panel", shrink=(1.0, 0.75))
+
+    def panels_side(self, area, y0, y1, z0, z1, ch, cl, gap=2.0, skip=0.15):
+        """A grid of panels on the hull's sides, seen from +x and -x: ch tall by
+        cl along (m), over design y0..y1 and z0..z1."""
+        ya, yb, za, zb = y0 * SCALE, y1 * SCALE, z0 * SCALE, z1 * SCALE
+        ny = max(1, int((yb - ya + gap) // (cl + gap)))
+        nz = max(1, int((zb - za + gap) // (ch + gap)))
+        for j in range(ny):
+            cy = ya + cl / 2.0 + j * (cl + gap)
+            for k in range(nz):
+                cz = za + ch / 2.0 + k * (ch + gap)
+                if self.rng.random() < skip:
+                    continue
+                for side in (1.0, -1.0):
+                    self.place(area, Vector((side * 400.0, cy, cz)), Vector((-side, 0.0, 0.0)),
+                               ch, cl, "panel", shrink=(1.0, 0.75))
+
+    def window_band(self, area, y0, y1, z=None, x=None, run=16, pause=3, spacing=3.6):
+        """Rows of 1.8 x 0.9 m windows along the ship, long side horizontal: on
+        both sides at height z (seen from +-x), or on the belly at x (seen from
+        below). Runs of `run` windows with a pause of `pause` windows between,
+        from design y1 down to y0."""
+        y, count = y1 * SCALE, 0
+        while y >= y0 * SCALE:
+            if count < run:
+                for side in (1.0, -1.0):
+                    if z is not None:
+                        origin, direction = Vector((side * 400.0, y, z * SCALE)), Vector((-side, 0.0, 0.0))
+                    else:
+                        origin, direction = Vector((side * x * SCALE, y, -300.0)), Vector((0.0, 0.0, 1.0))
+                    self.place(area, origin, direction, 0.9, 1.8, "window",
+                               tol=0.08, pad=0.5, step=0.45, gap=0.3)
+            count = (count + 1) % (run + pause)
+            y -= spacing
+
+    def light(self, area, origin, direction, search=3.0):
+        """A 2 m running light on the nearest flat spot round a point (tries
+        offsets up to `search` m), mirrored across the centre line."""
+        for side in (1.0, -1.0):
+            o = Vector((origin.x * side, origin.y, origin.z))
+            d = Vector((direction.x * side, direction.y, direction.z))
+            offsets = [Vector((0, 0, 0))]
+            for r in (search / 2.0, search):
+                for v in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)):
+                    offsets.append(Vector(v) * r)
+            for off in offsets:
+                if self.place(area, o + off, d, 2.0, 2.0, "running_light", tol=0.12, pad=0.3, step=0.5, gap=0.4):
+                    break
+
+    def chevron(self, area, y, arm=16.0, width=3.0, angle=0.6):
+        """A crimson chevron on a deck at design y, pointing forward: two bars
+        either side of the centre line (not meeting, so they don't overlap)."""
+        s, c = math.sin(angle), math.cos(angle)
+        for side in (1.0, -1.0):
+            along = Vector((-side * s, c, 0.0))
+            cx = side * (arm / 2.0 * s + 1.5)
+            self.place(area, Vector((cx, y * SCALE, 300.0)), Vector((0.0, 0.0, -1.0)),
+                       width, arm, "crimson", along=along, gap=0.5, shrink=(1.0, 0.8))
+
+    def stripe_across(self, area, x, y, length, width=3.0):
+        """A crimson stripe across the ship at design (x, y), mirrored."""
+        for side in (1.0, -1.0):
+            self.place(area, Vector((side * x * SCALE, y * SCALE, 300.0)), Vector((0.0, 0.0, -1.0)),
+                       length, width, "crimson", gap=0.5, shrink=(1.0, 0.75, 0.5))
+
+    def report(self):
+        print("\n--- HULL PAINT PLACEMENT (placed / skipped by reason) ---")
+        for area, st in self.stats.items():
+            rest = ", ".join("%s %d" % (k, v) for k, v in sorted(st.items()) if k != "placed")
+            print("  %-14s placed %4d   %s" % (area, st.get("placed", 0), rest))
+
+    # --- cutting -------------------------------------------------------------
+
+    def apply(self):
+        """Cuts every recorded rectangle into the hull mesh and paints it."""
+        me = self.mesh
+        me.materials.append(get_or_create_material("HullMid"))  # index 12
+        tris_by_poly = {}
+        for t in me.loop_triangles:
+            tris_by_poly.setdefault(t.polygon_index, []).append(tuple(t.vertices))
+
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bm.faces.ensure_lookup_table()
+        bm.verts.ensure_lookup_table()
+
+        # Bent polygons (anywhere, not just under a rectangle): swap in
+        # Blender's own triangles first. Cutting a bent quad, or merging it with
+        # a neighbour below, would triangulate it another way and move the
+        # surface; its triangles are exactly flat, so they only ever merge
+        # with faces truly in their plane.
+        bent = 0
+        for pi, f in enumerate(list(bm.faces)):
+            if len(f.verts) == 3:
+                continue
+            n, c = f.normal, f.calc_center_median()
+            if max(abs((v.co - c).dot(n)) for v in f.verts) < 0.002:
+                continue
+            mat = f.material_index
+            bmesh.ops.delete(bm, geom=[f], context='FACES_ONLY')
+            for tv in tris_by_poly[pi]:
+                bm.faces.new([bm.verts[i] for i in tv]).material_index = mat
+            bent += 1
+
+        # Edges to keep: the hull's own (halves of a split edge inherit the
+        # mark) and each finished rectangle's outline. New cut edges start at 0.
+        keep = bm.edges.layers.int.new("keep")
+        for e in bm.edges:
+            e[keep] = 1
+        cover = {}  # paint kind -> painted fraction of each rectangle
+
+        for d in self.decals:
+            c, x, y, z = d["center"], d["x"], d["y"], d["z"]
+            hx, hy = d["sx"] / 2.0, d["sy"] / 2.0
+
+            # The faces under the rectangle (and a margin round it), found on
+            # the mesh as it is now: earlier rectangles have reshaped it.
+            bm.faces.ensure_lookup_table()
+            tree = BVHTree.FromBMesh(bm)
+            step = min(1.0, max(0.3, min(hx, hy) / 2.0))
+            wa, wb = 2.0 * hx + 1.0, 2.0 * hy + 1.0
+            na, nb = max(2, math.ceil(wa / step)), max(2, math.ceil(wb / step))
+            faces = set()
+            for i in range(na + 1):
+                for j in range(nb + 1):
+                    p = c + x * (-wa / 2.0 + wa * i / na) + y * (-wb / 2.0 + wb * j / nb)
+                    hit = tree.ray_cast(p + z * 2.0, -z, 4.0)
+                    if hit[0] is not None:
+                        faces.add(bm.faces[hit[2]])
+
+            for co, no in ((c + x * hx, x), (c - x * hx, x), (c + y * hy, y), (c - y * hy, y)):
+                edges = {e for f in faces for e in f.edges}
+                verts = {v for f in faces for v in f.verts}
+                res = bmesh.ops.bisect_plane(bm, geom=list(faces) + list(edges) + list(verts),
+                                             dist=0.0001, plane_co=co, plane_no=no)
+                new = {g for g in res["geom"] if isinstance(g, bmesh.types.BMFace)}
+                faces = {f for f in faces | new if f.is_valid}
+
+            # The cuts ran right across the faces under the rectangle. Keep its
+            # outline and dissolve the rest of them again, so lines never
+            # build up across a face (bmesh keeps whatever edge a face needs
+            # to stay hole-free). Vertices stay: dissolving them would cut the
+            # rectangle's corners; the final merge removes the straight ones.
+            def local(v):
+                r = v.co - c
+                return r.dot(x), r.dot(y)
+
+            def on_outline(e):
+                (u0, w0), (u1, w1) = local(e.verts[0]), local(e.verts[1])
+                eps = 0.002
+                for a0, a1, b0, b1, ha, hb in ((u0, u1, w0, w1, hx, hy), (w0, w1, u0, u1, hy, hx)):
+                    for s in (ha, -ha):
+                        if abs(a0 - s) < eps and abs(a1 - s) < eps and max(abs(b0), abs(b1)) <= hb + eps:
+                            return True
+                return False
+
+            outline = []
+            loose = []
+            for e in {e for f in faces for e in f.edges}:
+                if e[keep]:
+                    continue
+                (outline if on_outline(e) else loose).append(e)
+            if loose:
+                bmesh.ops.dissolve_edges(bm, edges=loose, use_verts=False, use_face_split=False)
+            for e in outline:
+                if e.is_valid:
+                    e[keep] = 1
+
+            # Paint the faces inside the outline: the ones that touch it, and
+            # any that lay wholly inside it and were never cut. Every corner
+            # must be inside (a face that wraps round the rectangle can have
+            # its centre inside it).
+            faces = {f for f in faces if f.is_valid}
+            faces |= {f for e in outline if e.is_valid for f in e.link_faces}
+            inside = []
+            for f in faces:
+                f.normal_update()
+                if f.normal.dot(z) < 0.95:
+                    continue
+                if all(abs(u) <= hx + 0.002 and abs(w) <= hy + 0.002 and abs((v.co - c).dot(z)) < 0.5
+                       for v in f.verts for u, w in (local(v),)):
+                    inside.append(f)
+            kind = d["paint"] if d["paint"] in ("window", "panel") else "other"
+            cover.setdefault(kind, []).append(sum(f.calc_area() for f in inside) / (d["sx"] * d["sy"]))
+            if not inside:
+                continue
+            paint = d["paint"]
+            if paint == "panel":
+                # A grey other than the surface's own.
+                base = max(set(f.material_index for f in inside), key=[f.material_index for f in inside].count)
+                options = [g for g in PANEL_GREYS if PAINT_MATS[g] != base]
+                paint = options[min(int(d["roll"] * len(options)), len(options) - 1)]
+            for f in inside:
+                f.material_index = PAINT_MATS[paint]
+
+        # Merge flat faces of one material again: removes leftover cut lines
+        # and the vertices along straight edges. The angle is tiny so faces
+        # only merge when truly in one plane (0.05 degrees moved big faces by
+        # up to 0.35 m).
+        bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(0.001), use_dissolve_boundaries=False,
+                                 verts=bm.verts[:], edges=bm.edges[:], delimit={'MATERIAL'})
+        bm.edges.layers.int.remove(keep)
+        bm.normal_update()
+        bm.to_mesh(me)
+        bm.free()
+        me.update()
+        print("Hull paint: %d rectangles, %d bent polygons triangulated first" % (len(self.decals), bent))
+        for kind, got in cover.items():
+            print("  paint coverage %-7s %4d rectangles: %d fully painted, %d partly, %d not at all"
+                  % (kind, len(got), sum(1 for g in got if g > 0.98), sum(1 for g in got if 0.02 < g <= 0.98),
+                     sum(1 for g in got if g <= 0.02)))
+
+
+def paint_juggernaut_hull(hull_obj):
+    """Paints the hull's surface detail (see the section comment above).
+    Order matters: lights, windows and markings claim their spots first, then
+    the panels fill round them."""
+    d = HullPaint(hull_obj)
+    down = Vector((0.0, 0.0, -1.0))
+    up = Vector((0.0, 0.0, 1.0))
+    side = Vector((-1.0, 0.0, 0.0))
+    S = SCALE
+
+    # Running lights at the extremities (both sides).
+    for p, direction in (
+        ((10.0, 322.0, 300.0), down),        # ram tip, upper corners
+        ((300.0, 332.0, 20.0 * S), side),    # ram tip, sides
+        ((300.0, 116.0 * S, 66.0 * S), side),   # forward bastion, fore top corner
+        ((300.0, 56.0 * S, 66.0 * S), side),    # forward bastion, aft top corner
+        ((300.0, -66.0 * S, 66.0 * S), side),   # aft bastion, fore top corner
+        ((300.0, -124.0 * S, 66.0 * S), side),  # aft bastion, aft top corner
+        ((78.0 * S, 128.0 * S, 300.0), down),   # sponson plate corners
+        ((30.0 * S, -228.0 * S, 300.0), down),  # castle top, aft corners
+        ((30.0 * S, -100.0 * S, 300.0), down),  # castle top, fore corners
+        ((300.0, -302.0 * S, 50.0 * S), side),  # engine block, aft top corners
+        ((78.0 * S, -300.0 * S, 300.0), down),  # engine deck, aft corners
+        ((62.0 * S, 210.0 * S, -300.0), up),    # belly, forward corners
+        ((62.0 * S, -150.0 * S, -300.0), up),   # belly, aft corners
+    ):
+        d.light("lights", Vector(p), direction)
+
+    # Window bands: the main scale cue. Bastion faces, the long hull slopes
+    # fore and aft (which get no panels: their big faces are bent, so panels
+    # there came out small and tilted, and the windows carry them), the
+    # castle's walls (three decks), the engine block, the ram's flanks, and a
+    # row down each side of the belly.
+    for z in (30.0, 50.0):
+        d.window_band("win_bastion", 52.0, 118.0, z=z, run=12, pause=2)
+        d.window_band("win_bastion", -128.0, -62.0, z=z, run=12, pause=2)
+    for z in (22.0, 36.0, 50.0):
+        d.window_band("win_bow_side", 142.0, 258.0, z=z, run=18, pause=3)
+        d.window_band("win_aft_side", -264.0, -142.0, z=z, run=18, pause=3)
+    for z in (88.0, 100.0, 112.0):
+        d.window_band("win_castle", -232.0, -94.0, z=z, run=20, pause=3)
+    d.window_band("win_engine", -304.0, -276.0, z=42.0, run=12, pause=2)
+    d.window_band("win_ram", 282.0, 318.0, z=22.0, run=10, pause=2)
+    d.window_band("win_belly", -150.0, 200.0, x=56.0, run=24, pause=6, spacing=4.2)
+
+    # Crimson markings: chevrons down the bow deck, stripes across the engine
+    # deck and the castle glacis.
+    for y in (196.0, 222.0):
+        d.chevron("markings", y)
+    d.stripe_across("markings", 22.0, -246.0, 26.0)
+    d.stripe_across("markings", 16.0, -120.0, 18.0)
+
+    # Panels on every large flat area.
+    d.panels_top("main_deck", 31.0, 81.0, -62.0, 142.0, 18.0, 26.0)
+    d.panels_top("bow_deck", 0.0, 64.0, 146.0, 272.0, 15.0, 20.0)
+    d.panels_top("castle_top", 0.0, 34.0, -232.0, -90.0, 14.0, 20.0)
+    d.panels_top("castle_flanks", 44.0, 76.0, -232.0, -90.0, 13.0, 20.0)
+    d.panels_top("engine_deck", 0.0, 82.0, -312.0, -238.0, 16.0, 16.0)
+    d.panels_side("bastion_face", 50.0, 120.0, 12.0, 74.0, 13.0, 22.0)
+    d.panels_side("bastion_face", -130.0, -60.0, 12.0, 74.0, 13.0, 22.0)
+    d.panels_side("castle_wall", -234.0, -92.0, 78.0, 124.0, 10.0, 18.0)
+    d.panels_side("engine_side", -308.0, -268.0, 14.0, 56.0, 12.0, 16.0)
+
+    d.report()
+    d.apply()
+
 def assemble_juggernaut_scene():
     for o in list(bpy.data.objects):
         bpy.data.objects.remove(o, do_unlink=True)
@@ -1018,11 +1644,15 @@ def assemble_juggernaut_scene():
     me_hull = build_juggernaut_hull()
     obj_hull = bpy.data.objects.new("Juggernaut_Hull", me_hull)
     col_ship.objects.link(obj_hull)
+    bpy.context.view_layer.update()
     
-    # 2. Bridge (Pivot at base, placed at Y=-130*SCALE, Z=136*SCALE)
+    # 1b. Surface detail, painted into the hull
+    paint_juggernaut_hull(obj_hull)
+    
+    # 2. Bridge (Pivot at base, placed at BRIDGE_Y, BRIDGE_Z)
     me_bridge = build_juggernaut_bridge()
     obj_bridge = bpy.data.objects.new("Juggernaut_Bridge", me_bridge)
-    obj_bridge.location = Vector((0.0, -130.0 * SCALE, 136.0 * SCALE))
+    obj_bridge.location = Vector((0.0, BRIDGE_Y * SCALE, BRIDGE_Z * SCALE))
     col_ship.objects.link(obj_bridge)
     
     # 3. Thrusters (Keel at X=0, Y=-335*SCALE, Z=20*SCALE; Side thrusters at X=±62*SCALE, Y=-335*SCALE, Z=36*SCALE)
@@ -1110,7 +1740,11 @@ def assemble_juggernaut_scene():
     
     # 7. Markers Collection (16 marker empties)
     marker_objs = build_markers(col_markers)
-    
+
+    # 8. Plating UVs on every mesh (the hull greys carry the plating texture)
+    for me in bpy.data.meshes:
+        add_plating_uvs(me)
+
     col_turret.hide_render = True
     col_collision.hide_render = True
     col_markers.hide_render = True
@@ -1530,9 +2164,9 @@ def render_c2_views():
     cam_data.type = 'PERSP'
     cam_data.lens = 45.0
     point_camera(cam, (380.0 * SCALE, 680.0 * SCALE, 320.0 * SCALE), (0.0, 30.0 * SCALE, 60.0 * SCALE))
-    scene.render.filepath = os.path.join(PREVIEW_DIR, "C2_hero.png")
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_hero.png")
     bpy.ops.render.render(write_still=True)
-    print("Rendered: C2_hero.png")
+    print("Rendered: C3_hero.png")
     
     # 2. Side Elevation (Ortho, framed for 1.5x scale)
     cam_data.type = 'ORTHO'
@@ -1540,9 +2174,9 @@ def render_c2_views():
     cam_data.ortho_scale = 820.0 * SCALE
     cam.location = Vector((-600.0 * SCALE, 7.5 * SCALE, 73.4 * SCALE))
     cam.rotation_euler = (math.radians(90.0), 0.0, math.radians(-90.0))
-    scene.render.filepath = os.path.join(PREVIEW_DIR, "C2_side.png")
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_side.png")
     bpy.ops.render.render(write_still=True)
-    print("Rendered: C2_side.png")
+    print("Rendered: C3_side.png")
     
     # 3. Top Plan (Ortho, framed for 1.5x scale)
     cam_data.type = 'ORTHO'
@@ -1550,33 +2184,33 @@ def render_c2_views():
     cam_data.ortho_scale = 820.0 * SCALE
     cam.location = Vector((0.0, 7.5 * SCALE, 700.0 * SCALE))
     cam.rotation_euler = (0.0, 0.0, 0.0)
-    scene.render.filepath = os.path.join(PREVIEW_DIR, "C2_top.png")
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_top.png")
     bpy.ops.render.render(write_still=True)
-    print("Rendered: C2_top.png")
+    print("Rendered: C3_top.png")
     
     # 4. Rear Engine View (Angle showing flared bells and burning cores in 170m engine block)
     cam_data.type = 'PERSP'
     cam_data.lens = 40.0
     point_camera(cam, (-140.0 * SCALE, -560.0 * SCALE, 90.0 * SCALE), (0.0, -320.0 * SCALE, 36.0 * SCALE))
-    scene.render.filepath = os.path.join(PREVIEW_DIR, "C2_rear.png")
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_rear.png")
     bpy.ops.render.render(write_still=True)
-    print("Rendered: C2_rear.png")
+    print("Rendered: C3_rear.png")
     
     # 5. Three-Quarter View from Below (Ventral Keel architecture)
     cam_data.type = 'PERSP'
     cam_data.lens = 36.0
     point_camera(cam, (-360.0 * SCALE, 420.0 * SCALE, -300.0 * SCALE), (0.0, 10.0 * SCALE, 20.0 * SCALE))
-    scene.render.filepath = os.path.join(PREVIEW_DIR, "C2_below.png")
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_below.png")
     bpy.ops.render.render(write_still=True)
-    print("Rendered: C2_below.png")
+    print("Rendered: C3_below.png")
     
     # 6. Bridge View (from 150m from FRONT-QUARTER looking into the visor brow!)
     cam_data.type = 'PERSP'
     cam_data.lens = 65.0
-    point_camera(cam, (65.0 * SCALE, -45.0 * SCALE, 185.0 * SCALE), (0.0, -130.0 * SCALE, 155.0 * SCALE))
-    scene.render.filepath = os.path.join(PREVIEW_DIR, "C2_bridge.png")
+    point_camera(cam, (65.0 * SCALE, -71.0 * SCALE, 185.0 * SCALE), (0.0, BRIDGE_Y * SCALE, 155.0 * SCALE))
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_bridge.png")
     bpy.ops.render.render(write_still=True)
-    print("Rendered: C2_bridge.png")
+    print("Rendered: C3_bridge.png")
     
     # 7. Hangar Bay View (with cyan 200m corridor box)
     bm_corr = bmesh.new()
@@ -1592,9 +2226,9 @@ def render_c2_views():
     cam_data.type = 'PERSP'
     cam_data.lens = 38.0
     point_camera(cam, (-310.0 * SCALE, -165.0 * SCALE, 110.0 * SCALE), (-90.0 * SCALE, -10.0 * SCALE, 24.0 * SCALE))
-    scene.render.filepath = os.path.join(PREVIEW_DIR, "C2_hangar.png")
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_hangar.png")
     bpy.ops.render.render(write_still=True)
-    print("Rendered: C2_hangar.png")
+    print("Rendered: C3_hangar.png")
     col_ship.objects.unlink(obj_corr)
     bpy.data.objects.remove(obj_corr)
     bpy.data.meshes.remove(me_corr)
@@ -1631,13 +2265,13 @@ def render_c2_views():
     
     stitched_arr = np.hstack([arr0, arr1, arr2]) # 720 x 1920 x 4
     
-    p_final_turret = os.path.join(PREVIEW_DIR, "C2_turret.png")
-    img_final = bpy.data.images.new("C2_Turret_Stitched", width=1920, height=720, alpha=True)
+    p_final_turret = os.path.join(PREVIEW_DIR, "C3_turret.png")
+    img_final = bpy.data.images.new("C3_Turret_Stitched", width=1920, height=720, alpha=True)
     img_final.pixels.foreach_set(stitched_arr.ravel())
     img_final.filepath_raw = p_final_turret
     img_final.file_format = 'PNG'
     img_final.save()
-    print("Rendered & Stitched: C2_turret.png (1920x720 showing -5°, 45°, 80°)")
+    print("Rendered & Stitched: C3_turret.png (1920x720 showing -5°, 45°, 80°)")
     
     bpy.data.images.remove(img0)
     bpy.data.images.remove(img1)
@@ -1706,13 +2340,13 @@ def render_c2_views():
     
     stitched_sil = np.hstack([arr_s, arr_h, arr_t]) # 720 x 1920 x 4
     
-    p_final_sil = os.path.join(PREVIEW_DIR, "C2_silhouette.png")
-    img_final_sil = bpy.data.images.new("C2_Silhouette_Stitched", width=1920, height=720, alpha=True)
+    p_final_sil = os.path.join(PREVIEW_DIR, "C3_silhouette.png")
+    img_final_sil = bpy.data.images.new("C3_Silhouette_Stitched", width=1920, height=720, alpha=True)
     img_final_sil.pixels.foreach_set(stitched_sil.ravel())
     img_final_sil.filepath_raw = p_final_sil
     img_final_sil.file_format = 'PNG'
     img_final_sil.save()
-    print("Rendered & Stitched: C2_silhouette.png (1920x720)")
+    print("Rendered & Stitched: C3_silhouette.png (1920x720)")
     
     bpy.data.images.remove(img_s)
     bpy.data.images.remove(img_h)
@@ -1741,50 +2375,90 @@ def render_c2_views():
     # 10. Detail: Bridge Command Head
     cam_data.type = 'PERSP'
     cam_data.lens = 48.0
-    point_camera(cam, (42.0 * SCALE, -55.0 * SCALE, 175.0 * SCALE), (0.0, -130.0 * SCALE, 152.0 * SCALE))
-    scene.render.filepath = os.path.join(PREVIEW_DIR, "detail_bridge.png")
+    point_camera(cam, (42.0 * SCALE, -81.0 * SCALE, 175.0 * SCALE), (0.0, BRIDGE_Y * SCALE, 152.0 * SCALE))
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_detail_bridge.png")
     bpy.ops.render.render(write_still=True)
-    print("Rendered: detail_bridge.png")
+    print("Rendered: C3_detail_bridge.png")
     
     # 11. Detail: Recessed Hangar Bay & Portal Frame
     cam_data.type = 'PERSP'
     cam_data.lens = 38.0
     point_camera(cam, (-195.0 * SCALE, -60.0 * SCALE, 55.0 * SCALE), (-88.0 * SCALE, -10.0 * SCALE, 28.0 * SCALE))
-    scene.render.filepath = os.path.join(PREVIEW_DIR, "detail_hangar.png")
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_detail_hangar.png")
     bpy.ops.render.render(write_still=True)
-    print("Rendered: detail_hangar.png")
+    print("Rendered: C3_detail_hangar.png")
     
     # 12. Detail: 170m Engine Block Transom & Nozzles
     cam_data.type = 'PERSP'
     cam_data.lens = 45.0
     point_camera(cam, (-85.0 * SCALE, -420.0 * SCALE, 65.0 * SCALE), (0.0, -320.0 * SCALE, 30.0 * SCALE))
-    scene.render.filepath = os.path.join(PREVIEW_DIR, "detail_engines.png")
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_detail_engines.png")
     bpy.ops.render.render(write_still=True)
-    print("Rendered: detail_engines.png")
+    print("Rendered: C3_detail_engines.png")
     
     # 13. Detail: Battering Ram Prow & Bow Glacis
     cam_data.type = 'PERSP'
     cam_data.lens = 38.0
     point_camera(cam, (140.0 * SCALE, 480.0 * SCALE, 80.0 * SCALE), (0.0, 320.0 * SCALE, 20.0 * SCALE))
-    scene.render.filepath = os.path.join(PREVIEW_DIR, "detail_prow.png")
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_detail_prow.png")
     bpy.ops.render.render(write_still=True)
-    print("Rendered: detail_prow.png")
+    print("Rendered: C3_detail_prow.png")
     
     # 14. Detail: Dorsal Radiator Trench Spine & Arches
     cam_data.type = 'PERSP'
     cam_data.lens = 45.0
     point_camera(cam, (42.0 * SCALE, -25.0 * SCALE, 135.0 * SCALE), (0.0, 45.0 * SCALE, 90.0 * SCALE))
-    scene.render.filepath = os.path.join(PREVIEW_DIR, "detail_radiator.png")
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_detail_radiator.png")
     bpy.ops.render.render(write_still=True)
-    print("Rendered: detail_radiator.png")
+    print("Rendered: C3_detail_radiator.png")
     
     # 15. Detail: Ventral Belly Keel Architecture & Reactor Vault
     cam_data.type = 'PERSP'
     cam_data.lens = 34.0
     point_camera(cam, (-130.0 * SCALE, 140.0 * SCALE, -110.0 * SCALE), (0.0, 60.0 * SCALE, -25.0 * SCALE))
-    scene.render.filepath = os.path.join(PREVIEW_DIR, "detail_belly.png")
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_detail_belly.png")
     bpy.ops.render.render(write_still=True)
-    print("Rendered: detail_belly.png")
+    print("Rendered: C3_detail_belly.png")
+
+    # 16. Detail: Main Deck Surface Detail
+    cam_data.type = 'PERSP'
+    cam_data.lens = 38.0
+    point_camera(cam, (80.0 * SCALE, 0.0 * SCALE, 120.0 * SCALE), (60.0 * SCALE, 50.0 * SCALE, 80.0 * SCALE))
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_detail_main_deck.png")
+    bpy.ops.render.render(write_still=True)
+    print("Rendered: C3_detail_main_deck.png")
+    
+    # 17. Detail: Flank Surface Detail
+    cam_data.type = 'PERSP'
+    cam_data.lens = 38.0
+    point_camera(cam, (150.0 * SCALE, 20.0 * SCALE, 40.0 * SCALE), (100.0 * SCALE, -60.0 * SCALE, 40.0 * SCALE))
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_detail_flank.png")
+    bpy.ops.render.render(write_still=True)
+    print("Rendered: C3_detail_flank.png")
+
+    # 18. Detail: Castle Side
+    cam_data.type = 'PERSP'
+    cam_data.lens = 38.0
+    point_camera(cam, (100.0 * SCALE, -155.0 * SCALE, 150.0 * SCALE), (0.0, -155.0 * SCALE, 140.0 * SCALE))
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_detail_castle.png")
+    bpy.ops.render.render(write_still=True)
+    print("Rendered: C3_detail_castle.png")
+
+    # 19. Detail: Engine Deck
+    cam_data.type = 'PERSP'
+    cam_data.lens = 38.0
+    point_camera(cam, (70.0 * SCALE, -210.0 * SCALE, 140.0 * SCALE), (0.0, -250.0 * SCALE, 110.0 * SCALE))
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_detail_engine_deck.png")
+    bpy.ops.render.render(write_still=True)
+    print("Rendered: C3_detail_engine_deck.png")
+
+    # 20. Detail: Bow Glacis
+    cam_data.type = 'PERSP'
+    cam_data.lens = 38.0
+    point_camera(cam, (80.0 * SCALE, 350.0 * SCALE, 120.0 * SCALE), (0.0, 300.0 * SCALE, 90.0 * SCALE))
+    scene.render.filepath = os.path.join(PREVIEW_DIR, "C3_detail_glacis.png")
+    bpy.ops.render.render(write_still=True)
+    print("Rendered: C3_detail_glacis.png")
 
 # -----------------------------------------------------------------------------
 # Main Execution Runner
@@ -1845,3 +2519,6 @@ def run_pass_c2():
 
 if __name__ == "__main__":
     run_pass_c2()
+
+
+

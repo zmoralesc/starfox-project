@@ -1,6 +1,7 @@
 class_name DestroyerTurret
 extends DestroyerPart
-## Hull turret. Shoots at the player when they're within aggro range. If the
+## Hull turret. Shoots at the player when they're within aggro range, or much
+## farther (Destroyer retaliation_range) after they've shot the ship. If the
 ## player isn't, it shoots at a wingman in range instead, so the wingmen look
 ## like they're in the fight (they can't be hurt). Each turret can only pitch
 ## between min/max_pitch_deg, so there are blind spots, and the hull or
@@ -66,7 +67,7 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	var previous := current_target
 	current_target = null
-	if is_destroyed or destroyer == null or not destroyer.is_vulnerable():
+	if is_destroyed or destroyer == null or not destroyer.is_damageable():
 		lock = 0.0
 		return
 	current_target = _pick_target()
@@ -119,17 +120,19 @@ func _update_lock(delta: float) -> void:
 	lock = move_toward(lock, 1.0, slowness * delta / maxf(lock_time, 0.01))
 
 
-## The player if within aggro range; otherwise the nearest wingman in range.
+## The player if within range; otherwise the nearest wingman in range. The
+## range is aggro_range, or the destroyer's retaliation_range for whoever has
+## shot it lately (Destroyer.reach_for).
 func _pick_target() -> Node3D:
 	var player := get_tree().get_first_node_in_group("player") as Ship
 	if player and not player.is_dead \
-			and global_position.distance_to(player.global_position) <= aggro_range:
+			and global_position.distance_to(player.global_position) <= destroyer.reach_for(player, aggro_range):
 		return player
 	var best: Node3D = null
-	var best_distance := aggro_range
+	var best_distance := INF
 	for wingman: Node3D in get_tree().get_nodes_in_group("wingmen"):
 		var d := global_position.distance_to(wingman.global_position)
-		if d <= best_distance:
+		if d <= destroyer.reach_for(wingman, aggro_range) and d < best_distance:
 			best_distance = d
 			best = wingman
 	return best

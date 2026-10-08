@@ -28,13 +28,24 @@ func announce_destroyer(destroyer: Destroyer) -> void:
 	if advisor == null or not is_instance_valid(destroyer):
 		return
 	_say(advisor.destroyer_warnings)
-	_say(advisor.destroyer_hints if _destroyers_seen == 0 else advisor.destroyer_reminders)
+	if destroyer.bridge_shield_turrets > 0:
+		_say(advisor.shielded_destroyer_hints if _destroyers_seen == 0 else advisor.shielded_destroyer_reminders)
+	else:
+		_say(advisor.destroyer_hints if _destroyers_seen == 0 else advisor.destroyer_reminders)
 	_destroyers_seen += 1
+	destroyer.shield_dropped.connect(_on_shield_dropped)
 	if destroyer.bridge:
 		destroyer.bridge.destroyed.connect(_on_bridge_down.bind(destroyer))
 	for thruster in destroyer.thrusters:
 		thruster.destroyed.connect(_on_thruster_down.bind(destroyer))
 	destroyer.destroyed.connect(_say.bind(advisor.destroyer_killed))
+
+
+## A part's shield dropped: the bridge's is worth calling out (the
+## thrusters' drop with the bridge itself, which bridge_down covers).
+func _on_shield_dropped(part: DestroyerPart) -> void:
+	if is_instance_valid(part) and part.kind == DestroyerPart.Kind.BRIDGE:
+		_say(advisor.bridge_exposed)
 
 
 ## The bridge fell: if thrusters remain, point the team at them. (If none do,

@@ -10,6 +10,8 @@
 [ext_resource type="PackedScene" path="res://models/destroyer/juggernaut_thruster_pod.glb" id="8_pod"]
 [ext_resource type="PackedScene" path="res://models/destroyer/juggernaut_hangar_door.glb" id="9_door"]
 [ext_resource type="Script" path="res://enemies/obstacle_box.gd" id="10_obstacle_box"]
+[ext_resource type="PackedScene" path="res://enemies/enemy_fighter.tscn" id="11_elite"]
+[ext_resource type="Material" path="res://enemies/juggernaut_worn_paint.tres" id="12_worn"]
 
 [sub_resource type="StandardMaterial3D" id="Mat_bay"]
 albedo_color = Color(1, 0.6, 0.25, 1)
@@ -49,16 +51,24 @@ death_blast_height = 150.0
 death_blast_size = Vector2(60, 125)
 final_blast_position = Vector3(0, 90, 120)
 final_blast_size = 290.0
+level_fighters = false
+retaliation_range = 1200.0
+bridge_shield_turrets = 4
+thrusters_need_bridge = true
+escort_scene = ExtResource("11_elite")
+escort_count = 4
+worn_paint_materials = PackedStringArray("Destroyer_Crimson")
+worn_paint = ExtResource("12_worn")
 
 [node name="Hull" parent="." instance=ExtResource("5_hull")]
 
 [node name="Bridge" type="StaticBody3D" parent="."]
-position = Vector3(0, 204, 195)
+position = Vector3(0, 204, 234)
 collision_layer = 4
 collision_mask = 0
 script = ExtResource("2_part")
 kind = 0
-max_health = 70
+max_health = 900
 radius = 50.0
 score = 3
 display_name = "BRIDGE"
@@ -75,7 +85,7 @@ collision_layer = 4
 collision_mask = 0
 script = ExtResource("2_part")
 kind = 1
-max_health = 46
+max_health = 450
 radius = 34.0
 score = 2
 display_name = "THRUSTER"
@@ -98,7 +108,7 @@ collision_layer = 4
 collision_mask = 0
 script = ExtResource("2_part")
 kind = 1
-max_health = 46
+max_health = 450
 radius = 40.0
 score = 2
 display_name = "THRUSTER"
@@ -121,7 +131,7 @@ collision_layer = 4
 collision_mask = 0
 script = ExtResource("2_part")
 kind = 1
-max_health = 46
+max_health = 450
 radius = 34.0
 score = 2
 display_name = "THRUSTER"
@@ -156,7 +166,7 @@ launch_point = NodePath("../LaunchL")
 bay_glow = NodePath("../BayGlowL")
 open_height = 54.0
 kind = 3
-max_health = 29
+max_health = 150
 radius = 40.0
 score = 2
 display_name = "HANGAR"
@@ -183,7 +193,7 @@ launch_point = NodePath("../LaunchR")
 bay_glow = NodePath("../BayGlowR")
 open_height = 54.0
 kind = 3
-max_health = 29
+max_health = 150
 radius = 40.0
 score = 2
 display_name = "HANGAR"
@@ -221,76 +231,133 @@ position = Vector3(63, 188.5, 195)
 [node name="AvoidanceBoxes" type="Node3D" parent="."]
 
 [node name="Box1" type="Node3D" parent="AvoidanceBoxes"]
-position = Vector3(-1, 44, 75.6)
+position = Vector3(0, 38, 79.6)
 script = ExtResource("10_obstacle_box")
-size = Vector3(192, 176, 800)
+size = Vector3(192, 132, 768)
+margin = 14.0
 
 [node name="Box2" type="Node3D" parent="AvoidanceBoxes"]
-position = Vector3(-1, 84, 263.6)
+position = Vector3(0, 46, 51.6)
 script = ExtResource("10_obstacle_box")
-size = Vector3(176, 256, 248)
+size = Vector3(152, 140, 824)
+margin = 14.0
 
 [node name="Box3" type="Node3D" parent="AvoidanceBoxes"]
-position = Vector3(-1, 44, 27.6)
+position = Vector3(0, 44, 39.6)
 script = ExtResource("10_obstacle_box")
-size = Vector3(160, 160, 896)
+size = Vector3(144, 136, 848)
+margin = 14.0
 
 [node name="Box4" type="Node3D" parent="AvoidanceBoxes"]
-position = Vector3(-1, 28, -16.4)
+position = Vector3(0, 48, 15.6)
 script = ExtResource("10_obstacle_box")
-size = Vector3(112, 128, 1000)
+size = Vector3(192, 152, 496)
+margin = 14.0
 
 [node name="Box5" type="Node3D" parent="AvoidanceBoxes"]
-position = Vector3(3, 64, -0.4)
+position = Vector3(0, 58, 1.6)
 script = ExtResource("10_obstacle_box")
-size = Vector3(312, 152, 440)
+size = Vector3(288, 116, 412)
+margin = 14.0
 
 [node name="Box6" type="Node3D" parent="AvoidanceBoxes"]
-position = Vector3(-1, 108, 187.6)
+position = Vector3(0, 34, 21.6)
 script = ExtResource("10_obstacle_box")
-size = Vector3(112, 320, 112)
+size = Vector3(160, 92, 884)
+margin = 14.0
 
 [node name="Box7" type="Node3D" parent="AvoidanceBoxes"]
-position = Vector3(-1, 24, -32.4)
+position = Vector3(0, 56, 75.6)
 script = ExtResource("10_obstacle_box")
-size = Vector3(96, 120, 1032)
+size = Vector3(112, 192, 600)
+margin = 14.0
 
 [node name="Box8" type="Node3D" parent="AvoidanceBoxes"]
-position = Vector3(3, 8, 23.6)
+position = Vector3(0, 14, 61.6)
 script = ExtResource("10_obstacle_box")
-size = Vector3(280, 88, 536)
+size = Vector3(232, 68, 740)
+margin = 14.0
 
 [node name="Box9" type="Node3D" parent="AvoidanceBoxes"]
-position = Vector3(-1, 16, 43.6)
+position = Vector3(0, 48, 9.6)
 script = ExtResource("10_obstacle_box")
-size = Vector3(224, 88, 864)
+size = Vector3(96, 144, 828)
+margin = 14.0
 
 [node name="Box10" type="Node3D" parent="AvoidanceBoxes"]
-position = Vector3(-1, 44, 43.6)
+position = Vector3(0, 46, 25.6)
 script = ExtResource("10_obstacle_box")
-size = Vector3(96, 208, 688)
+size = Vector3(168, 68, 908)
+margin = 14.0
 
 [node name="Box11" type="Node3D" parent="AvoidanceBoxes"]
-position = Vector3(3, 36, -0.4)
+position = Vector3(0, 34, -4.4)
 script = ExtResource("10_obstacle_box")
-size = Vector3(152, 96, 968)
+size = Vector3(120, 76, 936)
+margin = 14.0
 
 [node name="Box12" type="Node3D" parent="AvoidanceBoxes"]
-position = Vector3(3, 40, 419.6)
+position = Vector3(0, 12, 55.6)
 script = ExtResource("10_obstacle_box")
-size = Vector3(264, 136, 112)
+size = Vector3(216, 48, 816)
+margin = 14.0
 
 [node name="Box13" type="Node3D" parent="AvoidanceBoxes"]
-position = Vector3(3, 52, 51.6)
+position = Vector3(0, 34, 53.6)
 script = ExtResource("10_obstacle_box")
-size = Vector3(136, 208, 672)
+size = Vector3(56, 164, 796)
+margin = 14.0
 
 [node name="Box14" type="Node3D" parent="AvoidanceBoxes"]
-position = Vector3(-1, 32, 51.6)
+position = Vector3(0, 74, 263.6)
 script = ExtResource("10_obstacle_box")
-size = Vector3(208, 136, 848)
+size = Vector3(152, 212, 224)
+margin = 14.0
 
 [node name="Box15" type="Node3D" parent="AvoidanceBoxes"]
-position = Vector3(-1, 20, 63.6)
+position = Vector3(0, 32, 81.6)
 script = ExtResource("10_obstacle_box")
-size = Vector3(240, 112, 824)
+size = Vector3(56, 168, 740)
+margin = 14.0
+
+[node name="Box16" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(0, 80, 273.6)
+script = ExtResource("10_obstacle_box")
+size = Vector3(144, 224, 204)
+margin = 14.0
+
+[node name="Box17" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(0, 22, -32.4)
+script = ExtResource("10_obstacle_box")
+size = Vector3(64, 84, 1024)
+margin = 14.0
+
+[node name="Box18" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(0, 60, -126.4)
+script = ExtResource("10_obstacle_box")
+size = Vector3(312, 112, 156)
+margin = 14.0
+
+[node name="Box19" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(0, 60, 141.6)
+script = ExtResource("10_obstacle_box")
+size = Vector3(312, 112, 132)
+margin = 14.0
+
+[node name="Box20" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(0, 38, -8.4)
+script = ExtResource("10_obstacle_box")
+size = Vector3(32, 116, 976)
+margin = 14.0
+
+[node name="Box21" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(0, 52, 439.6)
+script = ExtResource("10_obstacle_box")
+size = Vector3(264, 88, 80)
+margin = 14.0
+
+[node name="Box22" type="Node3D" parent="AvoidanceBoxes"]
+position = Vector3(0, 106, 225.6)
+script = ExtResource("10_obstacle_box")
+size = Vector3(64, 316, 84)
+margin = 14.0

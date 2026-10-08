@@ -11,6 +11,8 @@ const COLOR_COVER := Color(0.4, 0.8, 1.0, 0.9)
 const COLOR_ORDER := Color(1.0, 0.7, 0.15, 1.0)
 const COLOR_WING := Color(0.95, 0.75, 0.3, 0.7)
 const COLOR_ENEMY := Color(1.0, 0.25, 0.2, 0.85)
+## A destroyer part behind its shield (the shield bubble's violet).
+const COLOR_PART_SHIELDED := Color(0.85, 0.45, 1.0, 0.45)
 const COLOR_SHIELD := Color(0.35, 0.95, 0.45, 0.95)
 const COLOR_SHIELD_DOWN := Color(1.0, 0.3, 0.2, 0.95)
 ## Thruster bar: full when the thrusters are cool, emptied by throttling.
@@ -235,7 +237,8 @@ func _draw() -> void:
 
 
 ## Destroyer: inbound warning, brackets on intact parts (bridge and thrusters,
-## which must die to kill it, are brightest), edge arrow. Peppy also calls
+## which must die to kill it, are brightest, but faint violet while shielded;
+## turrets are brighter while they guard the bridge), edge arrow. Peppy also calls
 ## it out over the comms (MissionControl.announce_destroyer).
 func _draw_destroyer(cam: Camera3D, destroyer: Destroyer) -> void:
 	if destroyer.age < 6.0 and fmod(destroyer.age, 0.8) < 0.5:
@@ -250,6 +253,8 @@ func _draw_destroyer(cam: Camera3D, destroyer: Destroyer) -> void:
 		_draw_edge_arrow(cam, destroyer.global_position, COLOR_ORDER, 22.0)
 	if not destroyer.is_damageable():
 		return  # still arriving (or dying): nothing to shoot yet
+	# While the bridge is shielded, its turrets are the way in: mark them brighter.
+	var turrets_key: bool = destroyer.bridge != null and destroyer.bridge.armoured
 	for part in destroyer.all_parts():
 		if part.is_destroyed or cam.is_position_behind(part.global_position):
 			continue
@@ -260,11 +265,12 @@ func _draw_destroyer(cam: Camera3D, destroyer: Destroyer) -> void:
 			continue
 		match part.kind:
 			DestroyerPart.Kind.BRIDGE, DestroyerPart.Kind.THRUSTER:
-				_draw_brackets(p, 14.0, COLOR_TARGET)
+				# Shielded (can't be hurt yet): faint, in the shield's colour.
+				_draw_brackets(p, 14.0, COLOR_PART_SHIELDED if part.armoured else COLOR_TARGET)
 			DestroyerPart.Kind.HANGAR:
 				_draw_brackets(p, 12.0, COLOR_ORDER)
 			_:
-				_draw_brackets(p, 8.0, Color(COLOR_ENEMY, 0.5))
+				_draw_brackets(p, 10.0 if turrets_key else 8.0, COLOR_ENEMY if turrets_key else Color(COLOR_ENEMY, 0.5))
 
 
 ## Brackets on enemy fighters, one colour whatever they're doing (their

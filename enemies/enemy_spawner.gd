@@ -7,7 +7,8 @@ extends Node
 ## is gone. Also enforces a cap on how many enemy fighters can exist at once,
 ## counting both wave fighters and ones launched from destroyer hangars.
 
-## The level's fighter type, used for waves and for destroyer hangar launches.
+## The level's fighter type, used for waves and for destroyer hangar launches
+## (unless the destroyer has its own: Destroyer.level_fighters).
 ## enemy_fighter.tscn is the elite fighter; light_fighter.tscn is the basic one.
 @export var enemy_scene: PackedScene = preload("res://enemies/enemy_fighter.tscn")
 @export var destroyer_scene: PackedScene = preload("res://enemies/destroyer.tscn")
@@ -127,7 +128,8 @@ func _spawn_destroyer() -> void:
 	destroyer = destroyer_scene.instantiate() as Destroyer
 	destroyer.position = direction * zone_radius
 	destroyer.spawner = self
-	destroyer.fighter_scene = enemy_scene
+	if destroyer.level_fighters:
+		destroyer.fighter_scene = enemy_scene
 	get_parent().add_child(destroyer)
 	# Heading for the zone's centre, it would park in a station there: stop
 	# short of the station on the side it came from instead.

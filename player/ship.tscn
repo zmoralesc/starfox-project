@@ -51,14 +51,14 @@ thrusters_overheat = false
 cruise_speed = 60.0
 max_speed = 130.0
 acceleration = 60.0
-engine_glow_per_speed = 0.0075
-engine_glow_range = Vector2(0.7, 1.5)
-laser_speed = 2400.0
+laser_speed = 2800.0
 fire_interval = 0.09
 parallel_fire = true
 muzzle_flash_size = 0.6
 explosion_size = 6.0
 explosion_sound = ExtResource("sfx_explosion")
+engine_glow_per_speed = 0.0075
+engine_glow_range = Vector2(0.7, 1.5)
 speaker = ExtResource("fox_speaker")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1333826076]

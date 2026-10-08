@@ -23,22 +23,33 @@ static var _charred: ShaderMaterial
 @export var explosion: ExplosionStyle = preload("res://effects/explosions/destroyer_part.tres")
 @export var explosion_scale := 1.2
 @export var display_name := "PART"
-## The crosshair turns red over this part (while intact).
-@export var highlight_on_crosshair := true
-## The Attack order can pick this part (while intact, and only once the
-## destroyer can be damaged: not while it's still warping in).
+## How bright a shot bouncing off its shield (if shielded) makes the bubble.
+@export var shield_flash_strength := 0.3
+## The crosshair turns red over this part (while intact and not shielded).
+@export var highlight_on_crosshair := true:
+	get:
+		return highlight_on_crosshair and not armoured
+## The Attack order can pick this part (while intact and not shielded, and
+## only once the destroyer can be damaged: not while it's still warping in).
 @export var attack_target := true:
 	get:
-		return attack_target and (destroyer == null or destroyer.is_damageable())
+		return attack_target and not armoured and (destroyer == null or destroyer.is_damageable())
 
 var health := 0
 var is_destroyed := false
 ## Set by the Destroyer that owns this part.
 var destroyer: Destroyer
+## Shielded: shots bounce off (Destroyer.is_armoured). Read by Laser, the HUD
+## and the crosshair.
+var armoured: bool:
+	get:
+		return destroyer != null and destroyer.is_armoured(self)
 
 ## Flash and damage smoke when shot; no flinch, it's bolted to the hull. Once
 ## destroyed it keeps burning.
 var _reaction: HitReaction
+## The shield bubble, while it has one (add_shield).
+var _shield: ShieldEffect
 
 
 func _ready() -> void:
@@ -51,6 +62,10 @@ func _ready() -> void:
 
 func take_hit(damage: int, at: Vector3) -> void:
 	if is_destroyed or destroyer == null or not destroyer.is_damageable():
+		return
+	if armoured:
+		if _shield:
+			_shield.flash(at, shield_flash_strength)
 		return
 	health -= damage
 	if health <= 0:
@@ -92,3 +107,23 @@ func _char_meshes(node: Node) -> void:
 		if child is MeshInstance3D:
 			(child as MeshInstance3D).material_override = _charred
 		_char_meshes(child)
+
+
+## Called by a Laser that hit this part: the destroyer retaliates.
+func notify_attacker(attacker: Node) -> void:
+	if destroyer:
+		destroyer.provoke(attacker, self)
+
+
+## Give the part a shield bubble (`scene`: a ShieldEffect on a unit sphere),
+## sized to its radius. It shows when shots bounce off it.
+func add_shield(scene: PackedScene) -> void:
+	_shield = scene.instantiate() as ShieldEffect
+	_shield.scale = Vector3.ONE * radius
+	add_child(_shield)
+
+
+## The shield has gone down (the Destroyer decides when): it flares and fades.
+func drop_shield() -> void:
+	if _shield:
+		_shield.collapse()

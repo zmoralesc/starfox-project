@@ -141,6 +141,17 @@ func _think(delta: float) -> void:
 	super(delta)
 
 
+## Told where `player` is (a destroyer's escort, when its thrusters are shot):
+## chase them if they're within tracking range, otherwise go and look for
+## them. Ignored while already chasing or still launching.
+func alert(player: Ship) -> void:
+	if player == null or player.is_dead or state == State.CHASE or _launch_time_left > 0.0:
+		return
+	_player = player
+	_remember_player()
+	_enter_state(State.CHASE if _has_line_of_sight(chase_tracking_distance) else State.SEEK)
+
+
 ## Called by a laser that hit us, with the point it was fired from.
 func notify_shot(from: Vector3) -> void:
 	_threat_origin = from

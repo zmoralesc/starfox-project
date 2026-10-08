@@ -425,6 +425,67 @@ Add the tertiary detail and painted variation by the rules above. Then build:
 
 Hooking the new ship into `enemies/destroyer.tscn` (positions, radii, collision, AI avoidance spheres, hull outline, turret scene) is done afterwards, not by you.
 
+### Pass C3: the hull surface detail pass
+The C2 ship is in the game (`enemies/juggernaut.tscn`), and the user likes it. Since C2 it has been fixed and adjusted: floating pieces and flickering faces were removed (the "Nothing floats" and "No shared face planes" rules above came from that review), the turret pads moved (`MOUNT_PADS`), and the bridge moved aft onto its pedestal (`BRIDGE_Y`). The big shapes are right. What's still thin is the surface: from 30–150 m the deck, flanks, glacis, castle, engine deck and belly are large plain areas, so the ship doesn't yet feel 1 km long. This pass adds the tertiary detail and painted variation described under **Style** (Stage C), and nothing else.
+
+**Where the work goes**
+- **Edit `models/destroyer/source/juggernaut_c2.py` in place.** It's the live build script now and contains all the fixes above. Don't copy it to a new script.
+- **Keep every existing piece exactly as it is.** Don't move, resize, reshape or delete anything already built, and don't change `MOUNT_PADS`, `BRIDGE_Y`/`BRIDGE_Z`, the markers, the collision builder or the other exports. Add a new function (for example `build_juggernaut_hull_detail()`), and only the few lines needed to call it, export it and render it. I'll diff the script against the current version: every difference must be the new detail or the code that runs it.
+- **The detail is one new object, `Juggernaut_HullDetail`**, in the `Juggernaut` collection, origin at the ship origin (like `Juggernaut_Hull`), exported to **`models/destroyer/juggernaut_hull_detail.glb`**.
+- **Never add detail to `Juggernaut_Hull` itself.** The game turns every triangle of the hull model into collision. Detail in a separate object stays out of the collision, which keeps the physics cost down.
+- **The bridge** (`Juggernaut_Bridge`) is its own part and already detailed. Leave it alone, apart from at most a few running lights or windows if its flanks need them; report any change.
+
+**What to add** (use the Style section's rules: focal areas and rest areas, painted variation instead of geometry noise, few ink lines)
+- **Painted armour panels** on the big flat areas (main deck, castle sides and top, bow glacis, flank bastions, engine-block deck): two or three close greys inside the 0.12–0.30 sRGB range, in large panels (about 15–40 m), not a checkerboard of small plates. Add a few crimson markings in strong simple shapes (chevrons on the glacis, stripes on the castle or the engine block).
+- **Window rows** (1.8 × 0.9 m, amber `Destroyer_Window`) along the flank tiers, the castle's faces and the bastion towers, in a few deliberate bands. They're the main scale cue.
+- **Running lights** (red `Destroyer_RunningLight`, 1–3 m) at the extremities: the ram's tip and corners, the widest points of the hull, the engine-block and castle corners.
+- **Small greebles in focal areas only**: vents and machinery blocks on the engine deck, conduits and junction boxes along the outside of the radiator trench's walls, a few sensor masts or domes on the castle top and bow.
+- **Belly** (in shadow): only what reads there, a few window rows, lit vents and running lights. Don't add panels.
+- **Sizes in real metres** (don't multiply by `SCALE`; the helpers `bmesh_add_real_box()` and `bmesh_add_real_chamfered_box()` already work that way).
+
+**Placing pieces on the hull** (the most common mistake last time)
+- **Find the surface by ray-casting** onto the hull mesh (for example a `mathutils.bvhtree.BVHTree` built from `Juggernaut_Hull`'s mesh) at each piece's position, and turn the piece to the surface normal there. Don't guess heights from nearby numbers: lofts narrow and slope, and chamfers cut corners.
+- **Sink every piece 0.2–0.3 m into the surface**, so it never floats. On a sloping or curved surface, make it thick enough to sink in at both ends. A painted panel is a thin slab (about 0.5 m) sunk to stand 0.2–0.3 m proud. Its edges then draw a faint panel line, which is wanted, but keep panels big so the lines stay few.
+- **No shared face planes**, with the hull or with each other: panels that touch must differ in height by at least 0.2 m, or leave a gap.
+- **Make sure each piece actually hits the hull.** Skip any spot where the ray misses or hits a face sloping more than you intended.
+
+**Keep-out areas** (design units, the script's coordinates before `SCALE`; leave these exactly as they are)
+- **Turret pads:** nothing within 10 units of any `MOUNT_PADS` point (x, y), and nothing taller than 1 m within 20 units. The turrets need open sky above.
+- **Hangar doors:** nothing on the hull side where |x| ≥ 84, −56 ≤ y ≤ 36, 0 ≤ z ≤ 80. That covers the opening, its frame, the strip the door slides up into, and the bay mouth that fighters launch from.
+- **Radiator trench:** nothing inside |x| ≤ 30 between y −70 and 150 above z 76. The fins, arches and pipe are already there; detail may go on the trench walls' outer faces.
+- **Bridge pedestal top:** nothing at |x| ≤ 22, −180 ≤ y ≤ −135, z ≥ 130.
+- **Engines:** nothing within 30 units of each thruster marker (`Marker_Thruster*`), and nothing covering the nozzle openings.
+- **Existing detail:** don't overlap the windows, hatches, beacons, antennas and frames already built.
+
+**Budget and materials**
+- `Juggernaut_HullDetail`: at most **25,000 triangles**. Batch it as one mesh.
+- Reuse the existing `Destroyer_` materials where they fit. New ones (for example a third panel grey) keep the prefix; list each with its sRGB colour and emission.
+
+**Checks before you report**
+- **Geometry check:** run `jug_check.py` (in the added scratch directory) on the saved `juggernaut.blend` in background Blender. It covers every mesh in the `Juggernaut` collection. It must report **1 group** (everything connected) and **0 coplanar pairs**, as the model does now. Fix and rerun until it does, and paste its output in the report.
+- Backface culling on: no missing or inside-out faces.
+- Triangle count of `Juggernaut_HullDetail`, and of every other object (they must be unchanged).
+
+**Screenshots:** the script's existing render set, written as `C3_<view>.png` and `C3_detail_<area>.png` in `juggernaut_preview/` (the current `C2_*`/`detail_*` renders stay as the "before"). Add one close view from about 40 m over the main deck and one along a flank, where the detail matters most.
+
+**Report:** what you added and where (by area), triangle counts, materials, the check output, the screenshot paths, the export list, and anything in this pass you couldn't meet or chose to change, with the reason. **Then stop.** Hooking `juggernaut_hull_detail.glb` into the game is done afterwards, not by you; don't touch `.tscn`/`.gd` files, and don't commit.
+
+### C3 review 1: the detail is too thin
+The first C3 attempt was clean: only the expected files changed, the existing exports stayed identical, the geometry check passes and the keep-outs were respected. Keep all of that. But it barely changes the ship: `Juggernaut_HullDetail` is 2,424 triangles (about 200 small boxes) against a 25,000 budget. Side by side, `C3_hero.png` and `C2_hero.png` differ only by a few panels and two crimson bars on the bow and some dots along the flanks. The deck, castle, engine block and belly are as plain as before. Redo the pass in the same function (`build_juggernaut_hull_detail()`), fixing these:
+
+1. **Coverage.** Every large flat area gets painted panels, not just a sample: the main deck either side of the radiator trench (outside its keep-out, |x| > 30, all the way from the glacis to the castle), the bow glacis, the flank bastions' faces, the castle's top and its four sides, the engine-block deck and its sides, and the sponson tops. Lay them out as a planned grid per area (rows and columns of large panels, 15–40 m, with gaps or height steps between them, in two or three greys), plus a few crimson markings per area. Aim for **about 10,000–15,000 triangles** in all.
+2. **Windows are rotated.** On the side walls, the 1.8 m side ended up vertical (tall slots, see `C3_detail_flank.png`): when orienting a piece by its surface normal, the piece's long side must run along the ship (horizontal), with 0.9 m vertical. Also make windows nearly flush: about 0.5 m thick, sunk 0.25 m, so they stand 0.25 m proud, not 0.75 m. Group them in bands of 10–30 windows, two or three bands per tier, and put more of them on the castle sides and bastion towers.
+3. **Sink every corner, not just the centre.** A panel is sunk 0.25 m at the ray hit, but 15–40 m panels on sloping or curving surfaces can lift off at their edges. Cast a ray at each of the piece's four corners as well; if any corner misses the hull or would stand more than 0.3 m clear of it, shrink the piece or skip it.
+4. **Report what was skipped.** Count placements dropped by each keep-out and by misses, per area, and give the counts in the report. Don't aim panels into keep-out areas in the first place: the first attempt aimed deck panels at x = ±20, inside the radiator trench, so they all vanished.
+5. **Running lights** are 1–3 m: make them about 1.5 m cubes, not 2 × 2 × 4 m posts.
+6. **Greebles:** more of them in the focal areas (engine deck, castle top, along the outside of the trench walls), in clusters, as the Style section says.
+7. **Close-ups that show the work.** `C3_detail_main_deck.png` showed only the radiator. Point the deck close-up at the panelled deck beside the trench, and add close-ups of the castle side, the engine-block deck and the bow glacis.
+
+Everything else in Pass C3 stays the same (files, keep-outs, materials, checks, report). Overwrite the `C3_*` screenshots.
+
+### C3 outcome
+The second attempt (17,900 triangles) covered the flat areas with small, randomly rotated squares (the "checkerboard of tiny plates" the Style section rules out) and left 60 pieces floating; the run also ended without a report and left scratch files in the project root. The pass was then rebuilt directly, keeping this brief's rules: first as thin boxes in a separate model, then, because the user wants detail to be part of the model rather than stuck on it, painted flush into the hull mesh by `paint_juggernaut_hull()` (see GUIDE §8.10), without the 3D greebles. For future passes: paint markings, panels, windows and lights into the surface as the Style section says; don't build them as pieces standing on it. One lesson for future model checks: build pieces from Blender's `loop_triangles`, since several hull quads are bent by up to 3 m and other triangulations move the surface.
+
 ---
 
 ## Not in this brief

@@ -4,3 +4,6 @@
 
 # Blender backups
 *.blend1
+
+# Python bytecode (Blender build scripts)
+__pycache__/

@@ -22,7 +22,8 @@ extends Node3D
 @export var water_splash: PackedScene = preload("res://effects/water_splash.tscn")
 @export var splash_size := 1.0
 ## Hitting something shootable (anything with take_hit: enemies, destroyer
-## parts, asteroids, wrecks, the player) throws up this cartoon burst, at
+## parts, asteroids, wrecks, the player; not a shielded destroyer part, which
+## gets `surface_hit` like the hull) throws up this cartoon burst, at
 ## `burst_size` times its own size. Null = `surface_hit` there too.
 @export var hit_burst: PackedScene = preload("res://effects/hit_burst.tscn")
 @export var burst_size := 1.0
@@ -90,6 +91,9 @@ func _cast(from: Vector3, to: Vector3) -> bool:
 	# Let the target know where the shot came from (enemies use it to evade).
 	if target.has_method("notify_shot"):
 		target.notify_shot(_origin)
+	# ...and who fired it (a destroyer retaliates against them).
+	if target.has_method("notify_attacker") and is_instance_valid(_shooter_node):
+		target.notify_attacker(_shooter_node)
 	if target.has_method("take_hit"):
 		target.take_hit(damage, hit.position)
 		# Tell the shooter (if it's still around) when this shot destroyed something.
@@ -98,7 +102,7 @@ func _cast(from: Vector3, to: Vector3) -> bool:
 				_shooter_node.notify_kill(target)
 	if _hit_water(hit.position):
 		WaterSplash.spawn(water_splash, get_parent(), hit.position, splash_size)
-	elif hit_burst and target.has_method("take_hit"):
+	elif hit_burst and target.has_method("take_hit") and target.get("armoured") != true:
 		HitBurst.spawn(hit_burst, get_parent(), hit.position, -_velocity.normalized(), burst_size)
 	elif surface_hit:
 		# Off the surface, leaning the way the bolt glanced.

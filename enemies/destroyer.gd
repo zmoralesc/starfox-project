@@ -7,14 +7,17 @@ extends AnimatableBody3D
 ## Warp arrival: the portal (WarpPortal) opens, the bow comes through at
 ## warp_speed, and once the stern is out the portal shuts and the ship brakes
 ## to cruise speed. Until it's through, the hull behind the portal is hidden
-## (a clip plane, toon_clip.gdshader) and nothing collides; its parts can be
-## shot once it's through, and it becomes active (turrets, hangars, solid
-## hull) when it has slowed down.
+## (a clip plane, toon_clip.gdshader) and nothing collides. Once it's through,
+## the hull is solid, its parts can be shot and its turrets fire (and any
+## escorts fly out of the portal behind it); it becomes active (hangars) when
+## it has slowed down.
 ##
 ## It's built from DestroyerPart children: one bridge, three thrusters, hull
 ## turrets and two hangar doors. Destroying the bridge AND every thruster kills
 ## it. Turrets and doors just stop working when destroyed. Losing thrusters
-## slows it down.
+## slows it down. Optionally (the Armour group) the bridge is shielded until
+## enough turrets are down, and the thrusters until the bridge is; shooting it
+## provokes every turret into firing back from far off (Retaliation).
 ##
 ## The hull itself (this body) is on the World layer: it stops all shots,
 ## blocks line of sight and is solid. A grid of ObstacleProxy spheres filling
@@ -26,6 +29,8 @@ extends AnimatableBody3D
 ## load (ToonMaterial).
 
 signal destroyed
+## A part's shield (see the Armour group) has dropped: it can be damaged now.
+signal shield_dropped(part: DestroyerPart)
 
 const TOON := preload("res://effects/toon.gdshader")
 const TOON_CLIP := preload("res://effects/toon_clip.gdshader")
@@ -72,7 +77,38 @@ static var _hull_shapes := {}
 @export var first_launch_delay := 15.0
 @export var squadron_size := 3
 @export var fighter_scene: PackedScene = preload("res://enemies/enemy_fighter.tscn")
+## Launch the level's fighter type (EnemySpawner.enemy_scene, set on arrival)
+## instead of fighter_scene.
+@export var level_fighters := true
 @export var kill_score := 10
+
+@export_group("Retaliation")
+## Shooting the ship (any part, or the hull) provokes it: for retaliation_time
+## seconds every turret will fire at the shooter out to retaliation_range,
+## instead of only within its own aggro_range. Attacking it always draws
+## fire, but flying fast still breaks the turrets' lock (DestroyerTurret).
+@export var retaliation_range := 0.0
+@export var retaliation_time := 6.0
+
+@export_group("Armour")
+## The bridge is shielded (takes no damage) until this many turrets are
+## destroyed. 0 = never shielded.
+@export var bridge_shield_turrets := 0
+## The thrusters are shielded until the bridge is destroyed.
+@export var thrusters_need_bridge := false
+## The shield bubble shown on a shielded part when it's hit (and when its
+## shield drops), sized to the part's radius.
+@export var part_shield_scene: PackedScene = preload("res://effects/part_shield.tscn")
+
+@export_group("Escorts")
+## Fighters that come through the portal behind the ship and guard its
+## stern. They scramble after anyone who shoots a thruster.
+@export var escort_scene: PackedScene
+@export var escort_count := 0
+## Where they patrol, in this node's space (+Z is the stern)...
+@export var escort_offset := Vector3(0.0, 80.0, 700.0)
+## ...and how far around that point they roam.
+@export var escort_patrol_radius := 200.0
 ## Played with the explosions along the hull as it dies, and for the final blast.
 @export var explosion_sound: AudioStream = preload("res://audio/sfx/explosion_medium.mp3")
 
@@ -107,6 +143,14 @@ static var _hull_shapes := {}
 @export var final_blast_size := 210.0
 @export var final_blast_style: ExplosionStyle = preload("res://effects/explosions/destroyer_final.tres")
 
+@export_group("Look")
+## Imported materials (by name) drawn as worn paint instead of plain toon:
+## each gets a copy of `worn_paint` with its own colour and colour texture.
+@export var worn_paint_materials := PackedStringArray()
+## The worn paint look (a toon_worn.gdshader material: wear amount, patch
+## size, bare metal colour...). Its colour and texture are replaced per source.
+@export var worn_paint: ShaderMaterial
+
 ## Set by the EnemySpawner; used for the global fighter limit.
 var spawner: EnemySpawner
 var bridge: DestroyerPart
@@ -115,6 +159,8 @@ var turrets: Array[DestroyerTurret] = []
 var hangars: Array[DestroyerHangar] = []
 ## Seconds since arrive() was called. Read by the HUD for the warning.
 var age := 0.0
+## The escort fighters still alive.
+var escorts: Array[EnemyFighter] = []
 
 var _destination := Vector3.ZERO
 var _active := false
@@ -139,6 +185,10 @@ var _charge_left := 0.0
 var _brake_left := 0.0
 ## Collision layers switched off during the warp: body -> layer.
 var _saved_layers := {}
+## Who has shot the ship lately: attacker -> seconds of retaliation left.
+var _provoked := {}
+## Parts whose shield is still up, to notice when one drops.
+var _shielded: Array[DestroyerPart] = []
 
 
 func _ready() -> void:
@@ -167,8 +217,14 @@ func _ready() -> void:
 	# Cel-shade the imported models' materials to match the rest of the game.
 	ToonMaterial.convert_tree(self)
 	_collect_visuals(self)
+	_use_worn_paint()
 	_use_clip_shader()
 	_set_visibility(0.0)
+	for part in all_parts():
+		if is_armoured(part):
+			_shielded.append(part)
+			if part_shield_scene:
+				part.add_shield(part_shield_scene)
 
 
 ## Start the approach towards `destination`: through a warp portal on the far
@@ -189,13 +245,13 @@ func arrive(destination: Vector3) -> void:
 	tween.tween_callback(_activate)
 
 
-## Turrets fire and hangars launch only while this is true.
+## Hangars launch only while this is true.
 func is_vulnerable() -> bool:
 	return _active and not _dying
 
 
-## Parts take damage while this is true: once active, and already while
-## braking after the warp (a head start for the player).
+## Parts take damage and turrets fire while this is true: once active, and
+## already while braking after the warp.
 func is_damageable() -> bool:
 	return (_active or _through) and not _dying
 
@@ -210,9 +266,51 @@ func intact_count(parts: Array) -> int:
 	return parts.filter(func(p: DestroyerPart) -> bool: return not p.is_destroyed).size()
 
 
+## True while `part`'s shield is up (see the Armour group): it takes no damage
+## and isn't a target for the crosshair or the Attack order.
+func is_armoured(part: DestroyerPart) -> bool:
+	if part.is_destroyed:
+		return false
+	match part.kind:
+		DestroyerPart.Kind.BRIDGE:
+			return bridge_shield_turrets > 0 \
+				and turrets.size() - intact_count(turrets) < bridge_shield_turrets
+		DestroyerPart.Kind.THRUSTER:
+			return thrusters_need_bridge and bridge != null and not bridge.is_destroyed
+	return false
+
+
+## Hit by a shot from `attacker` (Laser, through notify_attacker() on the hull
+## and on parts): the turrets retaliate against it for a while. `part` is
+## what it hit, if a part: shooting a thruster also scrambles the escorts.
+func provoke(attacker: Node, part: DestroyerPart = null) -> void:
+	if retaliation_range <= 0.0 and escorts.is_empty():
+		return
+	if not is_instance_valid(attacker) or not is_damageable():
+		return
+	# Only the player and the wingmen can provoke it (not its own turrets' stray bolts).
+	if not (attacker.is_in_group("player") or attacker.is_in_group("wingmen")):
+		return
+	_provoked[attacker] = retaliation_time
+	if part != null and part.kind == DestroyerPart.Kind.THRUSTER and attacker.is_in_group("player"):
+		for escort in escorts:
+			if is_instance_valid(escort):
+				escort.alert(attacker as Ship)
+
+
+## How far a turret will shoot at `target`: retaliation_range while it's
+## provoking the ship, otherwise `aggro_range`.
+func reach_for(target: Node, aggro_range: float) -> float:
+	if _provoked.has(target):
+		return maxf(aggro_range, retaliation_range)
+	return aggro_range
+
+
 func _activate() -> void:
 	_active = true
 	_launch_timer = first_launch_delay
+	if not warp_in:
+		_spawn_escorts()
 
 
 func _physics_process(delta: float) -> void:
@@ -230,6 +328,57 @@ func _physics_process(delta: float) -> void:
 		_update_warp()
 	if _active:
 		_update_launches(delta)
+	_update_provoked(delta)
+	_update_escorts()
+
+
+func _update_provoked(delta: float) -> void:
+	for attacker in _provoked.keys():
+		_provoked[attacker] -= delta
+		if _provoked[attacker] <= 0.0 or not is_instance_valid(attacker):
+			_provoked.erase(attacker)
+
+
+## Escorts patrol around escort_offset, which moves with the ship.
+func _update_escorts() -> void:
+	if escorts.is_empty():
+		return
+	escorts.assign(escorts.filter(func(e: Object) -> bool: return is_instance_valid(e)))
+	var center := global_transform * escort_offset
+	for escort in escorts:
+		escort.patrol_center = center
+
+
+## Escorts fly out of the portal right behind the stern, as if they came
+## through with the ship, then take up their guard post.
+func _spawn_escorts() -> void:
+	if escort_scene == null or escort_count <= 0:
+		return
+	var gate := _portal_plane.project(global_position) + global_basis.y * portal_height
+	for i in escort_count:
+		if spawner and spawner.fighter_room() <= 0:
+			break
+		var fighter := escort_scene.instantiate() as EnemyFighter
+		var angle := TAU * i / escort_count
+		var spread := (global_basis.x * cos(angle) + global_basis.y * sin(angle)) * portal_radius * 0.4
+		fighter.transform = Transform3D(global_basis, gate + spread)
+		get_parent().add_child(fighter)
+		fighter.patrol_center = global_transform * escort_offset
+		fighter.patrol_radius = escort_patrol_radius
+		fighter.begin_launch(2.0)
+		escorts.append(fighter)
+		if spawner:
+			spawner.track(fighter)
+
+
+## A shield dropped: show it and say so (MissionControl listens).
+func _check_shields() -> void:
+	for part in _shielded.duplicate():
+		if not is_armoured(part):
+			_shielded.erase(part)
+			if not part.is_destroyed:
+				part.drop_shield()
+				shield_dropped.emit(part)
 
 
 ## Fewer working thrusters, slower ship (but it never quite stops).
@@ -287,10 +436,14 @@ func _update_warp() -> void:
 	if is_instance_valid(_portal):
 		_portal.close()
 	_set_clip(Plane())
-	for part in all_parts():
-		if _saved_layers.has(part):
-			part.collision_layer = _saved_layers[part]
-			_saved_layers.erase(part)
+	# The parts and the hull turn solid: the turrets open fire as soon as the
+	# parts can be shot, and the hull has to block their shots (and the
+	# player's) from then on too.
+	for body: CollisionObject3D in [self as CollisionObject3D] + all_parts():
+		if _saved_layers.has(body):
+			body.collision_layer = _saved_layers[body]
+			_saved_layers.erase(body)
+	_spawn_escorts()
 
 
 ## Slowed down: the hull turns solid and the ship goes active.
@@ -322,6 +475,30 @@ func _stern_extent() -> float:
 	for thruster in thrusters:
 		stern = maxf(stern, thruster.position.z + thruster.radius)
 	return stern
+
+
+## Draw the materials named in worn_paint_materials with worn_paint, keeping
+## each one's colour and colour texture. Runs before _use_clip_shader(), which
+## leaves these alone: the worn shader has its own clip plane.
+func _use_worn_paint() -> void:
+	if worn_paint == null or worn_paint_materials.is_empty():
+		return
+	var copies := {}  # source material -> worn copy, shared by every mesh
+	for node in _meshes:
+		var mesh := node as MeshInstance3D
+		if mesh == null or mesh.mesh == null:
+			continue
+		for surface in mesh.mesh.get_surface_count():
+			var source := mesh.mesh.surface_get_material(surface) as BaseMaterial3D
+			if source == null or not source.resource_name in worn_paint_materials:
+				continue
+			if not copies.has(source):
+				var copy := worn_paint.duplicate() as ShaderMaterial
+				copy.set_shader_parameter("albedo", source.albedo_color)
+				if source.albedo_texture:
+					copy.set_shader_parameter("albedo_texture", source.albedo_texture)
+				copies[source] = copy
+			mesh.set_surface_override_material(surface, copies[source])
 
 
 ## Swap every toon material for its clip-plane copy (same look; the clip is
@@ -375,9 +552,15 @@ func _try_launch() -> bool:
 	return false
 
 
+## Called by a Laser that hit the hull (parts pass their hits on themselves).
+func notify_attacker(attacker: Node) -> void:
+	provoke(attacker)
+
+
 func _on_part_destroyed() -> void:
 	if _dying or bridge == null:
 		return
+	_check_shields()
 	if bridge.is_destroyed and intact_count(thrusters) == 0:
 		_die()
 

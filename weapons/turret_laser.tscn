@@ -35,7 +35,7 @@ material = SubResource("Mat_glow")
 [node name="TurretLaser" type="Node3D"]
 script = ExtResource("1_laser")
 lifetime = 3.0
-damage = 8
+damage = 12
 impact_color = Color(1, 0.4, 0.25, 1)
 collision_mask = 3
 

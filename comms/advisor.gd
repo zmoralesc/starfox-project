@@ -14,6 +14,12 @@ extends CommsSpeaker
 @export_multiline var destroyer_hints: PackedStringArray = []
 ## ...or, for every later one, by a short reminder.
 @export_multiline var destroyer_reminders: PackedStringArray = []
+## For a destroyer whose bridge is shielded (Destroyer.bridge_shield_turrets),
+## these replace the hints and reminders: the turrets come first.
+@export_multiline var shielded_destroyer_hints: PackedStringArray = []
+@export_multiline var shielded_destroyer_reminders: PackedStringArray = []
+## The bridge's shield has dropped.
+@export_multiline var bridge_exposed: PackedStringArray = []
 ## The bridge is down and thrusters remain.
 @export_multiline var bridge_down: PackedStringArray = []
 ## A single thruster is left (whatever the bridge's state).
