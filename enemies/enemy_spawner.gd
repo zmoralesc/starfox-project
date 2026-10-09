@@ -107,6 +107,7 @@ func _spawn_wave() -> void:
 	if station:
 		center = station.push_clear(center, spawn_station_margin)
 	var parent := get_parent()
+	var squad := EnemySquad.new()
 	for i in count:
 		var enemy := enemy_scene.instantiate() as EnemyFighter
 		enemy.position = center + Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * 40.0
@@ -116,6 +117,7 @@ func _spawn_wave() -> void:
 		enemy.rotation.y = randf() * TAU
 		parent.add_child(enemy)
 		enemy.patrol_center = center
+		squad.add(enemy)
 		track(enemy)
 
 	if destroyer_every > 0 and wave % destroyer_every == 0 and not is_instance_valid(destroyer):

@@ -6,17 +6,24 @@ extends RefCounted
 ## surface detail turns into speckled noise. Transparent materials are kept as
 ## imported (the toon shader is opaque).
 ##
-## Used by GreatFox. (ShipModel does its own flat-colour conversion for the
-## Arwing and keeps textured parts as imported.)
+## Used by GreatFox, the destroyer, the space station, the fighters and MapProps
+## (which also uses the MultiMesh variants for its instanced kit). (ShipModel
+## does its own flat-colour conversion for the Arwing and keeps textured parts
+## as imported.)
 
 const SHADER := preload("res://effects/toon.gdshader")
 ## The same look without ink outlines (see toon_unlined.gdshader).
 const UNLINED_SHADER := preload("res://effects/toon_unlined.gdshader")
+## Both again for MultiMesh instances (see toon_instanced.gdshader).
+const INSTANCED_SHADER := preload("res://effects/toon_instanced.gdshader")
+const UNLINED_INSTANCED_SHADER := preload("res://effects/toon_unlined_instanced.gdshader")
 
-## Toon copies already made, by source material, shared by every user (the
-## unlined ones in their own cache).
+## Toon copies already made, by source material, shared by every user (each
+## variant in its own cache).
 static var _cache := {}
 static var _unlined_cache := {}
+static var _instanced_cache := {}
+static var _unlined_instanced_cache := {}
 
 
 ## Replaces every opaque BaseMaterial3D under `root` with its toon copy
@@ -35,15 +42,22 @@ static func convert_tree(root: Node, unlined: PackedStringArray = []) -> void:
 
 
 ## The toon material standing in for `source` (without ink outlines if
-## `unlined`), or null to keep `source`.
-static func from_material(source: BaseMaterial3D, unlined := false) -> ShaderMaterial:
+## `unlined`; for MultiMesh instances if `instanced`), or null to keep `source`.
+static func from_material(source: BaseMaterial3D, unlined := false, instanced := false) -> ShaderMaterial:
 	if source == null or source.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
 		return null
-	var cache := _unlined_cache if unlined else _cache
+	var cache: Dictionary
+	var shader: Shader
+	if instanced:
+		cache = _unlined_instanced_cache if unlined else _instanced_cache
+		shader = UNLINED_INSTANCED_SHADER if unlined else INSTANCED_SHADER
+	else:
+		cache = _unlined_cache if unlined else _cache
+		shader = UNLINED_SHADER if unlined else SHADER
 	if cache.has(source):
 		return cache[source]
 	var material := ShaderMaterial.new()
-	material.shader = UNLINED_SHADER if unlined else SHADER
+	material.shader = shader
 	material.set_shader_parameter("albedo", source.albedo_color)
 	if source.albedo_texture:
 		material.set_shader_parameter("albedo_texture", source.albedo_texture)

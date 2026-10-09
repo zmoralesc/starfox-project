@@ -3,6 +3,8 @@
 // before including it to add a clip plane (see toon_clip.gdshader), or
 // TOON_UNLINED to draw it in the transparent pass, without ink outlines (see
 // toon_unlined.gdshader). TOON_WEAR adds worn paint (see toon_worn.gdshader).
+// TOON_INSTANCED corrects the normals of MultiMesh instances (see
+// toon_instanced.gdshader).
 
 uniform vec4 albedo : source_color = vec4(0.8, 0.8, 0.8, 1.0);
 // Multiplied with `albedo`. White (no change) when unset.
@@ -21,9 +23,22 @@ instance uniform vec4 hit_flash = vec4(0.0);
 // distance) aren't drawn. Per instance; the default (all zero) clips nothing.
 instance uniform vec4 clip_plane = vec4(0.0);
 varying vec3 world_position;
+#endif
 
+#if defined(TOON_CLIP) || defined(TOON_INSTANCED)
 void vertex() {
+#ifdef TOON_CLIP
 	world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+#endif
+#ifdef TOON_INSTANCED
+	// Godot turns a MultiMesh instance's normals by the instance's matrix M
+	// itself, not its inverse transpose, so a non-uniformly scaled instance
+	// (a stretched kit tower) gets its sloped faces' normals wrong. Pre-turned
+	// by inverse(MᵀM), M then brings them to the inverse transpose's result.
+	// MODEL_MATRIX includes the instance's transform here.
+	mat3 m = mat3(MODEL_MATRIX);
+	NORMAL = inverse(transpose(m) * m) * NORMAL;
+#endif
 }
 #endif
 

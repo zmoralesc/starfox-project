@@ -119,7 +119,7 @@ func _process(delta: float) -> void:
 		var at := to_global(local)
 		var terrain := get_tree().get_first_node_in_group("terrain") as Terrain
 		if terrain:
-			at.y = terrain.water_level_at(at.x, at.z)
+			at.y = terrain.surface_height(at.x, at.z)
 		marks.add_ring(at, randf_range(ring_size.x, ring_size.y))
 
 
@@ -209,7 +209,9 @@ func _make_mist() -> GPUParticles3D:
 	var terrain := get_tree().get_first_node_in_group("terrain") as Terrain
 	if terrain:
 		var at := to_global(foot())
-		mist.position.y = to_local(Vector3(at.x, terrain.water_level_at(at.x, at.z), at.z)).y
+		# surface_height: the water there, or the ground if the foot is dry
+		# (water_level_at() would be -INF, an infinite position).
+		mist.position.y = to_local(Vector3(at.x, terrain.surface_height(at.x, at.z), at.z)).y
 	mist.position.y += mist_size.x * 0.3
 	# Puffs go out along +Y: tip it downstream.
 	mist.rotation = Vector3(deg_to_rad(mist_lean), 0.0, 0.0)

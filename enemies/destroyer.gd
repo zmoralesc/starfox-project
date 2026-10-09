@@ -357,6 +357,7 @@ func _spawn_escorts() -> void:
 	if escort_scene == null or escort_count <= 0:
 		return
 	var gate := _portal_plane.project(global_position) + global_basis.y * portal_height
+	var squad := EnemySquad.new()
 	for i in escort_count:
 		if spawner and spawner.fighter_room() <= 0:
 			break
@@ -368,6 +369,7 @@ func _spawn_escorts() -> void:
 		fighter.patrol_center = global_transform * escort_offset
 		fighter.patrol_radius = escort_patrol_radius
 		fighter.begin_launch(2.0)
+		squad.add(fighter)
 		escorts.append(fighter)
 		if spawner:
 			spawner.track(fighter)

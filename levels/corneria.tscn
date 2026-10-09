@@ -14,6 +14,8 @@
 [ext_resource type="Script" path="res://world/map_props.gd" id="12_map_props"]
 [ext_resource type="Shader" path="res://effects/cloud.gdshader" id="13_cloud"]
 [ext_resource type="PackedScene" path="res://world/waterfall.tscn" id="14_waterfall"]
+[ext_resource type="Resource" path="res://models/corneria/corneria_layout.tres" id="15_layout"]
+[ext_resource type="PackedScene" path="res://models/corneria/corneria_kit.glb" id="16_kit"]
 
 [sub_resource type="ShaderMaterial" id="Mat_ground"]
 shader = ExtResource("5_terrain_shader")
@@ -64,6 +66,8 @@ backdrop = true
 
 [node name="Props" parent="." instance=ExtResource("11_props")]
 script = ExtResource("12_map_props")
+layout = ExtResource("15_layout")
+kit = ExtResource("16_kit")
 water_material = SubResource("Mat_water")
 
 [node name="Clouds" type="Node3D" parent="."]

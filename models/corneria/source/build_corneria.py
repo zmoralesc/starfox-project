@@ -22,8 +22,13 @@ Run with FORCE_EXPORT = True in the exec globals (or from the command line:
     corneria_map.tres    the TerrainMap Terrain loads: ground heights, which cells
                          are paved or under the plateau's water, and the height of
                          the structures on each cell (the AI flies over those)
-    corneria_props.glb   the props: city, town, base, arches, bridge, road, sea
-                         stacks, trees, and the plateau lake and river
+    corneria_layout.tres the PropLayout: every kit piece placed whole (towers,
+                         houses, streets, trees...), drawn by MapProps as
+                         MultiMesh instances
+    corneria_kit.glb     the kit meshes the layout uses
+    corneria_props.glb   the rest of the props (kit pieces cut or mirrored as
+                         placed, the plateau lake and river, road, ramp), one
+                         mesh per batch per PROP_TILE square
     waterfall.txt        where the falls go: paste its lines onto the Waterfall
                          node in levels/corneria.tscn (world/waterfall.gd builds
                          and animates the falls in the game; they're not a prop)
@@ -420,28 +425,64 @@ def placer(x, y, z, rot=0.0, tilt=0.0):
     return f
 
 
-class Batch:
-    """Collects geometry (in game coordinates) for one Blender object with several materials."""
+# The game draws kit pieces as instances (MultiMesh) of one mesh per piece:
+# the export writes where each stands (corneria_layout.tres) and the pieces
+# themselves (corneria_kit.glb). What can't be an instance (pieces whose
+# heights are remapped, cut down or mirrored, and everything built here from
+# boxes and ribbons) is exported as geometry, cut into PROP_TILE squares so
+# the game can cull it.
+PROP_TILE = 500.0
+INSTANCES = []      # (batch name, kit variant, 12 floats: basis x, y, z columns, origin)
+KIT_VARIANTS = {}   # kit variant name: (kit piece, material swap or None)
+BATCHES = []        # every flushed Batch, for the export
 
-    def __init__(self, name):
+
+def tile_of(x, z):
+    return (int(math.floor((x + HALF) / PROP_TILE)), int(math.floor((z + HALF) / PROP_TILE)))
+
+
+def kit_variant(name, swap):
+    """The kit mesh an instance uses: the piece itself, or a copy of it with
+    materials swapped (a car's body colour)."""
+    if not swap:
+        key = name
+    else:
+        key = name + "".join("__%s-%s" % kv for kv in sorted(swap.items()))
+    KIT_VARIANTS[key] = (name, swap or None)
+    return key
+
+
+class Batch:
+    """Collects geometry (in game coordinates) for one Blender object with several
+    materials; and, for the export, which of it is kit instances and which tile
+    the rest stands on."""
+
+    def __init__(self, name, record=True):
         self.name = name
+        self.record = record  # whether its kit pieces become instances (not the kit export's own)
         self.verts = []
         self.faces = []
         self.face_mats = []
         self.facing = []
         self.smooth = []
         self.sharp = []      # sharp edges, as pairs of vertex indices
+        self.instanced = []  # per face: drawn by a kit instance in the game
+        self.tiles = []      # per face: the export tile (tile_of) it goes in
 
     def add(self, points, faces, mat, xf=None, away_from=None):
         """`away_from` (a world point): make these faces point away from it. Needed
         for open surfaces (sheets, domes), which recalculated normals may turn
         inward; the game draws only the front of a face."""
         base = len(self.verts)
-        self.verts += [G(*(xf(p) if xf else p)) for p in points]
+        world = [xf(p) if xf else p for p in points]
+        self.verts += [G(*p) for p in world]
         self.faces += [tuple(base + i for i in f) for f in faces]
         self.face_mats += [mat] * len(faces)
         self.facing += [G(*away_from) if away_from else None] * len(faces)
         self.smooth += [False] * len(faces)
+        self.instanced += [False] * len(faces)
+        tile = tile_of(sum(p[0] for p in world) / len(world), sum(p[2] for p in world) / len(world))
+        self.tiles += [tile] * len(faces)
 
     def kit(self, name, xf, scale=(1.0, 1.0, 1.0), height=None, only=None, swap=None):
         """Kit piece `name` (see load_kit()), scaled by `scale` (x, y, z) about its
@@ -449,7 +490,7 @@ class Batch:
         of scaling them, for pieces whose top keeps its size when stretched;
         `only(centre)` keeps just the faces whose local centre passes; `swap` renames
         materials. The faces keep the way they were modelled to face, and their
-        smooth shading."""
+        smooth shading. A piece placed whole, unmirrored, is an instance in the game."""
         pts, faces, mats, smooth, sharp = KIT[name]
         sx, sy, sz = scale
         local = [(x * sx, height(y) if height else y * sy, z * sz) for x, y, z in pts]
@@ -459,12 +500,20 @@ class Batch:
         index = {i: len(self.verts) + n for n, i in enumerate(used)}
         self.verts += [G(*xf(local[i])) for i in used]
         mirrored = sx * sz * (1 if height else sy) < 0     # mirroring turns faces inside out
+        instance = self.record and height is None and only is None and not mirrored
+        if instance:
+            o = xf((0, 0, 0))
+            cols = [tuple(a - b for a, b in zip(xf(axis), o)) for axis in ((sx, 0, 0), (0, sy, 0), (0, 0, sz))]
+            INSTANCES.append((self.name, kit_variant(name, swap), [c for col in cols for c in col] + list(o)))
+        tile = tile_of(*xf((0, 0, 0))[::2])
         for k in keep:
             f = tuple(index[i] for i in faces[k])
             self.faces.append(f[::-1] if mirrored else f)
             self.face_mats.append(swap.get(mats[k], mats[k]) if swap else mats[k])
             self.facing.append(KEEP)
             self.smooth.append(smooth[k])
+            self.instanced.append(instance)
+            self.tiles.append(tile)
         self.sharp += [(index[a], index[b]) for a, b in sharp if a in index and b in index]
 
     def box(self, size, mat, xf, y0=0.0):
@@ -495,31 +544,53 @@ class Batch:
         self.add(pts, [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)], mat)
 
     def flush(self, col):
-        me = bpy.data.meshes.new(self.name)
-        me.from_pydata(self.verts, [], self.faces)
-        names = sorted(set(self.face_mats))
-        for name in names:
-            me.materials.append(MATERIALS[name])
-        index = {name: k for k, name in enumerate(names)}
-        me.polygons.foreach_set("material_index", [index[m] for m in self.face_mats])
-        me.polygons.foreach_set("use_smooth", self.smooth)
+        """The whole batch as one object (the preview; structure_heights() reads it)."""
+        BATCHES.append(self)
+        return self.make_object(self.name, range(len(self.faces)), col)
+
+    def leftovers(self, col):
+        """For the export: the faces no kit instance draws, one object per tile
+        (named "<batch>__<i>_<j>"; MapProps reads the batch name off it)."""
+        by_tile = {}
+        for k, tile in enumerate(self.tiles):
+            if not self.instanced[k]:
+                by_tile.setdefault(tile, []).append(k)
+        return [self.make_object("%s__%d_%d" % (self.name, i, j), faces, col)
+                for (i, j), faces in sorted(by_tile.items())]
+
+    def make_object(self, name, face_ids, col):
+        """An object of the faces `face_ids` (and just the vertices they use)."""
+        face_ids = list(face_ids)
+        used = sorted({v for k in face_ids for v in self.faces[k]})
+        index = {v: n for n, v in enumerate(used)}
+        me = bpy.data.meshes.new(name)
+        me.from_pydata([self.verts[v] for v in used], [], [tuple(index[v] for v in self.faces[k]) for k in face_ids])
+        mats = [self.face_mats[k] for k in face_ids]
+        facing = [self.facing[k] for k in face_ids]
+        names = sorted(set(mats))
+        for m in names:
+            me.materials.append(MATERIALS[m])
+        mat_index = {m: k for k, m in enumerate(names)}
+        me.polygons.foreach_set("material_index", [mat_index[m] for m in mats])
+        me.polygons.foreach_set("use_smooth", [self.smooth[k] for k in face_ids])
         if self.sharp:
             edges = {frozenset(e.vertices): e for e in me.edges}
             for a, b in self.sharp:
-                e = edges.get(frozenset((a, b)))
-                if e:
-                    e.use_edge_sharp = True
+                if a in index and b in index:
+                    e = edges.get(frozenset((index[a], index[b])))
+                    if e:
+                        e.use_edge_sharp = True
         bm = bmesh.new()
         bm.from_mesh(me)
         bm.faces.ensure_lookup_table()
         # Kit faces already face the right way; the rest are worked out.
-        bmesh.ops.recalc_face_normals(bm, faces=[f for f, away in zip(bm.faces, self.facing) if away is not KEEP])
-        for face, away in zip(bm.faces, self.facing):
+        bmesh.ops.recalc_face_normals(bm, faces=[f for f, away in zip(bm.faces, facing) if away is not KEEP])
+        for face, away in zip(bm.faces, facing):
             if away is not None and away is not KEEP and face.normal.dot(face.calc_center_median() - away) < 0:
                 face.normal_flip()
         bm.to_mesh(me)
         bm.free()
-        o = bpy.data.objects.new(self.name, me)
+        o = bpy.data.objects.new(name, me)
         col.objects.link(o)
         return o
 
@@ -1228,9 +1299,9 @@ def build():
 
 
 # --- Export ----------------------------------------------------------------------
-# Prop groups that go into the game (the rest is preview only), and the ones the
-# AI must fly over: they're rasterised into the map's structure heights.
-EXPORT_GROUPS = ("Water", "Arches", "RiverBridge", "Road", "City", "Town", "Base", "SeaStacks", "Trees")
+# Batches that go into the game (the rest is preview only), and the collections
+# the AI must fly over: they're rasterised into the map's structure heights.
+EXPORT_BATCHES = ("Water", "Arches", "RiverBridge", "Road", "City", "Streets", "Town", "Base", "SeaStacks", "Trees")
 STRUCTURE_GROUPS = ("City", "Town", "Base", "Arches", "RiverBridge", "SeaStacks")
 PAINT_AUTO, PAINT_PAVED, PAINT_HIGH_WATER = 0, 1, 2
 
@@ -1268,14 +1339,65 @@ def structure_heights():
     return tops
 
 
-def number(v):
-    s = "%.2f" % v
-    return s.rstrip("0").rstrip(".") if "." in s else s
+def number(v, places=2):
+    s = "%.*f" % (places, v)
+    s = s.rstrip("0").rstrip(".") if "." in s else s
+    return "0" if s == "-0" else s
+
+
+def export_glb(objects, path):
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in objects:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = objects[0]
+    bpy.ops.export_scene.gltf(filepath=path, export_format="GLB",
+                              use_selection=True, use_active_scene=True, export_apply=True, export_yup=True,
+                              export_materials="EXPORT", export_cameras=False, export_lights=False)
+
+
+def export_props(out):
+    """corneria_props.glb (what isn't kit instances, by tile), corneria_kit.glb
+    (one mesh per kit variant placed, about its own origin) and
+    corneria_layout.tres (a PropLayout: where each instance stands)."""
+    scene = bpy.context.scene
+    col = bpy.data.collections.new("Export")
+    scene.collection.children.link(col)
+    try:
+        export_glb([o for b in BATCHES if b.name in EXPORT_BATCHES for o in b.leftovers(col)],
+                   os.path.join(out, "corneria_props.glb"))
+        kit = []
+        for key, (name, swap) in sorted(KIT_VARIANTS.items()):
+            b = Batch(key, record=False)
+            b.kit(name, placer(0, 0, 0), swap=swap)
+            kit.append(b.make_object(key, range(len(b.faces)), col))
+        export_glb(kit, os.path.join(out, "corneria_kit.glb"))
+    finally:
+        for o in list(col.objects):
+            me = o.data
+            bpy.data.objects.remove(o)
+            bpy.data.meshes.remove(me)
+        bpy.data.collections.remove(col)
+
+    placed = [p for p in INSTANCES if p[0] in EXPORT_BATCHES]
+    pieces = sorted({p[1] for p in placed})
+    groups = sorted({p[0] for p in placed})
+    with open(os.path.join(out, "corneria_layout.tres"), "w", newline="\n") as f:
+        f.write('[gd_resource type="Resource" script_class="PropLayout" format=3]\n\n')
+        f.write('[ext_resource type="Script" path="res://world/prop_layout.gd" id="1_layout"]\n\n')
+        f.write('[resource]\nscript = ExtResource("1_layout")\n')
+        f.write("pieces = PackedStringArray(%s)\n" % ", ".join('"%s"' % p for p in pieces))
+        f.write("groups = PackedStringArray(%s)\n" % ", ".join('"%s"' % g for g in groups))
+        f.write("piece = PackedInt32Array(%s)\n" % ", ".join(str(pieces.index(p[1])) for p in placed))
+        f.write("group = PackedInt32Array(%s)\n" % ", ".join(str(groups.index(p[0])) for p in placed))
+        # Basis to 5 places (scaled cosines), origins to the centimetre.
+        f.write("transforms = PackedFloat32Array(%s)\n" % ", ".join(
+            ", ".join([number(v, 5) for v in p[2][:9]] + [number(v) for v in p[2][9:]]) for p in placed))
+    print("exported: %d kit instances of %d meshes" % (len(placed), len(pieces)))
 
 
 def export_map():
     """corneria_map.tres (a TerrainMap: heights, paint, structure heights) and
-    corneria_props.glb (everything built on it)."""
+    the props built on it (export_props())."""
     out = os.path.dirname(HERE)
     cells = POINTS - 1
     heights = [HEIGHTS[j][i] for j in range(POINTS) for i in range(POINTS)]
@@ -1290,14 +1412,7 @@ def export_map():
         f.write("paint = PackedByteArray(%s)\n" % ", ".join(str(p) for p in paint))
         f.write("structures = PackedFloat32Array(%s)\n" % ", ".join(number(t) for t in tops))
 
-    bpy.ops.object.select_all(action="DESELECT")
-    objects = [o for name in EXPORT_GROUPS for o in bpy.data.collections[name].objects]
-    for o in objects:
-        o.select_set(True)
-    bpy.context.view_layer.objects.active = objects[0]
-    bpy.ops.export_scene.gltf(filepath=os.path.join(out, "corneria_props.glb"), export_format="GLB",
-                              use_selection=True, use_active_scene=True, export_apply=True, export_yup=True,
-                              export_materials="EXPORT", export_cameras=False, export_lights=False)
+    export_props(out)
     (px, py, pz), turn = falls_placement()
     c, s = math.cos(turn), math.sin(turn)
     with open(os.path.join(out, "waterfall.txt"), "w", newline="\n") as f:

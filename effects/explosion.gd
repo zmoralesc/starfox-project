@@ -76,9 +76,9 @@ func _build(size: float) -> void:
 		var smoke := _puffs(assets["smoke_puff"], assets["smoke_process"], _style.smoke_count, _style.smoke_lifetime)
 		smoke.emitting = false
 		add_child(smoke)
-		get_tree().create_timer(_style.smoke_delay, false).timeout.connect(func() -> void:
-			if is_instance_valid(smoke):
-				smoke.emitting = true)
+		# Bound to the smoke itself, so the connection goes with it if we're freed
+		# first (a scene change): a lambda would be called with a freed capture.
+		get_tree().create_timer(_style.smoke_delay, false).timeout.connect(smoke.set.bind(&"emitting", true))
 	if _style.spark_count > 0:
 		add_child(_puffs(assets["spark"], assets["spark_process"], _style.spark_count, _style.spark_lifetime))
 	for i in _style.debris_count:

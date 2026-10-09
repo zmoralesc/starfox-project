@@ -17,6 +17,15 @@ extends AIPilot
 ## disengaged wingman is no target: anyone chasing it gives up.
 ##
 ## Asteroids block line of sight, so hiding behind rocks is a way to escape.
+##
+## Fighters that arrived together form an EnemySquad. With help_radius set,
+## one shot by a wingman brings its nearest squadmate that is free (or only
+## chasing the player) after the shooter. That helper may chase a wingman past
+## its usual pursuer limit (Wingman.max_helper_pursuers), so the wingmen who
+## do the most shooting draw the most fire, and the player gets some relief.
+## With squad_alert_radius set, one that spots someone also alerts its
+## squadmates (off on every fighter for now: it brought more fighters onto the
+## player and made fights quicker, which raised the wingmen's kill rate).
 
 signal destroyed
 
@@ -75,6 +84,21 @@ enum State { PATROL, CHASE, EVADE, SEEK }
 ## the most fire.
 @export var retaliate_against_wingmen := true
 
+@export_group("Squad")
+## Spotting someone, alert squadmates within this range (m) that are
+## patrolling or searching: each looks all round for a wingman with room for
+## it, or searches where the spotted ship was. 0 = off.
+@export var squad_alert_radius := 0.0
+## Hit by a wingman, the nearest squadmate within this range (m) of us that
+## is patrolling, searching or chasing the player goes after the shooter, if
+## it can see it. 0 = off.
+@export var help_radius := 0.0
+## Most squadmates helping against the same shooter at once.
+@export var helpers_per_threat := 1
+## Also help against the player's shots (off: the help goes to wingmen only,
+## which keeps the player from being dogpiled).
+@export var help_against_player := false
+
 var health := 0
 var state := State.PATROL
 ## Where this fighter patrols around. Defaults to its spawn point.
@@ -84,6 +108,11 @@ var last_known_position := Vector3.ZERO
 ## Who this fighter is after (the player or a wingman), or was last after.
 ## Only meaningful while CHASE; read by Wingman and WingCommand.
 var quarry: Fighter
+## The fighters we arrived with (null if none). Set by EnemySquad.add().
+var squad: EnemySquad
+## This chase is to help a squadmate (see help_against()). Reset on any
+## change of state.
+var helping := false
 var _break_side := 1.0
 var _state_time := 0.0
 var _unseen_time := 0.0
@@ -184,6 +213,7 @@ func alert(player: Ship) -> void:
 func notify_attacker(shooter: Node3D) -> void:
 	_last_attacker = shooter
 	_hits_by[shooter] = _clock
+	_call_for_help(shooter)
 	if _launch_time_left > 0.0 or (state == State.CHASE and quarry == shooter):
 		return
 	if _can_retaliate():
@@ -211,6 +241,7 @@ func notify_shot(from: Vector3) -> void:
 func _enter_state(new_state: State) -> void:
 	state = new_state
 	_state_time = 0.0
+	helping = false
 	match new_state:
 		State.PATROL:
 			_pick_roam_point(patrol_center, patrol_radius)
@@ -287,17 +318,96 @@ func _chase_if_spotted(cone_deg: float, max_distance: float) -> bool:
 	quarry = seen
 	_remember_quarry()
 	_enter_state(State.CHASE)
+	_alert_squad()
+	return true
+
+
+## True if we're free to answer a squadmate: patrolling or searching, and
+## done launching.
+func _is_free() -> bool:
+	return _launch_time_left <= 0.0 and (state == State.PATROL or state == State.SEEK)
+
+
+## We just spotted our quarry: tell free squadmates within squad_alert_radius.
+func _alert_squad() -> void:
+	if squad_alert_radius <= 0.0 or squad == null:
+		return
+	for mate in squad.mates_of(self):
+		if global_position.distance_to(mate.global_position) > squad_alert_radius:
+			break  # nearest first: the rest are farther
+		mate.squad_alerted(quarry)
+
+
+## A squadmate spotted `seen`: look all round for a wingman with room for us
+## (not the player, who'd otherwise draw the whole squad), else search where
+## `seen` is. Squadmates we alert this way don't alert others in turn.
+func squad_alerted(seen: Fighter) -> void:
+	if not _is_free() or not is_instance_valid(seen):
+		return
+	var target := _spot(180.0, seek_detection_distance, false)
+	if target:
+		quarry = target
+		_remember_quarry()
+		_enter_state(State.CHASE)
+	else:
+		last_known_position = seen.global_position
+		_last_known_velocity = seen.velocity
+		_enter_state(State.SEEK)
+
+
+## Hit by `shooter`: send our nearest squadmate within help_radius after
+## it, unless helpers_per_threat squadmates already are. Only wingmen's shots
+## count, and the player's with help_against_player.
+func _call_for_help(shooter: Node3D) -> void:
+	if help_radius <= 0.0 or squad == null:
+		return
+	var fighter := shooter as Fighter
+	if fighter is Ship:
+		if not help_against_player:
+			return
+	elif not fighter is Wingman:
+		return  # a turret's stray bolt, or nobody we'd go after
+	var mates: Array[EnemyFighter] = squad.mates_of(self)
+	var helpers: int = mates.filter(func(mate: EnemyFighter) -> bool:
+		return mate.helping and mate.state == State.CHASE and mate.quarry == fighter).size()
+	if helpers >= helpers_per_threat:
+		return
+	for mate in mates:
+		if global_position.distance_to(mate.global_position) > help_radius:
+			break  # nearest first: the rest are farther
+		if mate.help_against(fighter):
+			return
+
+
+## A squadmate was shot by `shooter`: go after it if we're free, can see it,
+## and (a wingman) it has room for a helper. Returns whether we did.
+func help_against(shooter: Fighter) -> bool:
+	# Chasing the player doesn't stop us: breaking off to help moves the
+	# pressure from the player onto the wingmen.
+	var on_player := state == State.CHASE and quarry is Ship and not helping
+	if not (_is_free() or on_player) or quarry == shooter:
+		return false
+	if shooter is Ship and (shooter as Ship).is_dead:
+		return false
+	if shooter is Wingman and not (shooter as Wingman).can_take_pursuer(self, true):
+		return false
+	if not _sees(shooter, chase_tracking_distance):
+		return false
+	quarry = shooter
+	_remember_quarry()
+	_enter_state(State.CHASE)
+	helping = true
 	return true
 
 
 ## Who we can see in the given forward cone, nearest first: the player, or a
 ## wingman with room for another pursuer (counted wingman_distance_penalty
-## farther than it is). Null if nobody.
-func _spot(cone_deg: float, max_distance: float) -> Fighter:
+## farther than it is). Wingmen only without `include_player`. Null if nobody.
+func _spot(cone_deg: float, max_distance: float, include_player := true) -> Fighter:
 	var best: Fighter = null
 	var best_distance := INF
 	var player := _player()
-	if player and _can_spot(player, cone_deg, max_distance):
+	if include_player and player and _can_spot(player, cone_deg, max_distance):
 		best = player
 		best_distance = global_position.distance_to(player.global_position)
 	for node in get_tree().get_nodes_in_group("wingmen"):

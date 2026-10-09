@@ -306,6 +306,9 @@ enum Stunt { NONE, PULL_UP, BACK, PULL_THROUGH, ROLL_OUT, U_ROLL, U_PULL, U_ROLL
 @export var max_pursuers := 1
 ## ...and on Weapons Free, where it goes looking for trouble.
 @export var weapons_free_max_pursuers := 2
+## Enemy fighters helping a squadmate we shot (EnemyFighter.help_radius) may
+## join this many over the limit: shooting draws fire.
+@export var max_helper_pursuers := 1
 
 @export_group("Evasion")
 ## Hits from enemy fighters (turret fire doesn't count) within evade_window
@@ -591,13 +594,14 @@ func can_take_orders() -> bool:
 
 
 ## True if `enemy` may start chasing us: we're a target, and fewer than
-## pursuer_limit() others are already on us.
-func can_take_pursuer(enemy: Node) -> bool:
+## pursuer_limit() others are already on us (max_helper_pursuers more if it's
+## coming to help a squadmate we shot: `as_helper`).
+func can_take_pursuer(enemy: Node, as_helper := false) -> bool:
 	if not is_targetable():
 		return false
 	var others := pursuers()
 	others.erase(enemy)
-	return others.size() < pursuer_limit()
+	return others.size() < pursuer_limit() + (max_helper_pursuers if as_helper else 0)
 
 
 ## How many enemy fighters may chase us at once right now.

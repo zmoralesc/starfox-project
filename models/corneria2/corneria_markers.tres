@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="MapMarkers" format=3]
+
+[ext_resource type="Script" path="res://world/map_markers.gd" id="1_markers"]
+
+[resource]
+script = ExtResource("1_markers")
+markers = {
+"Start": Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -650, 140, 6200),
+"IntroStart": Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -650, 140, 6500),
+"IntroCameraSpot": Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -620, 144, 6200),
+"Waterfall": Transform3D(0.664364, 0, -0.747409, 0, 1, 0, 0.747409, 0, 0.664364, 3600, 172.3, -3350),
+"GreatFox": Transform3D(0.343646, 0, 0.939099, 0, 1, 0, -0.939099, 0, 0.343646, 1800, 750, 9400)
+}

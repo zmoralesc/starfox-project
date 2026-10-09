@@ -158,7 +158,10 @@ func recipients() -> Array[Wingman]:
 func order_attack(new_target: Node3D) -> void:
 	if not is_instance_valid(new_target) or not Fighter.is_attack_target(new_target):
 		return
-	_issue(func(w: Wingman) -> void: w.assign_attack(new_target),
+	# A weak reference: an evading wingman queues the order, and the target may
+	# be freed before it runs (a lambda's freed capture logs an engine error).
+	var target_ref: WeakRef = weakref(new_target)
+	_issue(func(w: Wingman) -> void: w.assign_attack(target_ref.get_ref()),
 		func(w: Wingman) -> bool: return w.order != Wingman.Order.ATTACK or w.target != new_target,
 		"attacking %s" % Wingman.target_label(new_target).to_lower())
 

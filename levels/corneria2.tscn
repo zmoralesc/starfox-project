@@ -1,0 +1,99 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://levels/level_base.tscn" id="1_base"]
+[ext_resource type="Environment" path="res://world/planet_environment_wide.tres" id="2_env"]
+[ext_resource type="Script" path="res://world/terrain.gd" id="3_terrain"]
+[ext_resource type="Script" path="res://world/clouds.gd" id="4_clouds"]
+[ext_resource type="Shader" path="res://effects/terrain.gdshader" id="5_terrain_shader"]
+[ext_resource type="Shader" path="res://effects/water.gdshader" id="6_water"]
+[ext_resource type="Script" path="res://world/play_boundary.gd" id="8_boundary"]
+[ext_resource type="PackedScene" path="res://world/great_fox.tscn" id="9_great_fox"]
+[ext_resource type="Resource" path="res://models/corneria2/corneria_map.tres" id="10_map"]
+[ext_resource type="PackedScene" path="res://models/corneria2/corneria_props.glb" id="11_props"]
+[ext_resource type="Script" path="res://world/map_props.gd" id="12_map_props"]
+[ext_resource type="Shader" path="res://effects/cloud.gdshader" id="13_cloud"]
+[ext_resource type="PackedScene" path="res://world/waterfall.tscn" id="14_waterfall"]
+[ext_resource type="Resource" path="res://models/corneria2/corneria_layout.tres" id="15_layout"]
+[ext_resource type="PackedScene" path="res://models/corneria2/corneria_kit.glb" id="16_kit"]
+[ext_resource type="Resource" path="res://models/corneria2/corneria_markers.tres" id="17_markers"]
+[ext_resource type="Script" path="res://world/marker_placer.gd" id="18_placer"]
+
+[sub_resource type="ShaderMaterial" id="Mat_ground"]
+shader = ExtResource("5_terrain_shader")
+shader_parameter/glint = 0.0
+
+[sub_resource type="ShaderMaterial" id="Mat_water"]
+shader = ExtResource("6_water")
+
+[sub_resource type="ShaderMaterial" id="Mat_cloud"]
+shader = ExtResource("13_cloud")
+
+[node name="Corneria2" instance=ExtResource("1_base")]
+intro_line = "We're approaching Corneria City now."
+
+[node name="WorldEnvironment" parent="."]
+environment = ExtResource("2_env")
+
+[node name="ChaseCamera" parent="."]
+far = 12000.0
+
+[node name="Sun" parent="."]
+rotation = Vector3(-0.95, 2.4, 0)
+light_energy = 1.4
+directional_shadow_max_distance = 600.0
+
+[node name="Terrain" type="Node3D" parent="."]
+script = ExtResource("3_terrain")
+map = ExtResource("10_map")
+chunks = 16
+snow_height = 480.0
+paved_color = Color(0.36, 0.36, 0.4, 1)
+material = SubResource("Mat_ground")
+water_material = SubResource("Mat_water")
+water_to_horizon = true
+backdrop = true
+
+[node name="Props" parent="." instance=ExtResource("11_props")]
+script = ExtResource("12_map_props")
+layout = ExtResource("15_layout")
+kit = ExtResource("16_kit")
+water_material = SubResource("Mat_water")
+solid_groups = PackedStringArray("City", "Town", "Base", "Landmarks", "Rocks", "Water")
+piece_draw_distance = Dictionary[String, float]({
+"Kit_Rock_Boulder": 2500.0,
+"Kit_Rock_Outcrop": 5000.0,
+"Kit_Tree_Broadleaf": 4000.0,
+"Kit_Tree_Pine": 4000.0
+})
+
+[node name="Clouds" type="Node3D" parent="."]
+script = ExtResource("4_clouds")
+count = 680
+spread = 7200.0
+clear_radius = 0.0
+layers = PackedFloat32Array(650, 950)
+material = SubResource("Mat_cloud")
+
+[node name="EnemySpawner" parent="."]
+destroyer_every = 0
+
+[node name="PlayBoundary" type="Node3D" parent="."]
+script = ExtResource("8_boundary")
+radius = 7000.0
+
+[node name="MarkerPlacer" type="Node" parent="." node_paths=PackedStringArray()]
+script = ExtResource("18_placer")
+markers = ExtResource("17_markers")
+targets = Dictionary[String, NodePath]({
+"GreatFox": NodePath("../GreatFox"),
+"IntroCameraSpot": NodePath("../IntroCameraSpot"),
+"IntroStart": NodePath("../IntroStart"),
+"Start": NodePath("../Ship"),
+"Waterfall": NodePath("../Waterfall")
+})
+
+[node name="GreatFox" parent="." instance=ExtResource("9_great_fox")]
+
+[node name="Waterfall" parent="." instance=ExtResource("14_waterfall")]
+drop = 172.0
+

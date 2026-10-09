@@ -32,10 +32,12 @@ func launch(count: int, fighter_scene: PackedScene, spawner: EnemySpawner) -> vo
 		return
 	is_launching = true
 	await _move_door(_closed_y + open_height)
+	# One launch, one squad.
+	var squad := EnemySquad.new()
 	for i in count:
 		if not is_inside_tree() or is_destroyed or not destroyer.is_vulnerable():
 			break
-		_spawn_fighter(fighter_scene, spawner)
+		_spawn_fighter(fighter_scene, spawner, squad)
 		await get_tree().create_timer(launch_spacing, false).timeout
 	if not is_inside_tree():
 		return
@@ -45,8 +47,9 @@ func launch(count: int, fighter_scene: PackedScene, spawner: EnemySpawner) -> vo
 	is_launching = false
 
 
-func _spawn_fighter(fighter_scene: PackedScene, spawner: EnemySpawner) -> void:
+func _spawn_fighter(fighter_scene: PackedScene, spawner: EnemySpawner, squad: EnemySquad) -> void:
 	var fighter := fighter_scene.instantiate() as EnemyFighter
+	squad.add(fighter)
 	fighter.transform = launch_point.global_transform
 	get_tree().current_scene.add_child(fighter)
 	# Patrol out in front of the bay once launched.

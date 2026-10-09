@@ -10,6 +10,7 @@ pitch_rate = 0.8
 yaw_rate = 0.7
 turn_response = 3.0
 fire_interval = 0.8
+help_radius = 400.0
 
 [node name="Mantis" parent="Model" index="0"]
 accent_color = Color(0.52, 0.42, 0.28, 1)
