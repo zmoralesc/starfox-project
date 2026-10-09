@@ -1,42 +1,48 @@
 class_name HitBurst
 extends Node3D
-## A bolt's hit: a cartoon star burst (effects/hit_burst.gdshader), a spray of
-## sparks and, optionally, a few puffs of dust. Flat colours, no ink outlines.
+## A bolt's hit: an impact flash (effects/hit_burst.gdshader: hot core, light rays,
+## shock ring), a spray of glowing sparks and, optionally, a few puffs of dust.
+## Transparent, so no ink outlines.
 ## Spawned by Laser; frees itself when done. Purely visual.
 ##
 ## Two scenes use it (Laser.hit_burst and Laser.surface_hit):
 ## - effects/hit_burst.tscn: hits on anything shootable (an enemy, a
-##   destroyer part, an asteroid, a wreck, the player's shields). A big yellow
-##   spiky star, sparks thrown back towards the shooter.
+##   destroyer part, an asteroid, a wreck, the player's shields). A big gold
+##   flash with long rays, sparks thrown back towards the shooter.
 ## - effects/surface_hit.tscn: hits on things that can't be shot (the ground,
-##   buildings, hulls). A smaller, rounder pop in the bolt's colour, sparks
+##   buildings, hulls). A smaller flash in the bolt's colour, short rays, sparks
 ##   glancing off the surface and a puff of dust, so a miss never reads as a hit.
 ##
-## The settings live on the scene. spawn()'s `size` scales the star, sparks
+## The settings live on the scene. spawn()'s `size` scales the flash, sparks
 ## and dust, not the timing.
 
 const SHADER := preload("res://effects/hit_burst.gdshader")
 
-@export_group("Star")
-## Star radius (metres) and how long it lasts (seconds).
-@export var star_size := 2.2
-@export var star_time := 0.2
+@export_group("Flash")
+## Flash radius (metres) and how long it lasts (seconds).
+@export var flash_size := 2.2
+@export var flash_time := 0.22
+## The core, the middle of the rays and their tips and the ring.
 @export var core_color := Color(1.0, 1.0, 0.9)
 @export var mid_color := Color(1.0, 0.86, 0.22)
 @export var rim_color := Color(1.0, 0.45, 0.1)
-## Spikes round the star, how much their lengths vary, and how far in the dips
-## between them come (fraction of the radius; near 1 = almost round).
-@export var star_spikes := 8.0
-@export_range(0.0, 1.0) var star_spike_variety := 0.45
-@export_range(0.0, 1.0) var star_valley := 0.38
-## Far off, the star is drawn at least `star_min_angle` (radius, radians of
-## view) so a distant hit still shows, but never more than `star_max_grow`
+## Overall strength (above 1 blooms).
+@export var flash_brightness := 1.4
+## Rays: how many, how much their lengths vary, and their width at the root
+## (fraction of each ray's slice of the circle).
+@export var ray_count := 9.0
+@export_range(0.0, 1.0) var ray_variety := 0.5
+@export_range(0.0, 0.5) var ray_width := 0.22
+## Brightness of the shock ring (0 = none).
+@export var ring_strength := 0.8
+## Far off, the flash is drawn at least `flash_min_angle` (radius, radians of
+## view) so a distant hit still shows, but never more than `flash_max_grow`
 ## times its real size for that: further still, it shrinks with distance.
-@export var star_min_angle := 0.014
-@export var star_max_grow := 2.5
+@export var flash_min_angle := 0.014
+@export var flash_max_grow := 2.5
 
 @export_group("Bolt colour")
-## Colour the star's middle band and rim and the sparks from the bolt's own
+## Colour the flash's rays and ring and the sparks from the bolt's own
 ## colour (the `tint` spawn() is given: Laser.impact_color) instead of the
 ## colours set here. The core stays `core_color`.
 @export var tint_from_bolt := false
@@ -54,6 +60,9 @@ const SHADER := preload("res://effects/hit_burst.gdshader")
 @export var spark_color := Color(1.0, 0.9, 0.35)
 ## Colour they fade to by the end of their life.
 @export var spark_end_color := Color(1.0, 0.4, 0.08)
+## Thickness (metres) and brightness (above 1 blooms).
+@export var spark_width := 0.045
+@export var spark_glow := 1.15
 
 @export_group("Dust")
 ## Puffs kicked up (0 = none): toon smoke puffs (the explosions' shader, born
@@ -73,7 +82,7 @@ const SHADER := preload("res://effects/hit_burst.gdshader")
 static var _cache := {}
 
 var _age := 0.0
-var _star: MeshInstance3D
+var _flash: MeshInstance3D
 var _hidden := false
 
 
@@ -102,16 +111,16 @@ static func prewarm(scene: PackedScene, parent: Node) -> void:
 
 func _build(scene: PackedScene, out: Vector3, size: float, tint: Color) -> void:
 	var assets := _assets(scene, tint if tint_from_bolt else Color.WHITE)
-	_star = MeshInstance3D.new()
-	_star.mesh = assets.star
-	_star.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_flash = MeshInstance3D.new()
+	_flash.mesh = assets.flash
+	_flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# The vertex shader places the quad (and keeps it a minimum size on
 	# screen): never cull it.
-	_star.extra_cull_margin = 200.0
-	_star.scale = Vector3.ONE * star_size * size
-	_star.set_instance_shader_parameter("seed", randf() * 100.0)
-	_star.set_instance_shader_parameter("age", 0.0)
-	add_child(_star)
+	_flash.extra_cull_margin = 200.0
+	_flash.scale = Vector3.ONE * flash_size * size
+	_flash.set_instance_shader_parameter("seed", randf() * 100.0)
+	_flash.set_instance_shader_parameter("age", 0.0)
+	add_child(_flash)
 
 	# Sparks and dust in this node's space, +Y along `out`, scaled by `size`.
 	var facing := Transform3D(_facing(out).scaled(Vector3.ONE * size), Vector3.ZERO)
@@ -157,10 +166,10 @@ static func _facing(dir: Vector3) -> Basis:
 
 func _process(delta: float) -> void:
 	_age += delta
-	_star.set_instance_shader_parameter("age", 1.0 if _hidden else minf(_age / star_time, 0.999))
-	if _age >= star_time:
-		_star.visible = false
-	var last := maxf(star_time, spark_lifetime)
+	_flash.set_instance_shader_parameter("age", 1.0 if _hidden else minf(_age / flash_time, 0.999))
+	if _age >= flash_time:
+		_flash.visible = false
+	var last := maxf(flash_time, spark_lifetime)
 	if dust_count > 0:
 		last = maxf(last, dust_lifetime)
 	if _age >= last:
@@ -180,30 +189,34 @@ func _assets(scene: PackedScene, tint: Color) -> Dictionary:
 		rim = tint
 		spark_start = mid
 		spark_end = tint
-	var star_material := ShaderMaterial.new()
-	star_material.shader = SHADER
-	star_material.set_shader_parameter("core_color", core_color)
-	star_material.set_shader_parameter("mid_color", mid)
-	star_material.set_shader_parameter("rim_color", rim)
-	star_material.set_shader_parameter("spikes", star_spikes)
-	star_material.set_shader_parameter("spike_variety", star_spike_variety)
-	star_material.set_shader_parameter("valley", star_valley)
-	star_material.set_shader_parameter("min_angle", star_min_angle)
-	star_material.set_shader_parameter("max_grow", star_max_grow)
+	var flash_material := ShaderMaterial.new()
+	flash_material.shader = SHADER
+	flash_material.set_shader_parameter("core_color", core_color)
+	flash_material.set_shader_parameter("mid_color", mid)
+	flash_material.set_shader_parameter("rim_color", rim)
+	flash_material.set_shader_parameter("brightness", flash_brightness)
+	flash_material.set_shader_parameter("rays", ray_count)
+	flash_material.set_shader_parameter("ray_variety", ray_variety)
+	flash_material.set_shader_parameter("ray_width", ray_width)
+	flash_material.set_shader_parameter("ring_strength", ring_strength)
+	flash_material.set_shader_parameter("min_angle", flash_min_angle)
+	flash_material.set_shader_parameter("max_grow", flash_max_grow)
 	# Drawn after the dust (and any puffs), so they never cover it.
-	star_material.render_priority = 1
-	var star := QuadMesh.new()
-	star.material = star_material
+	flash_material.render_priority = 1
+	var flash := QuadMesh.new()
+	flash.material = flash_material
 
-	# Sparks: thin flat-coloured rods stretched along their flight (align_y),
-	# transparent so the ink outlines leave them alone.
+	# Sparks: thin glowing streaks stretched along their flight (align_y),
+	# transparent so the ink outlines leave them alone; bright enough to bloom
+	# a little, so they read as light, but painted, so they keep their colour.
 	var spark_material := StandardMaterial3D.new()
 	spark_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	spark_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	spark_material.disable_fog = true
 	spark_material.vertex_color_use_as_albedo = true
-	spark_material.albedo_color = Color(1.5, 1.5, 1.5)
+	spark_material.albedo_color = Color(spark_glow, spark_glow, spark_glow)
 	var spark := BoxMesh.new()
-	spark.size = Vector3(0.12, 1.0, 0.12)
+	spark.size = Vector3(spark_width, 1.0, spark_width)
 	spark.material = spark_material
 	var process := ParticleProcessMaterial.new()
 	process.particle_flag_align_y = true
@@ -229,7 +242,7 @@ func _assets(scene: PackedScene, tint: Color) -> Dictionary:
 	ramp.gradient = colors
 	process.color_ramp = ramp
 
-	var assets := {star = star, spark = spark, spark_process = process}
+	var assets := {flash = flash, spark = spark, spark_process = process}
 	if dust_count > 0:
 		# The wrecks' puff trail, born cold (all smoke): its mesh and settings
 		# borrowed for a one-shot puff.

@@ -3,13 +3,13 @@ render_mode depth_draw_always;
 
 // Stylised cel-shaded water for the sea, lakes and rivers.
 //
-// - Colour in hard bands by depth: turquoise shallows, blue, deep blue. The
+// - Colour by depth, blending from turquoise shallows to blue and deep blue. The
 //   depth is the surface height minus the ground under it, read from a height
 //   texture that Terrain fills in (Terrain._feed_water()); without one, all of
 //   the water is deep.
 // - Foam: a ragged white edge along every shore, and lines that roll in
 //   towards it and fade.
-// - Wave crests: sparse squiggly light lines drifting across (contour lines of
+// - Wave crests: sparse soft streaks of lighter water drifting across (contour lines of
 //   a slowly warping noise), fading out where they'd get too fine to draw.
 // - Sun sparkles: a hard-edged glint on small moving ripples, which merge into
 //   one sun path on the water far away.
@@ -33,6 +33,9 @@ uniform float mid_depth = 3.0;
 uniform float deep_depth = 12.0;
 // Ragged band edges: how far (metres of depth) the noise shifts them.
 uniform float depth_wobble = 2.0;
+// How gradually one depth colour turns into the next (metres of depth; ~0 =
+// hard bands, the old drawn look).
+uniform float depth_blend = 2.5;
 // Sky colour seen in the water at grazing angles, and how strongly.
 uniform vec4 sky_color : source_color = vec4(0.68, 0.82, 0.95, 1.0);
 uniform float sky_reflection : hint_range(0.0, 1.0) = 0.45;
@@ -62,17 +65,25 @@ uniform float crest_scale = 45.0;
 // How much of the water has crests (0 = none).
 uniform float crest_amount : hint_range(0.0, 1.0) = 0.35;
 // Line half-width, in metres.
-uniform float crest_width = 0.6;
+uniform float crest_width = 2.5;
 uniform float crest_speed = 0.06;
 // Crests fade out between these distances (metres).
 uniform float crest_fade_start = 900.0;
 uniform float crest_fade_end = 1800.0;
+// How strongly a crest lightens the water (1 = solid crest_color), and how
+// soft its edges are (multiples of its width; 0 = a crisp drawn line).
+uniform float crest_strength : hint_range(0.0, 1.0) = 0.25;
+uniform float crest_softness = 2.5;
+// Crest lines per step of the noise: more = nested, marbled squiggles.
+uniform float crest_density = 1.6;
 
 group_uniforms sparkle;
 // Brightness of the sun glints; above 1 they bloom. 0 turns them off.
 uniform float sparkle = 2.5;
 // Higher = smaller glints.
-uniform float sparkle_size : hint_range(4.0, 1024.0) = 300.0;
+uniform float sparkle_size : hint_range(4.0, 1024.0) = 500.0;
+// How soft a glint's edge is (0 = hard).
+uniform float sparkle_edge : hint_range(0.0, 0.5) = 0.35;
 // Size of the ripples that catch the sun (metres) and how bumpy they are.
 uniform float ripple_scale = 7.0;
 uniform float ripple_strength = 0.12;
@@ -261,29 +272,30 @@ void fragment() {
 	float dist = length(VERTEX);
 	float slow = TIME * crest_speed;
 
-	// Depth bands, with ragged edges.
+	// Depth colours, blending into each other over ragged edges.
 	float depth = water_depth(world);
 	float wobble = (noise2(world.xz / 30.0 + slow) - 0.5) * depth_wobble;
 	vec3 col = shallow_color.rgb;
-	col = mix(col, water_color.rgb, aa_step(mid_depth, depth + wobble));
-	col = mix(col, deep_color.rgb, aa_step(deep_depth, depth + wobble));
+	col = mix(col, water_color.rgb, smoothstep(mid_depth - depth_blend, mid_depth + depth_blend, depth + wobble));
+	col = mix(col, deep_color.rgb, smoothstep(deep_depth - depth_blend * 2.0, deep_depth + depth_blend * 2.0, depth + wobble));
 
-	// Wave crests: contour lines of a warping noise, in sparse patches.
+	// Wave crests: soft light streaks along the contour lines of a warping
+	// noise, in sparse patches that fade in and out.
 	vec2 p = world.xz / crest_scale;
 	vec2 warp = vec2(noise(p * 0.5 + slow), noise(p * 0.5 + 17.3 - slow));
-	float contour = noise2(p + warp * 1.5 + vec2(slow * 2.0, slow)) * 4.0 + slow * 3.0;
+	float contour = noise2(p + warp * 1.5 + vec2(slow * 2.0, slow)) * crest_density + slow * 3.0;
 	float line_w = max(fwidth(contour), 1e-5);
 	// Distance to the nearest line in pixels, then a fixed width in metres:
 	// where the noise flattens out the lines would otherwise swell into blobs.
 	float from_line_px = abs(fract(contour + 0.5) - 0.5) / line_w;
 	float metres_per_px = max(length(fwidth(world.xz)) * 0.7, 1e-4);
 	float width_px = crest_width / metres_per_px;
-	float crest = 1.0 - smoothstep(width_px - 0.75, width_px + 0.75, from_line_px);
-	float patches = aa_step(1.0 - crest_amount, noise(p * 0.35 - slow * 0.5));
+	float crest = 1.0 - smoothstep(width_px * (1.0 - crest_softness * 0.3) - 0.75, width_px * (1.0 + crest_softness) + 0.75, from_line_px);
+	float patches = smoothstep(1.0 - crest_amount - 0.12, 1.0 - crest_amount + 0.12, noise(p * 0.35 - slow * 0.5));
 	// Gone before the lines get too fine to draw cleanly, and in the distance.
 	float detail = 1.0 - smoothstep(0.15, 0.35, line_w);
 	detail *= 1.0 - smoothstep(crest_fade_start, crest_fade_end, dist);
-	col = mix(col, crest_color.rgb, crest * patches * detail);
+	col = mix(col, crest_color.rgb, crest * patches * detail * crest_strength);
 
 	// Shore foam: a solid ragged edge, plus lines rolling in to it.
 	float edge_noise = noise(world.xz / 6.0 + slow * 4.0);
@@ -325,5 +337,6 @@ void light() {
 	DIFFUSE_LIGHT += mix(floor_tone, 1.0, aa_step(lit_threshold, ndl)) * LIGHT_COLOR / PI;
 
 	float h = pow(clamp(dot(v_ripple, normalize(LIGHT + VIEW)), 0.0, 1.0), sparkle_size);
-	SPECULAR_LIGHT += sparkle * aa_step(0.5, h) * ATTENUATION * LIGHT_COLOR / PI;
+	// Soft-edged glints (sparkle_edge 0 = hard drawn blobs).
+	SPECULAR_LIGHT += sparkle * smoothstep(0.5 - sparkle_edge, 0.5 + sparkle_edge, h) * ATTENUATION * LIGHT_COLOR / PI;
 }

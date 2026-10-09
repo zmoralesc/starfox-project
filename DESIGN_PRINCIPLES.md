@@ -10,9 +10,9 @@
 
 ## Visual style
 
-- Cel-shaded, animated look.
-- Not cartoon simple, but not incredibly complex either. Go for a middle point between "Wind Waker" and "Breath of the Wild". We want simplicity without losing substance.
-- Favor effects that look like 2D animation.
+- Cel-shaded, painted look.
+- Leaning towards Breath of the Wild.
+- Favor effects that look like 2D high-budget animation.
 - Favor the use of shaders.
 
 ## Performance

@@ -11,6 +11,8 @@ render_mode cull_disabled, depth_draw_always;
 // sheet (−0.5 at the ship, +0.5 at its far end), z is up the sheet (−0.5 on
 // the water, +0.5 at the top edge).
 
+// Drawn-looking effect: keep the hard bands (see toon_light.gdshaderinc).
+#define TOON_HARD
 #include "res://effects/toon_light.gdshaderinc"
 
 // Set per sheet by WaterWake: −1 left, 1 right; strength 0..1 (height and

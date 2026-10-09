@@ -171,7 +171,7 @@ The user wants **another set of all-new concepts**, `E` to `H` (a fifth, `I`, is
 ### B1. `SpaceStation`: the Cornerian space station
 **Used:** once, at the centre of the mission area. It's friendly scenery: solid (you crash into it), not shootable. It's the mission's landmark and the thing the player is defending. Later missions may make some of its components destructible.
 
-**Today:** a wheel station 800 m across: a spindle along its axis, a wheel joined by four spokes (the open quarters are big enough to fly a formation through), docking arms and a lit hangar at the bow, solar wings and a dish at the stern.
+**Done (October 2026):** "the Drum", built by `source/build_space_station_v2.py` at twice the size asked for below (900 m radius, openings at least 300 m); see `docs/GUIDE.md` 8.11b. **Before it:** a wheel station 800 m across: a spindle along its axis, a wheel joined by four spokes (the open quarters are big enough to fly a formation through), docking arms and a lit hangar at the bow, solar wings and a dish at the stern.
 
 **Redesign:** you're free to change the layout entirely, within these constraints:
 - **Size:** fits inside a sphere of **450 m radius** around its origin. Origin at its centre.

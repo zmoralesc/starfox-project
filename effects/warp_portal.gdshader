@@ -1,8 +1,10 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled, shadows_disabled, depth_draw_never;
 
-// A warp portal on a flat quad (see WarpPortal): a dark swirling hole with
-// spiral arms, a hot core and a bright, wobbling rim, plus a soft halo outside.
+// A warp portal on a flat quad (see WarpPortal): a tear into a dark tunnel,
+// with fine spiral filaments flowing inwards into it, faint speed lines
+// streaming to a far-off pinpoint core, and a thin white-hot rim crackling
+// with energy, bleeding crimson inwards, plus a soft halo outside.
 // `open` grows it from nothing to full size (and past it, for the overshoot).
 
 // Current size, as a fraction of the full radius (0 = shut).
@@ -15,8 +17,16 @@ uniform vec4 core_color : source_color = vec4(1.0, 0.8, 1.0, 1.0);
 uniform vec4 void_color : source_color = vec4(0.05, 0.0, 0.09, 1.0);
 // Brightness of the rim, swirls and core (above 1 they bloom).
 uniform float glow = 2.5;
-// Number of spiral arms (whole numbers keep the pattern seamless).
-uniform float arms = 5.0;
+// Number of spiral filaments (whole numbers keep the pattern seamless).
+uniform float arms = 15.0;
+// How tightly they wind (turns per step into the tunnel).
+uniform float twist = 1.4;
+// How fast their pieces and the speed lines flow inwards.
+uniform float flow = 0.9;
+// Faint speed lines streaming to the core (lanes round the circle).
+uniform float streaks = 40.0;
+// Half-width of the white-hot rim line (fraction of the radius).
+uniform float rim_width = 0.012;
 // How fast the arms turn (radians per second).
 uniform float spin = 1.2;
 // Opacity of the hole: below 1, stars show faintly through.
@@ -48,31 +58,58 @@ void fragment() {
 	float a = atan(p.y, p.x);
 	// The edge wobbles (noise on the direction, so there's no seam).
 	float edge = 1.0 + (fbm(dir * 2.5 + vec2(TIME * 0.6, -TIME * 0.4)) - 0.5) * 0.08;
+	float aa = fwidth(r) * 1.5;
 
-	// Swirling bands, twisted more towards the middle.
-	float twist = TIME * spin + (1.0 - clamp(r, 0.0, 1.0)) * 3.0;
-	vec2 q = mat2(vec2(cos(twist), sin(twist)), vec2(-sin(twist), cos(twist))) * (p / open);
-	float arm = 0.5 + 0.5 * sin(arms * a + 7.0 * log(r + 0.03) - TIME * spin * 2.0);
-	float swirl = smoothstep(0.35, 0.95, arm) * (0.45 + 0.8 * fbm(q * 3.0));
-	swirl *= smoothstep(0.08, 0.55, r);
+	// Tunnel coordinates: `depth` is 0 at the rim and grows towards the
+	// middle (logarithmically, so equal steps look like equal steps into a
+	// tunnel), the angle in turns.
+	float depth = -log(max(r, 0.015));
+	float turns = a / TAU;
 
-	vec3 color = mix(void_color.rgb, swirl_color.rgb * glow, clamp(swirl, 0.0, 1.0));
-	color += core_color.rgb * glow * exp(-r * r * 40.0);
-	// Rim: brightest right at the edge, bleeding a little inwards.
-	float rim = exp(-pow((r - edge) / 0.045, 2.0)) + 0.6 * smoothstep(edge - 0.3, edge, r);
-	color = mix(color, rim_color.rgb * glow, clamp(rim, 0.0, 1.0));
+	// Spiral filaments: many fine arms, each its own brightness and width,
+	// breaking into pieces that flow inwards and fading into the dark.
+	float s = turns * arms + depth * twist - TIME * spin * 0.25;
+	float strand = mod(floor(s), arms);  // whole arms: no seam where the angle wraps
+	float strand_rand = hash(vec2(strand, 3.1));
+	float half_w = mix(0.06, 0.2, strand_rand);
+	float filament = 1.0 - smoothstep(half_w, half_w + aa * arms * 0.5, abs(fract(s) - 0.5));
+	filament *= smoothstep(0.35, 0.65, noise(vec2(strand * 5.3, depth * 2.5 - TIME * flow)));
+	filament *= exp(-depth * 1.1) * mix(0.5, 1.0, strand_rand);
+
+	// Speed lines streaming in towards the core, faint.
+	float lane = floor(turns * streaks);
+	float lane_rand = hash(vec2(lane, 8.7));
+	float dash = fract(depth * 0.6 + TIME * flow * (0.6 + lane_rand) + lane_rand * 5.0);
+	float streak = (1.0 - smoothstep(0.02, 0.06, abs(fract(turns * streaks) - 0.5) * (1.0 + depth)))
+			* smoothstep(0.75, 0.95, dash) * step(0.55, lane_rand) * smoothstep(0.1, 0.6, depth);
+
+	vec3 color = void_color.rgb;
+	color += swirl_color.rgb * glow * filament;
+	color += core_color.rgb * glow * 0.5 * streak;
+	// Core: a far-off pinpoint of light.
+	color += core_color.rgb * glow * (exp(-r * r * 160.0) * 1.5 + exp(-r * r * 18.0) * 0.15);
+
+	// Rim: a thin white-hot line, crimson bleeding inwards from it, and energy
+	// crackling along it in bright arcs.
+	float rim_line = 1.0 - smoothstep(rim_width, rim_width + aa, abs(r - edge));
+	float bleed = smoothstep(edge - 0.22, edge, r) * 0.55;
+	float crackle = smoothstep(0.62, 0.8, fbm(dir * 7.0 + vec2(TIME * 2.3, -TIME * 1.7)))
+			* (1.0 - smoothstep(0.0, 0.07, abs(r - edge)));
+	color = mix(color, rim_color.rgb * glow, clamp(bleed, 0.0, 1.0));
+	color = mix(color, mix(rim_color.rgb, core_color.rgb, 0.7) * glow * 1.4, max(rim_line, crackle));
 
 	float alpha;
 	if (r < edge) {
 		alpha = hole_opacity;
 	} else {
-		// Outside: the rim's sharp falloff, then a soft halo.
+		// Outside: the rim line's edge, then a soft halo.
 		float out_d = r - edge;
-		float halo = exp(-out_d * 14.0) * 0.55 + exp(-pow(out_d / 0.03, 2.0));
-		color = rim_color.rgb * glow;
+		float halo = exp(-out_d * 16.0) * 0.4;
+		float line = max(rim_line, crackle);
+		color = mix(rim_color.rgb * glow, color, line);
 		// Faded to nothing before the quad's edge, so its square never shows.
 		halo *= 1.0 - smoothstep(0.7 * extent, 0.97 * extent, length(p));
-		alpha = clamp(halo, 0.0, 1.0);
+		alpha = clamp(max(halo, line), 0.0, 1.0);
 	}
 	ALBEDO = color;
 	ALPHA = alpha;

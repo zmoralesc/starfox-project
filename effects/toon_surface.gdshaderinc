@@ -4,7 +4,8 @@
 // TOON_UNLINED to draw it in the transparent pass, without ink outlines (see
 // toon_unlined.gdshader). TOON_WEAR adds worn paint (see toon_worn.gdshader).
 // TOON_INSTANCED corrects the normals of MultiMesh instances (see
-// toon_instanced.gdshader).
+// toon_instanced.gdshader), and TOON_FOLIAGE rounds off faceted trees (see
+// toon_unlined_instanced.gdshader).
 
 uniform vec4 albedo : source_color = vec4(0.8, 0.8, 0.8, 1.0);
 // Multiplied with `albedo`. White (no change) when unset.
@@ -29,6 +30,17 @@ instance uniform vec4 hit_flash = vec4(0.0);
 uniform float vertex_glow_energy = 8.0;
 #endif
 
+#ifdef TOON_FOLIAGE
+// How far faceted foliage (7- or 8-sided cones and lumps, built round the
+// piece's vertical axis) shades as if round: 0 = flat facets, 1 = each normal
+// turned to point straight out from the trunk, keeping its facet's slope. Flat
+// bases (normals straight down) are unchanged.
+uniform float foliage_round : hint_range(0.0, 1.0) = 1.0;
+// Metres from the axis inside which the rounding fades out (the pines' tips
+// lean up to 0.3 m off it).
+uniform float foliage_axis_margin = 0.8;
+#endif
+
 #ifdef TOON_CLIP
 // World-space plane (normal, distance): fragments behind it (dot(normal, p) <
 // distance) aren't drawn. Per instance; the default (all zero) clips nothing.
@@ -36,10 +48,25 @@ instance uniform vec4 clip_plane = vec4(0.0);
 varying vec3 world_position;
 #endif
 
-#if defined(TOON_CLIP) || defined(TOON_INSTANCED)
+#if defined(TOON_CLIP) || defined(TOON_INSTANCED) || defined(TOON_FOLIAGE)
 void vertex() {
 #ifdef TOON_CLIP
 	world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+#endif
+#ifdef TOON_FOLIAGE
+	// In the piece's own space, before the instance turns it. Neighbouring
+	// facets share their edge vertices' positions, so they get the same
+	// outward direction there and the shading runs on across the seam.
+	// Near the axis (a cone's tip, leaning a little off it) the outward
+	// direction means nothing, and every facet's tip would point the same way:
+	// a bright or dark streak. Fade the rounding out there.
+	vec2 out_dir = VERTEX.xz;
+	float from_axis = length(out_dir);
+	float round_amount = foliage_round * smoothstep(foliage_axis_margin * 0.5, foliage_axis_margin, from_axis);
+	if (round_amount > 0.0) {
+		vec3 round_normal = vec3(out_dir / from_axis * length(NORMAL.xz), NORMAL.y);
+		NORMAL = normalize(mix(NORMAL, round_normal, round_amount));
+	}
 #endif
 #ifdef TOON_INSTANCED
 	// Godot turns a MultiMesh instance's normals by the instance's matrix M

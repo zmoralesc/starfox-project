@@ -1554,6 +1554,21 @@ class HullPaint:
                      sum(1 for g in got if g <= 0.02)))
 
 
+# Faces meeting at less than this are shaded as one surface. Some hull quads
+# are bent by up to 3 m, and flat-shaded, their two triangles showed as two
+# tones: the model's triangles showing through, worse under the game's soft
+# light (toon_softness), which shows every step in the normals. Real corners
+# (chamfers are 45 degrees) stay sharp. Geometry is unchanged, so collision,
+# hull_outline and the avoidance boxes are too.
+SMOOTH_ANGLE = math.radians(12.0)
+
+
+def smooth_bent_faces(me):
+    """Smooth-shades `me` with sharp edges above SMOOTH_ANGLE."""
+    me.shade_smooth()
+    me.set_sharp_from_angle(angle=SMOOTH_ANGLE)
+
+
 def paint_juggernaut_hull(hull_obj):
     """Paints the hull's surface detail (see the section comment above).
     Order matters: lights, windows and markings claim their spots first, then
@@ -1648,20 +1663,24 @@ def assemble_juggernaut_scene():
     
     # 1b. Surface detail, painted into the hull
     paint_juggernaut_hull(obj_hull)
+    smooth_bent_faces(me_hull)
     
     # 2. Bridge (Pivot at base, placed at BRIDGE_Y, BRIDGE_Z)
     me_bridge = build_juggernaut_bridge()
+    smooth_bent_faces(me_bridge)
     obj_bridge = bpy.data.objects.new("Juggernaut_Bridge", me_bridge)
     obj_bridge.location = Vector((0.0, BRIDGE_Y * SCALE, BRIDGE_Z * SCALE))
     col_ship.objects.link(obj_bridge)
     
     # 3. Thrusters (Keel at X=0, Y=-335*SCALE, Z=20*SCALE; Side thrusters at X=±62*SCALE, Y=-335*SCALE, Z=36*SCALE)
     me_keel = build_juggernaut_thruster_keel()
+    smooth_bent_faces(me_keel)
     obj_keel = bpy.data.objects.new("Juggernaut_ThrusterKeel", me_keel)
     obj_keel.location = Vector((0.0, -335.0 * SCALE, 20.0 * SCALE))
     col_ship.objects.link(obj_keel)
     
     me_pod = build_juggernaut_thruster_pod()
+    smooth_bent_faces(me_pod)
     obj_pod_l = bpy.data.objects.new("Juggernaut_ThrusterPod_L", me_pod)
     obj_pod_l.location = Vector((-62.0 * SCALE, -335.0 * SCALE, 36.0 * SCALE))
     col_ship.objects.link(obj_pod_l)
@@ -1673,6 +1692,7 @@ def assemble_juggernaut_scene():
     
     # 4. Hangar Doors & Empties
     me_door = build_juggernaut_hangar_door()
+    smooth_bent_faces(me_door)
     obj_door_l = bpy.data.objects.new("Juggernaut_HangarDoor_L", me_door)
     obj_door_l.location = Vector((-88.0 * SCALE, -10.0 * SCALE, 24.0 * SCALE))
     col_ship.objects.link(obj_door_l)

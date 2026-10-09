@@ -27,7 +27,7 @@ extends Resource
 @export var ember_color := Color(0.85, 0.22, 0.06)
 ## How brightly the fire glows (above 1 it blooms).
 @export var glow := 3.0
-@export var smoke_color := Color(0.17, 0.16, 0.16)
+@export var smoke_color := Color(0.36, 0.36, 0.39)
 
 @export_group("Smoke")
 ## Bigger, slower smoke puffs left behind after the fire.

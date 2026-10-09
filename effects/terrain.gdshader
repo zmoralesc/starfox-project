@@ -11,6 +11,8 @@ shader_type spatial;
 // Terrain sets the colours, thresholds and paint map from its own exports
 // (Terrain._feed_ground()); the rest here is tuned on the material.
 
+// The horizon would light up with the back rim (see toon_light.gdshaderinc).
+#define TOON_NO_BACK_RIM
 #include "res://effects/toon_light.gdshaderinc"
 #include "res://effects/noise.gdshaderinc"
 

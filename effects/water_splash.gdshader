@@ -11,6 +11,8 @@ render_mode cull_disabled, depth_draw_always;
 // Expects a CylinderMesh of height 1 and radius 1 (centred, so VERTEX.y runs
 // -0.5 to 0.5), no caps, with enough rings to bend.
 
+// Drawn-looking effect: keep the hard bands (see toon_light.gdshaderinc).
+#define TOON_HARD
 #include "res://effects/toon_light.gdshaderinc"
 
 // Set per splash by WaterSplash: 0 to 1 over its life, and a random seed.

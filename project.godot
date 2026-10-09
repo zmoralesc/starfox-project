@@ -38,3 +38,18 @@ theme/custom_font="res://ui/fonts/ShareTechMono-Regular.ttf"
 [rendering]
 
 rendering_device/driver.windows="d3d12"
+
+[shader_globals]
+
+toon_softness={
+"type": "float",
+"value": 1.0
+}
+toon_shadow_tint={
+"type": "color",
+"value": Color(0.62, 0.72, 1, 1)
+}
+toon_back_rim={
+"type": "float",
+"value": 0.3
+}
