@@ -1,4 +1,4 @@
-"""The harbour town's, villages' and farms' kit pieces (models/corneria2/ASSETS.md,
+"""The harbour town's, villages' and farms' kit pieces (models/corneria/ASSETS.md,
 "The harbour town, villages and farms"): the coastal houses Kit_Town_House_A..D,
 the town hall, the harbour sheds, the lighthouse, the jetty deck and its posts,
 the moored boats, and the farmsteads' barn and silo.

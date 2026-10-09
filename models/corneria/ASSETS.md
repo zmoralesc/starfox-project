@@ -1,642 +1,459 @@
-# Corneria asset brief
+# New Corneria: kit brief
 
-This file asks for 3D models for the Corneria level of **Star Fox: Ascent**, a Godot 4 fangame in the style of *Star Fox 64*.
+This file specifies the 3D models ("kit pieces") of the new Corneria map in **Star Fox: Ascent**, a Godot 4 fangame. The map is a Blender file, [source/corneria.blend](source/corneria.blend). Generator scripts lay it out from these pieces: the city, the harbour town and villages, the military base, the bay's arches and the forests. Today every piece is a grey placeholder box ("greybox"). Each entry below replaces one with a real model.
 
-Today the whole level is built from code. One Blender script, [source/build_corneria.py](source/build_corneria.py), makes every building from plain boxes, cylinders and domes. Each asset below replaces one of those shapes with a hand-designed model. Afterwards the script will place the new models where the old shapes stood.
-
-Read the **global brief** first: every prompt depends on it. Each asset prompt then gives:
-- what the piece is and where it's used;
-- how many times it appears;
-- its required size;
+Read the **global brief** first; every piece depends on it. Each piece's entry then gives:
+- what the piece is, where it stands and how many copies there are;
+- its sizes, and how the generators stretch it;
+- its triangle budget;
 - what it should look like.
 
 ---
 
-## Global brief (applies to every asset)
+## Global brief
 
 ### How the models are seen
-- **The player's view.** The player flies a small fighter at 60–130 m/s, usually 20–300 m above the ground. Most props pass by at 50–600 m. Silhouettes and big colour shapes are what read; detail under about 1 m is invisible.
-- **Flying through and around.** The player flies between, around and under the props, including under the arches and the river bridge. Openings meant to be flown through must keep the sizes given here.
-- **The level's layout.** It's 8 × 8 km. The open sea and the approach are to the south. A bay with stone arches runs north to Corneria City, which sits at a river mouth. A plateau with a lake and waterfall lies to the north-east, a harbour town is on the east coast, and a military base is to the west.
+- **The player's view.** The player flies a small fighter at 60–130 m/s, usually 30–400 m above the ground, over a 16 × 16 km map. Most pieces pass by at 80–1,000 m, and the city skyline is seen from 5 km away. Silhouettes, big colour shapes and bold stripes read; detail under about 1.5 m doesn't.
+- **Flying among them.** The player weaves between downtown towers, through the bay's arches and under bridges. Openings meant to be flown through must keep the sizes given.
+- **The map.** The open sea and the approach lie to the south. A bay lined with stone arches leads north to **Corneria City**, which has:
+  - three downtown clusters of towers, with the central **spire** in the middle one;
+  - mid-rise districts round them;
+  - an old town;
+  - suburbs;
+  - an industrial port.
 
-### Art style
-- **Overall look.** Clean, bright, optimistic cartoon sci-fi, in the spirit of *Star Fox 64*'s Corneria:
-  - smooth white and pale-grey buildings with blue glass;
-  - bold simple forms and gentle curves;
-  - red accents.
+  A harbour **town** with a lighthouse sits on the east coast, among farmland and villages. The **military base** is to the west: two runways, hangars, a control tower. Forests and rocky hills fill the rest.
 
-  It shouldn't look realistic, gritty or weathered.
-- **Shading.** The game cel-shades everything: three hard light bands and black ink outlines.
-- **Where ink lines go.** They're drawn on every silhouette, and on every edge where the surface normal changes sharply.
-  - Each bevel, chamfer or small step adds another ink line, so a busy model turns into a tangle of black lines. Prefer **big clean planes and a few strong creases**.
-  - **Curved surfaces** (cylinders, domes, arches) should be **smooth-shaded**. Use Shade Auto Smooth at about 30°, so only intended creases get lines. Flat-shaded facets on a curve draw a line on every segment. 12–24 segments are enough for most round shapes.
-  - **Colour changes draw no ink line.** Paint windows, stripes and markings by giving coplanar faces another material, not by modelling recesses or raised strips.
-- **Lines fade with distance.** Outlines fade out between 220 and 520 m from the camera, so big landmarks must also read by colour and shape alone.
+### Art style: *Star Fox Assault*'s Corneria
+The target is Corneria as *Star Fox Assault* showed it: a confident, optimistic sci-fi capital. It's richer than *Star Fox 64*'s blocks, but still bold and readable, with nothing gritty or realistic.
+- **Architecture.** Futuristic civic architecture:
+  - layered masses: podiums, setbacks, cantilevered decks and ring balconies;
+  - rounded corners, curved glass fronts, domes and drum towers;
+  - rooftop crowns: landing pads, antenna masts, sensor rings.
+- **Colour.** Pale warm stone and white walls (`Cream`, `Tower`, `Wall`), with deep blue glass (`Glass`, `GlassDark`) in strong horizontal bands or vertical strips.
+  - Accents in teal (`Teal`) and orange (`Orange`), used sparingly: a roof, a fin, a stripe, a canopy.
+  - Pale cyan light strips (`LightStrip`, glowing) on the crowns and edges of the tall buildings.
+- **Districts.** Each district needs its own character, and the variants within a piece should differ clearly in silhouette, not only in colour:
+  - **downtown:** glass and white towers;
+  - **mid-rise:** stone-and-glass offices and apartment blocks;
+  - **old town:** Mediterranean-futurist: cream walls, terracotta roofs (`Roof`), arcades painted on;
+  - **suburbs and villages:** whitewashed houses with terracotta or teal roofs;
+  - **port and base:** practical industrial and military forms in steel, olive and grey, with yellow-and-black hazard paint (`TaxiYellow`, `HazardBlack`).
 
-### Colours and materials
-Use **flat-colour materials** from the shared palette below. Name each material exactly as listed, since the game finds some materials by name. The values are **sRGB, 0–1**: the colours as they appear in the game. The build script converts them to linear for glTF; in Blender, set the Base Color so it shows the same colour.
+### How the game draws them
+- **Cel shading.** Everything gets three hard light bands and black ink outlines.
+- **Where ink lines go.** Lines are drawn on every silhouette and on every edge where the surface normal turns sharply.
+  - Each bevel, chamfer or small step adds a line, so a busy model becomes a tangle. Prefer **big clean planes and a few strong creases**.
+  - **Curves** (drums, domes, vaults) are **smooth-shaded**: `kit_tools` creases only where faces meet at over 30°. 12–24 segments are enough for round shapes; 8–10 for small ones.
+  - **Colour changes draw no line.** Paint windows, stripes, doors and markings as coplanar faces of another material. Don't model them as recesses or raised strips.
+- **Lines fade with distance.** They fade out between 220 and 520 m from the camera, so big pieces must read by colour and shape alone.
+- **No floating pieces.** No part may hover off the body.
+- **No coplanar overlaps.** No two visible faces of different parts may share a plane (they flicker). Where a part sits on another, sink it a few centimetres or make it larger.
 
-The light is bright, so avoid pure white (1, 1, 1) on large surfaces; it blows out.
+### Colours
+Use only palette materials: `corneria_common.PALETTE`, named `Corneria_<name>`. kit_tools' `Builder` takes the name without the prefix. The values are sRGB, as seen in the game. The light is bright, so avoid pure white on big surfaces.
 
-| Material | sRGB | Use |
+| Name | sRGB | Use |
 |---|---|---|
-| `Corneria_Tower` | 0.84, 0.86, 0.90 | main building white |
-| `Corneria_Glass` | 0.30, 0.55, 0.80 | windows, glass towers |
-| `Corneria_Concrete` | 0.72, 0.68, 0.60 | bases, plinths, piers |
-| `Corneria_RoofDark` | 0.36, 0.37, 0.42 | roofs, caps |
-| `Corneria_Road` | 0.27, 0.27, 0.30 | tarmac |
-| `Corneria_Stone` | 0.76, 0.68, 0.53 | arches, piers |
-| `Corneria_Wall` | 0.93, 0.91, 0.86 | houses, tanks |
-| `Corneria_Roof` | 0.75, 0.38, 0.28 | house roof tiles |
-| `Corneria_Lighthouse` | 0.82, 0.18, 0.14 | lighthouse red |
-| `Corneria_Military` | 0.45, 0.50, 0.42 | base buildings, vehicles |
-| `Corneria_Marking` | 0.95, 0.95, 0.90 | painted lines |
-| `Corneria_Steel` | 0.60, 0.62, 0.66 | masts, cables, decks |
-| `Corneria_BridgeRed` | 0.75, 0.25, 0.18 | bridge towers, lattice, flag |
-| `Corneria_Rock` | 0.55, 0.50, 0.46 | sea stacks, cliffs |
-| `Corneria_Tree` | 0.18, 0.40, 0.20 | foliage, dark |
-| `Corneria_TreeLight` | 0.27, 0.50, 0.22 | foliage, light |
-| `Corneria_Falls` | 0.80, 0.90, 1.00 | falling water |
-| `Corneria_Foam` | 0.95, 0.98, 1.00 | foam |
-| `Corneria_WarningLight` | 1.00, 0.20, 0.15, emission 6 | red aircraft lights |
-| `Corneria_Lamp` | 1.00, 0.90, 0.50, emission 8 | lighthouse lamp |
+| `Tower` | 0.84, 0.86, 0.90 | white of tall buildings |
+| `Cream` | 0.90, 0.85, 0.74 | warm stone walls, old town |
+| `Wall` | 0.93, 0.91, 0.86 | whitewashed houses |
+| `Concrete` | 0.72, 0.68, 0.60 | plinths, podiums, piers |
+| `Stone` | 0.76, 0.68, 0.53 | arches, old-town trims |
+| `Glass` | 0.30, 0.55, 0.80 | windows, glass fronts |
+| `GlassDark` | 0.16, 0.30, 0.50 | dark glass bands, contrast |
+| `Teal` | 0.16, 0.58, 0.62 | accent: roofs, fins, canopies |
+| `Orange` | 0.95, 0.55, 0.16 | accent: stripes, markers |
+| `LightStrip` | 0.55, 0.85, 1.00, glows | light strips on crowns and edges |
+| `WarningLight` | 1.00, 0.20, 0.15, glows | aircraft warning lights |
+| `Lamp` | 1.00, 0.90, 0.50, glows | lighthouse lamp |
+| `RoofDark` | 0.36, 0.37, 0.42 | flat roofs, caps, machinery |
+| `Roof` | 0.75, 0.38, 0.28 | terracotta roof tiles |
+| `AwningBlue` | 0.20, 0.50, 0.85 | awnings, boat hulls |
+| `Steel` | 0.60, 0.62, 0.66 | masts, tanks, cranes, decks |
+| `Military` / `MilitaryDark` | 0.45, 0.50, 0.42 / 0.30, 0.34, 0.28 | base buildings |
+| `TaxiYellow` / `HazardBlack` | 0.95, 0.80, 0.20 / 0.12, 0.12, 0.14 | hazard stripes, cranes |
+| `BridgeRed` / `Lighthouse` | 0.75, 0.25, 0.18 / 0.82, 0.18, 0.14 | bridge steel, lighthouse bands |
+| `Marking` | 0.95, 0.95, 0.90 | painted lines, helipad marks |
+| `Rock` | 0.55, 0.50, 0.46 | rocks, stacks, cliffs |
+| `Tree` / `TreeLight` | 0.18, 0.40, 0.20 / 0.27, 0.50, 0.22 | foliage, dark / light |
+| `Trunk` | 0.40, 0.28, 0.18 | trunks, timber, jetties |
 
-Rules for materials:
-- **New materials** are fine when a prompt needs them. Prefix them `Corneria_`, keep them flat-coloured, and list them in your report.
-- **Textures** are allowed but not needed. The game keeps only the colour texture and the emission texture; normal, roughness and metal maps are thrown away, because fine detail becomes speckle under hard light bands.
-- **Glowing parts** use emission (Emission Color = Base Color, strength as listed).
+**Foliage** (`Tree`, `TreeLight`, `Trunk`) is drawn **without ink lines** and casts shadows through stand-ins: use those three for foliage only. A needed colour that isn't listed is added to the palette (in `corneria_common.py`, with a comment). Report it; don't invent materials in the model.
 
 ### Technical rules
-- **Units and axes:** Blender units are metres. Blender is Z-up, and the game converts on export.
-- **Front:** the asset's front (main entrance, the side the player sees on approach) faces **Blender −Y** (south in the level, towards the player's start).
-- **Origin:** at the centre of the footprint at ground level (Z = 0), unless the prompt says otherwise. Apply all transforms (scale 1, rotation 0).
-- **Normals point outwards.** The game draws **only the front of each face**: a face whose normal points inwards is invisible from outside. Blender shows both sides by default and hides the mistake, so check every asset with **Viewport Shading → Backface Culling** turned on. Open surfaces (a sheet, a dome without a floor, a flag) must face the side the player sees; make them double-sided by modelling thickness, not by relying on a material setting.
-- **Solid props are closed meshes.** The game builds collision straight from the visible mesh, so:
-  - no holes, no loose internal faces, no zero-area faces;
-  - merge the vertices at seams;
-  - small protruding parts collide too; that's fine.
-- **What not to include:** no modifiers left unapplied, no armatures, animation, lights or cameras.
-- **Polygon budget:** stay within each asset's triangle budget. Many pieces are repeated hundreds of times; trees are repeated about 6,000 times.
-- **Height and size changes:** many pieces are placed at varied sizes. Each prompt says which axes the placement script will scale and by how much. Keep details that would look wrong when stretched (round windows, domes) to parts the prompt keeps unscaled. For tall towers, use the modular **Base / Shaft / Crown** split described in those prompts.
+- **Units and axes:** metres; Blender Z up.
+- **Front:** a piece's front (main entrance, its street side) faces **Blender −Y**.
+- **Origin:** at the centre of the footprint, on the ground (Z = 0). Parts that go below ground (feet sunk into a slope, a pier's foot) are given in the entry.
+- **Normals point out.** The game draws only the front of a face, so a face pointing in is a hole. Pieces are **closed meshes**: the game builds collision from them, and the checks below find open edges and parts built inside out.
+- **Separate shells are fine** (a roof box on a wall box), but they must overlap or touch cleanly; see "no coplanar overlaps".
+- **Triangle budgets** are per piece (per part for stacks). Repetition sets them: there are 80,000 trees, 7,000 houses and 3,000 shops.
 
-### Delivery
-- **Blender file:** put all assets in one library file, `models/corneria/source/corneria_kit.blend`, with **one collection per asset**, named exactly as the asset ID below (e.g. `Kit_SteppedTower`). Model each asset at the world origin, its origin as specified. A multi-part asset (Base/Shaft/Crown, variants) has one object per part, named `<ID>_<Part>` (e.g. `Kit_SteppedTower_Shaft`).
-- **Preview files:** also export each collection as `models/corneria/kit/<ID>.glb` (glTF binary, +Y up, Apply Modifiers on, materials exported, selected objects only), so it can be previewed in Godot.
-- **Files not to touch:** `build_corneria.py`, `corneria_map.tres`, `corneria_props.glb` or any `.tscn` scene. Placing the kit into the level is a separate step. Don't commit; the user reviews first.
-- **Report:** for each asset, give:
-  - its triangle count;
-  - its bounding-box size;
-  - where its origin is;
-  - the materials it uses;
-  - a viewport screenshot (front three-quarter view, backface culling on).
+### Variants, stacks and stretching
+The generators **fit each piece to its lot**: they scale it on each axis to the width, height and depth the lot asks for. To keep that stretching small, a piece can come as a **family of variants**:
+- **Naming.** `Kit_City_Office_A`, `_B`, `_C`... each is its own collection. The generator picks the variant whose own proportions need the least stretching, choosing at random among near-ties, then fits it.
+- **Placeholders.** The placeholder (`Kit_City_Office`, marked `greybox`) drops out by itself once one real variant exists. Pieces without variants keep the plain name (`Kit_City_Spire`).
+- **Designing variants.** Give variants **different proportions**, spanning the size range in the entry, and different silhouettes.
 
----
+A tall piece can be a **stack**: three collections, `<variant>_Base`, `<variant>_Shaft` and `<variant>_Crown` (for example `Kit_City_Tower_A_Base`).
+- **How it's placed.** The base stands on the ground, as many shafts as fit stand on it, then the crown on top. So a tower grows by whole storeys, and the base and crown are never stretched in height. The shafts take up any remainder by stretching: by up to half a shaft's height, shared among them (±50 % with one shaft, ±17 % with three).
+- **Each part's origin** is at the centre of its own bottom face (Z = 0 at its bottom). All three parts are stretched by the same width and depth.
+- **The shaft must repeat seamlessly:**
+  - its top outline equals its bottom outline;
+  - its painted bands line up across the joint;
+  - its bottom matches the base's top outline, and its top matches the crown's bottom outline;
+  - keep it 1–4 storeys high (4 m a storey).
+- **Joints.** Each part stands exactly on the measured top of the one below, so joints rely on matching outlines. A crown may reach below its own origin into the shaft (negative Z), but only with a part set back from the shaft's outline: a crown side in the plane of a shaft side flickers. Nothing overlaps shaft to shaft.
+- **Joint plugs.** Stacked parts are separate instances in the game, and float rounding leaves hairline cracks at their joints. Through those the ink pass sees the hidden caps and draws black dots along the joint. So each `_Shaft` and `_Crown` has a second object, `<part>_Plug`:
+  - a closed sleeve, its outline the part's bottom outline inset 0.05 m;
+  - from 0.4 m below its origin to 0.1 m above;
+  - in the joint wall's main colour.
 
-## Landmarks (one of each)
+  Through a crack it reads as wall. Plugs don't count in the part's measured size.
+- **Open joints.** Where parts join flush, they have **no cap** in the joint:
+  - shafts have no top or bottom cap;
+  - crowns have no bottom cap;
+  - bases have no top cap under a flush shaft (a wider podium keeps a ring-shaped roof).
 
-### 1. `Kit_Spire`: the Corneria City central spire
-**Used:** once, at the centre of Corneria City. It's the tallest thing on the map and the player's main navigation landmark.
-**Size:** 340 m tall to the tip of the antenna. Footprint up to 124 m across (the plinth). Not scaled.
-**Budget:** 6,000 triangles.
+  A cap there ends exactly on the continuing wall, so along the joint some pixels show the hidden cap instead of the wall, and the ink pass dots them. `kit_tools.check()` accepts open edges at those ends.
+- **Footprint.** A variant's size is the widest of its parts, and the generator fits that to the lot. A podium, ring deck or saucer wider than the shaft is fine (the shaft just comes out narrower than the lot), but anything cantilevered far past the base shrinks the whole tower.
+- **Cap cost.** `prism()` caps take every cut on their edges, so each column cut round a shaft costs two cap triangles at the top and two at the bottom. Fin-striped shafts get expensive: keep fins sparse.
 
-> Design the central spire of Corneria City: a 340 m futuristic glass-and-white tower, the icon of the planet's capital, seen from every part of an 8 km map.
->
-> **Plinth:** a round concrete plinth (`Corneria_Concrete`), 124 m across and 18 m high, with the tower rising from its centre. Give it a broad stepped or sloped edge so it reads as a grand base, and a few large entrance openings painted, not cut, in `Corneria_Glass`.
->
-> **Shaft:** three tapering tiers of blue glass (`Corneria_Glass`):
-> - from 18 to 130 m, narrowing from 30 to 22 m radius;
-> - from 130 to 225 m, from 22 to 14 m;
-> - from 225 to 295 m, from 14 to 5 m.
->
-> **Collars:** at each tier break, a projecting white collar ring (`Corneria_Tower`), about 6 m wider than the glass and 3 m deep, like an observation deck.
->
-> **Accents:** you may add two or three slim white vertical fins or ribs running up the tiers, to make the silhouette more distinctive than a stack of cones, keeping the overall taper.
->
-> **Top:** a steel antenna (`Corneria_Steel`) from 295 to 340 m, tapering from 1.6 to 0.4 m radius, with a 3 m red warning light (`Corneria_WarningLight`) at the very top.
->
-> **Style:** smooth-shaded curves, crisp creases only at the tier breaks and collars. Origin: centre of the plinth's base.
+Stretching still happens: each entry gives the range a piece is fitted to. Keep details that would look wrong when stretched (round windows, domes, discs) to pieces that are not stretched, or to stack crowns.
 
-### 2. `Kit_RiverBridge`: suspension bridge over the river mouth
-**Used:** once, spanning the river mouth on the city's west side. The player is meant to fly under the deck and between the towers.
-**Size:** deck 300 m long (along X), 20 m wide, its top at 30 m above sea level. Origin: the centre of the deck span at **sea level** (Z = 0), so the deck top is at Z = 30. Not scaled.
-**Budget:** 5,000 triangles.
+### Building pieces: scripts with kit_tools
+Each batch of pieces is a Blender Python script, `source/kit/kit_<batch>.py`, built on [source/kit/kit_tools.py](source/kit/kit_tools.py). Read its docstring.
+- `begin(script, row)`, then `piece(name, [(suffix, Builder)])` for each piece, then `finish()`.
+- `Builder` provides:
+  - `prism()`: upright extrusions with sides split into painted cells: windows, bands, doors;
+  - `box()`;
+  - `lathe()`: round shapes, cells too;
+  - `extrude()`: side profiles pushed back, such as gables, vaults and arches;
+  - `grid()`: painted panels;
+  - `face()`;
+  - `at(matrix)`, to build a part about its own origin and move, turn or mirror it.
+- Vertices at the same spot merge, and normals are made outward per closed shell.
+- A script may add its own helpers. Don't change `kit_tools.py`'s existing behaviour, which other batches rely on. Add to it only if needed, and report the change.
 
-> Design a red suspension bridge in a cheerful cartoon style (think a simplified Golden Gate), spanning 300 m along the X axis.
->
-> **Deck:** a steel box deck (`Corneria_Steel`), 20 m wide and 3 m deep. Its top surface is at Z = 30 and carries a two-lane road on top: `Corneria_Road` with dashed `Corneria_Marking` centre line, painted as faces.
->
-> **Towers:** two towers at X = −75 and X = +75 (150 m apart). Each tower is two square legs (`Corneria_BridgeRed`, about 6 × 6 m) at Y = ±11, rising from Z = −10 (below the water line, so they look planted in the river bed) to Z = 104. Join the legs with three cross beams: just under the deck (about Z = 24), near the top (Z = 92) and capping the top (Z = 98–104). The opening between the legs and below the deck must stay clear: at least 16 m wide and 24 m tall above the water.
->
-> **Cables:** two main cables (`Corneria_Steel`, about 1.4 m thick), one per side at Y = ±9. Each runs from the deck at each end of the bridge up to the tower tops (Z = 100), and sags between the towers to about Z = 42 at mid-span. Vertical hangers (0.7 m) drop from the cables to the deck roughly every 19 m.
->
-> **Ends:** the deck ends are open (they join roads made by the level script). Leave each end as a clean flat cut, flush with X = ±150.
->
-> **Style:** keep everything chunky enough to read at 400 m; no rivets or trusswork detail.
-
-### 3. `Kit_StoneArch`: the bay's stone arches
-**Used:** 6 times along the bay, scaled uniformly 0.92–1.08. They stand in the sea, and the player flies through them in a row heading north.
-**Size:**
-
-| Feature | Size |
-|---|---|
-| Opening width | 80 m between the pillars' inner faces |
-| Clearance under the crown | 120 m above the water |
-| Outer width | about 124 m |
-| Depth | 20 m along the flight direction (Y) |
-| Top | about 125 m above the water |
-
-**Origin:** at **sea level** (Z = 0), centred in the opening. The pillar feet go down to Z = −22 (the seabed).
-**Budget:** 3,000 triangles.
-
-> **Draft:** a natural-arch draft already exists in `models/corneria/natural_arch.glb`. The user hasn't reviewed it yet; leave it alone and treat this entry as the spec.
->
-> Design a monumental arch standing in the sea, one of a row of six that the player flies through. The flight line passes through the opening along the **Y axis**, so the arch's faces look north and south.
->
-> **Form:** square-sectioned pillars rising from the seabed (Z = −22) into a semicircular arch. Keep these sizes:
-> - **Opening:** the inner faces 80 m apart, the inside of the crown 120 m above the water.
-> - **Masonry:** about 22 m thick around the opening, and 20 m deep.
-> - **Capstone:** a capstone ledge along the top.
->
-> **Material:** warm sandstone (`Corneria_Stone`). It can be either:
-> - clean, monumental masonry: a few big blocks, a keystone, a plinth band at the water line in `Corneria_Concrete`;
-> - weathered natural rock in `Corneria_Rock`, with a grassy cap in `Corneria_TreeLight`.
->
-> Pick one and say which. Either way, keep the inner opening smooth and clear: no ledges or rocks jutting into the 80 × 120 m flight space.
->
-> **Style:** smooth-shade the curve of the arch.
-
-### 4. `Kit_SeaStack`: rock pillars off the coast (3 variants)
-**Used:** 8 placements in the sea south of the coast, around the mission's start, rotated and scaled 0.85–1.15. The player weaves between them on approach.
-**Size:**
-- 150–230 m tall above the water. Make the three variants about 160, 195 and 230 m.
-- Base 75–110 m across, tapering strongly to the top.
-- Leaning up to 20 m off vertical.
-
-**Origin:** the centre of the base at **sea level**. The rock continues down to Z = −25.
-**Budget:** 800 triangles per variant.
-
-> Design three tall, leaning sea stacks: rugged rock pillars rising out of the sea, tapering to a narrow top, like the stacks off a cartoon coastline.
->
-> **Variants:**
-> - `Kit_SeaStack_A`: tall and slender.
-> - `Kit_SeaStack_B`: stout, with a ledge or notch partway up.
-> - `Kit_SeaStack_C`: split into two peaks near the top.
->
-> **Shape:** big faceted planes and a few strong ledges, in `Corneria_Rock`. These pillars should look hewn and craggy: here flat shading is fine, but keep the facets large, about 10 m and up, so the ink lines stay sparse.
->
-> **Colour:** optional green tufts on top or on ledges (`Corneria_TreeLight`), and a pale foam ring at the water line (`Corneria_Foam`), sitting just at Z = 0–1.
-
-### 5. `Kit_Lighthouse`: harbour lighthouse
-**Used:** once, on a headland east of the harbour town.
-**Size:** 58 m tall, base about 18 m across. Not scaled.
-**Budget:** 1,500 triangles.
-
-> Design a classic red-and-white striped lighthouse in a cheerful cartoon style.
->
-> **Tower:** a slightly tapering round tower, 18 m wide at the base and 13 m at the top, in four 11 m bands alternating `Corneria_Lighthouse` (red, bottom band) and `Corneria_Wall` (white). Add a small door and two or three slit windows, painted not cut.
->
-> **Top, from bottom to top:**
-> - At Z = 44, a gallery platform: 20 m across, 2 m thick, `Corneria_RoofDark`, with a simple railing ring.
-> - The lamp room, a glowing cylinder 9 m across and 6 m tall (`Corneria_Lamp`, emissive).
-> - A red conical roof (`Corneria_Lighthouse`) from Z = 52 to 58, with a small ball or vent on top.
->
-> **Base:** optionally a small keeper's hut attached at the base (white walls, `Corneria_Roof` roof), within a 30 m footprint.
-
-### 6. `Kit_Waterfall`: the plateau waterfall
-**No longer used.** The game draws the falls itself now (the `Waterfall` node, `world/waterfall.gd`, with a shader). The piece stays in the kit file but the script doesn't place it. The original brief is kept below for reference.
-
-**Used:** once, where the plateau's river drops off a cliff. The lake and river surfaces are generated by the level, not modelled.
-**Size:** 80 m wide at the lip, widening to about 100 m at the foot. It drops from Z = 120 to Z = 0, bowing out about 32 m from the cliff as it falls.
-**Origin:** the centre of the lip at Z = 120. The water flows towards **−Y**.
-**Budget:** 1,500 triangles.
-
-> Design a cartoon waterfall: a broad sheet of water pouring over a cliff lip and curving outwards as it drops 120 m into a foaming pool.
->
-> **Sheet:** a sheet, in `Corneria_Falls`, given a little thickness (about 2 m) so it has a front and back. Make it 80 m wide at the top and about 100 m wide at the bottom, curving out 16 m by Z = 85, 26 m by Z = 45 and 32 m at Z = 0.
->
-> **Break-up:** break it into three to five vertical streams or ribbons, with a couple of narrow gaps, so it isn't one flat curtain. Add a few white streak strips in `Corneria_Foam` on the face.
->
-> **Foot:** at the foot, a mound of billowing foam (`Corneria_Foam`) about 120 m across and 14 m high, made of several overlapping smooth domes, plus a few smaller foam puffs (25–45 m across) scattered downstream.
->
-> **UVs:** give the sheet a clean UV layout where V runs top to bottom along the flow, so the game can later scroll a texture down it.
->
-> **Normals:** check that all normals face outward, viewed from downstream.
+Running a script:
+```sh
+cd models/corneria/source/kit
+KIT_OUT=<scratch>/kit_test.blend KIT_PREVIEW=<scratch>/previews \
+  "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --background --python kit_<batch>.py
+```
+- **Where it builds.** `KIT_OUT` builds into a scratch copy, which is always safe. Without it, the script writes `source/kit.blend`, the real kit; only do that when asked.
+- **Checks.** `finish()` prints each piece's triangles, size (game width × height × depth), base height and centre, plus problems: open edges, parts facing in, zero-area faces, materials outside the palette. **Fix every problem.**
+- **Previews.** `KIT_PREVIEW` renders each piece front three-quarter and back three-quarter, with backface culling on, so a face pointing in shows as a hole. **Look at every preview.**
 
 ---
 
-## Corneria City kit
+## City (gen_city.py)
 
-The city is a grid of 110 m blocks with 24 m streets, so each building must fit an 86 × 86 m plot. Tall towers stand near the centre; mid-rise and low blocks are further out.
+Sizes are **width (x) × height (z) × depth (y)** in metres. "Fitted to" gives the 5th–95th percentile of what the generator asks for.
 
-**Rooftop light rule:** every tower taller than 100 m gets a `Kit_RoofLight` on top. The placement script adds it, so leave a flat spot or the antenna tip for it.
+### Kit_City_House: suburban houses
+- **Where and how many:** 5,500, in the suburbs' grid of small lots.
+- **Size:** fitted to 13–14 wide, 6–9 tall, 10–12 deep.
+- **Variants:** A–D, all about 14 × 7.5 × 12.
+- **Budget:** 150 triangles each.
 
-**Towers come in three parts:**
-- `_Base`: fixed height.
-- `_Shaft`: a section exactly **20 m tall** that stacks seamlessly on itself.
-- `_Crown`: fixed height.
+> A modern Cornerian family house:
+> - **form:** one or two storeys in white `Wall`, under a low terracotta (`Roof`) or teal (`Teal`) roof: hipped, gabled, a single curved shell, or flat with a deck;
+> - **windows:** painted `Glass` bands;
+> - **front:** a painted door on the −Y front.
+>
+> Vary the silhouette between variants: an L-shape, a gable, a curved roof, a split-level. At 300 m a street of them should read as varied little white houses with coloured roofs.
 
-The script stacks shafts to reach heights from about 60 to 250 m, and may stretch the last shaft by up to ±25 % vertically. It also scales a whole tower by ±15 % in width and depth.
+### Kit_City_Shop: old-town buildings
+- **Where and how many:** 2,950, packed tight in the old town's irregular lots.
+- **Size:** fitted to 7–18 wide, 9–21 tall, 6–14 deep.
+- **Variants:** A 12 × 11 × 8, B 9 × 17 × 8 (narrow, tall), C 17 × 12 × 10, D 16 × 19 × 11.
+- **Budget:** 250 each.
 
-### 7. `Kit_SteppedTower`: stepped skyscraper
-**Used:** about 30 % of the city's tall towers. Up to ~245 m with its antenna.
-**Footprint:** 55 × 52 m (scaled 48–62 by 44–60).
-**Budget:** Base 600, Shaft 300, Crown 800 triangles.
+> Mediterranean-futurist townhouses and shops. The old town should feel warmer and older than the glass city round it.
+> - **walls and roofs:** cream (`Cream`) walls with `Stone` trims, terracotta (`Roof`) or teal roofs; one variant may have a small dome or a rounded corner turret;
+> - **ground floor:** a painted arcade or a shopfront in `Glass`, with a `AwningBlue` or `Orange` awning band;
+> - **upper floors:** tall windows painted on.
 
-> Design a stepped white skyscraper in clean retro-futurist style, in three parts that stack.
->
-> **`_Base`** (Z 0–20): the full 55 × 52 m footprint, in `Corneria_Tower`, with a glass lobby band (`Corneria_Glass`) and a slight plinth.
->
-> **`_Shaft`** (20 m, tiles vertically): the full footprint, with white corners and horizontal glass bands. Each band is 3 m tall, painted as faces, with a 1 m projecting white ledge (`Corneria_Tower`). It must match itself perfectly top to bottom.
->
-> **`_Crown`** (fixed, about 120 m tall): the two setbacks that give the tower its stepped look.
-> - A middle tier at 78 % of the width and depth, about 60 m tall.
-> - A top tier at 56 %, about 40 m tall.
-> - Each setback has a glass band and ledge just below its roof.
-> - A steel antenna (`Corneria_Steel`), 1.5 → 0.5 m radius, about 20 m tall, on top.
->
-> **Style:** keep the setbacks crisp and the walls flat.
+### Kit_City_Apartment: mid-rise housing
+- **Where and how many:** 655, in the mid-rise districts.
+- **Size:** fitted to 13–36 wide, 15–29 tall, 7–28 deep.
+- **Variants:** A 32 × 22 × 12 (slab), B 22 × 26 × 20 (block), C 16 × 18 × 10 (small).
+- **Budget:** 400 each.
 
-### 8. `Kit_RoundTower`: round glass tower
-**Used:** about 25 % of the tall towers. Up to ~245 m.
-**Footprint:** 22 m radius (scaled 18–26 m).
-**Budget:** Base 600, Shaft 300, Crown 800 triangles.
+> Cornerian apartment blocks: stone and white bodies, with balcony bands painted as long horizontal `Glass` / `GlassDark` strips.
+> - **form:** a set-back top storey, or a rounded end;
+> - **colour:** an accent (`Teal` or `Orange`) on a stair tower or a roof edge.
 
-> Design a cylindrical blue glass tower with white rings and a white dome, in three stacking parts. Use smooth shading throughout and 20–24 segments.
->
-> **`_Base`** (Z 0–12): a wider concrete drum (`Corneria_Concrete`), radius 30 m, with painted glass entrances.
->
-> **`_Shaft`** (20 m, tiles): a glass cylinder (`Corneria_Glass`), radius 22 m, with one projecting white ring (`Corneria_Tower`, 1 m proud, 2.5 m tall) at its middle. It must tile seamlessly.
->
-> **`_Crown`:**
-> - a white dome (`Corneria_Tower`), radius 22 m and 13 m tall;
-> - a ring of small glass windows painted around its rim;
-> - a tapering steel antenna (`Corneria_Steel`, 1.2 → 0.4 m radius, about 26 m) on top.
+### Kit_City_Office: mid-rise and downtown offices (stacks)
+- **Where and how many:** 1,050, the bulk of the city's skyline.
+- **Size:** fitted to 12–42 wide, 31–85 tall, 8–29 deep.
+- **Variants:** stacks A–D:
+  - A 36 × 16 footprint (slab);
+  - B 24 × 22;
+  - C 16 × 12 (thin);
+  - D 30 × 28 (deep).
+- **Parts:** base about 8 m (a lobby storey: a glass ground floor, a podium edge or canopy), shaft 3 storeys (12 m), crown 4–8 m (roof plant, a parapet, a small pad or fins).
+- **Budget:** base 250, shaft 150, crown 300.
 
-### 9. `Kit_SlabTower`: slab tower / mid-rise block
-**Used:** about 25 % of the tall towers, plus about half of the mid-rise ring (36 × 56–76 m, 35–140 m tall).
-**Footprint:** 55 × 38 m (scaled 36–64 by 32–76).
-**Budget:** Base 400, Shaft 250, Crown 400 triangles.
+> Stone-and-glass offices: alternating horizontal bands of `Cream` or `Tower` and `Glass`, or vertical white fins between glass strips.
+> - **Corners:** a curved glass corner on at least one variant.
+> - **Colour:** teal or orange accents on the crowns.
 
-> Design a rectangular glass slab tower framed by white corner columns, in three stacking parts.
->
-> **`_Base`** (Z 0–10): a glass lobby, recessed 2 m, under the corner columns.
->
-> **`_Shaft`** (20 m, tiles):
-> - a glass block (`Corneria_Glass`) inset 2 m from the footprint;
-> - four 6 × 6 m white corner columns (`Corneria_Tower`) running full height;
-> - thin horizontal white floor lines every 4 m, painted as faces.
->
-> **`_Crown`** (about 8 m): a white roof cap 4 m thick overhanging the glass, with one or two rooftop boxes (plant rooms, `Corneria_RoofDark`).
->
-> **Stretching:** this one is stretched the most (36–76 m in depth), so avoid features that distort when stretched along Y.
+### Kit_City_Tower: downtown skyscrapers (stacks)
+- **Where and how many:** 102, in the three downtown clusters, between 87 and 205 m tall.
+- **Size:** fitted square, 25–45 per side.
+- **Variants:** stacks A (28 × 28), B (36 × 36), C (44 × 44).
+- **Parts:** base 16–24 m (a podium, wider or set back, with a glass lobby); shaft 4 storeys (16 m); crown 20–40 m. Make the crown distinctive:
+  - a stepped spire;
+  - a ring and antenna;
+  - a landing pad on a cantilever;
+  - a canted glass top.
+- **Budget:** base 500, shaft 250, crown 1,000.
 
-### 10. `Kit_TwinTowers`: twin towers with a sky bridge
-**Used:** about 20 % of the tall towers. Up to ~245 m.
-**Footprint:** 63 × 38 m (scaled 56–70).
-**Budget:** 2,500 triangles.
+> The *Assault* skyline: tall white-and-glass towers with strong vertical lines: white mullion fins over blue glass, or glass with white corner piers.
+> - **Light:** `LightStrip` lines up the crown's edges.
+> - **Safety:** a red `WarningLight` at the top of each antenna.
 
-> Design a pair of square glass towers on a shared podium, linked by a sky bridge.
->
-> **Podium:** 63 × 38 m and 14 m tall, in `Corneria_Concrete`.
->
-> **Towers:** two glass shafts (`Corneria_Glass`), each 24 × 24 m, centred 20 m either side of the middle along X. The west (−X) tower is 100 % of the height; the east tower is 86 %. Each has a white cap (`Corneria_Tower`, 3 m) and white vertical corner trims.
->
-> **Sky bridge:** at 62 % of the full height, a white sky bridge, 19 × 9 m and 7 m tall, with a glass band.
->
-> **Parts:** deliver it with the same Base / Shaft / Crown idea:
-> - **`_Base`:** the podium.
-> - **`_Shaft`:** a 20 m section of both shafts that tiles.
-> - **`_Bridge`:** the sky bridge as its own object (the script places it at 62 %).
-> - **`_CrownWest` and `_CrownEast`:** one cap per tower.
+### Kit_City_RoundTower: drum towers (stacks)
+- **Where and how many:** 48, downtown, between 90 and 190 m.
+- **Size:** fitted round, 25–46 across.
+- **Variants:** stacks A (30 across), B (42 across).
+- **Parts:** as the towers.
+- **Budget:** base 500, shaft 300, crown 1,000.
 
-### 11. `Kit_LowBuilding`: low block (3 variants)
-**Used:** hundreds of times: the city's outer ring (34 × 34 m, 10–32 m tall), mid-rise blocks (38 × 76 m, up to 90 m) and the base's barracks (15 × 50 × 8 m). Scaled freely on all three axes.
-**Budget:** 150 triangles each.
+> Cylindrical glass towers:
+> - **shaft:** banded white and glass, 16–20 segments, smooth-shaded;
+> - **base:** a ring podium;
+> - **crown:** a domed or saucer top with a ring deck and a mast.
 
-> Design three simple low-rise buildings, each modelled as a 10 × 10 × 10 m unit cube that the script stretches to any size (10–90 m tall, 15–76 m wide or deep). Because of that stretching, **use only flat faces, with all detail painted as material faces in proportions that survive stretching**.
+### Kit_City_Spire: the central spire
+- **Where and how many:** 1, the city's icon, seen from anywhere on the map. Placed at its own size, not stretched.
+- **Size:** 340 m tall to the antenna tip; footprint **at most 60 × 60**, since the lot it stands on is no larger.
+- **Budget:** 6,000.
+
+> The capital's spire, more striking than any other tower:
+> - **plinth:** a stepped plinth with a glass lobby ring;
+> - **shaft:** three or four tapering glass tiers in white collars, with two or three white ribs running up the tiers;
+> - **top:** an observation ring near the top, then an antenna with `LightStrip` bands and a red `WarningLight` tip.
 >
-> **Variants:**
-> - `Kit_LowBuilding_A`: an office block. Walls `Corneria_Tower`, two horizontal window bands per 10 m.
-> - `Kit_LowBuilding_B`: an apartment block. Walls `Corneria_Wall`, vertical window strips.
-> - `Kit_LowBuilding_C`: a plain concrete block (`Corneria_Concrete`) with one band of windows near the top.
->
-> **Roof:** each has a flat roof with a dark inset roof panel (`Corneria_RoofDark`, inset 10 % from the edges, 0.2 units high) and one small rooftop box.
+> Smooth-shaded curves; creases only at the tier breaks.
 
-### 12. `Kit_RoofLight`: rooftop aircraft warning light
-**Used:** on top of every tower over 100 m and the tallest masts (a few dozen placements). Not scaled.
-**Size:** about 3 m. **Budget:** 80 triangles.
+### Kit_City_Warehouse: port warehouses
+- **Where and how many:** 390, in the industrial port.
+- **Size:** fitted to 35–78 wide, 10–18 tall, 25–57 deep.
+- **Variants:** A 50 × 14 × 36, B 72 × 16 × 50, C 40 × 12 × 50.
+- **Budget:** 200 each.
 
-> Design a small aircraft warning beacon for rooftops: a short steel post (`Corneria_Steel`) with a glowing red lens on top (`Corneria_WarningLight`, emissive). About 3 m tall overall, the lens about 2 m across.
->
-> It must read as a bright red dot from 500 m, so keep the lens a big simple shape (a squat cylinder or a faceted ball). Origin: the bottom of the post.
+> Big port sheds:
+> - **roofs:** sawtooth, barrel-vaulted (smooth) or flat with roof vents;
+> - **walls:** `Steel` / `Concrete`, with `RoofDark` roofs;
+> - **front:** big painted loading doors on the −Y front and `TaxiYellow` / `HazardBlack` stripes on door frames.
 
-### 13. `Kit_Street`: city street pieces
-**Used:** across the whole city grid. The script lays straight runs and crossings.
-**Size:** 24 m wide.
-**Budget:** 40 triangles each.
+### Kit_City_Tank: storage tanks
+- **Where and how many:** 160, in the port's tank farms and the base's fuel depot.
+- **Size:** fitted round, 18–26 across, 12–18 tall.
+- **Variants:** A 24 × 16, B 20 × 12 (squat, a domed top).
+- **Budget:** 120 each.
 
-> Design flat street tiles for a 24 m wide city street, 0.6 m thick. The top is at Z = 0.6 and the bottom at Z = 0, so the slab is 0.6 m thick.
->
-> **Pieces:**
-> - `Kit_Street_Straight`: 24 × 10 m along Y, tiling end to end. Tarmac `Corneria_Road`, with a 4 m pale pavement strip each side (`Corneria_Concrete`) and a dashed white centre line (`Corneria_Marking`, 3 m dashes in each 10 m).
-> - `Kit_Street_Crossing`: 24 × 24 m. Tarmac with pavement corners and zebra crossings on all four sides.
->
-> **Style:** all markings painted as faces, no raised geometry.
+> Cylindrical `Steel` or `Wall` tanks with a shallow conical or domed roof and one painted `Orange` or `Teal` band. 16 segments, smooth.
 
-### 14. `Kit_StreetBridge`: street bridge over the river (modular)
-**Used:** where city streets cross the river, about 4 bridges of 100–400 m.
-**Size:** 24 m wide. Deck top at Z = 0 at the origin; piers go down to Z = −20.
-**Budget:** 600 triangles per piece.
+### Kit_City_Crane: harbour gantry cranes
+- **Where and how many:** 8, in rows along the port's quays. Not stretched.
+- **Size:** 10 × 50 × 30: the legs straddle 10 m along x, and the boom reaches 15 m each way along y.
+- **Budget:** 600.
 
-> Design a modular concrete-and-steel road bridge, 24 m wide, built from repeating spans.
->
-> **`Kit_StreetBridge_Span`:** a 70 m deck section along Y.
-> - **Deck:** a steel box deck (`Corneria_Steel`), 3 m deep, with a road surface matching `Kit_Street_Straight` and low parapets.
-> - **Underside:** a gently arched underside or a simple girder line.
-> - It must tile end to end seamlessly.
->
-> **`Kit_StreetBridge_Pier`:** a concrete pier (`Corneria_Concrete`), 6 m thick across the flow and about 16 m wide, from the deck underside (Z = −3) down to Z = −20. The script places one at each span joint.
+> A container gantry crane: a `TaxiYellow` portal frame on four legs, with a boom along y and a machinery house on top. Keep the legs and beams chunky: at least 1.2 m.
 
----
+### Kit_City_Bridge: road bridge deck
+- **Where and how many:** 4, carrying the arterial roads over the river and inlets.
+- **Size:** 24 × 4 × 100, fitted to 28 wide and stretched **1.5–3× along y** (its length).
+- **Budget:** 200.
 
-## Harbour town
+> A road deck: a `Concrete` slab with `Steel` side railings as solid low parapets, and an `Orange` stripe along each side face. Nothing may change along the length (it is stretched): no lamp posts, no cross details. Its top is flush with the road, so it has no road paint of its own.
 
-### 15. `Kit_House`: harbour-town house (4 variants)
-**Used:** 45 houses in the harbour town, rotated freely. Uniform scale 0.75–1.3, plus up to 1.6 × stretch in depth (Y).
-**Reference size:** 18 × 24 m footprint, 10 m walls, ridge 6 m above the walls. Origin: footprint centre, ground level.
-**Budget:** 300 triangles each.
+### Kit_City_Pier: bridge piers
+- **Where and how many:** 11, under the bridge decks, from the bed up to the deck.
+- **Size:** 17 × 20 × 8 (17 across the road), fitted to 16–20 tall.
+- **Budget:** 100.
 
-> Design four seaside cottages in a cheerful cartoon Mediterranean style.
->
-> **Style:**
-> - white walls (`Corneria_Wall`);
-> - terracotta pitched roofs (`Corneria_Roof`) overhanging about 1 m on every side;
-> - painted windows and doors (`Corneria_Glass` windows, `Corneria_RoofDark` door), no recesses.
->
-> **Variants:**
-> - `Kit_House_A`: simple gable house, the ridge along Y.
-> - `Kit_House_B`: two storeys, with a chimney.
-> - `Kit_House_C`: L-shaped, two roof ridges meeting.
-> - `Kit_House_D`: a small shop with a striped awning on the front (−Y) face. The awning can be any bright colour; add a new `Corneria_` material.
->
-> **Roof faces:** the roof is an open shape. Model it with thickness, or make sure every face points outward, including the underside of the overhang (seen from below when flying low).
-
-### 16. `Kit_Pier`: stone harbour pier
-**Used:** 3 times, jutting south from the harbour into the sea.
-**Size:** 14 m wide, 240 m long along Y, deck top 3 m above sea level. Origin: the shore end, at sea level, centred.
-**Budget:** 400 triangles.
-
-> Design a long stone harbour pier (`Corneria_Stone`), 14 m wide and 240 m long, extending along **−Y** from its origin (the shore end) out to sea.
->
-> **Deck:** at Z = 3, with a low parapet along one side, a few bollards, and a small lamp or beacon post at the far end (a `Corneria_Lighthouse` red cap).
->
-> **Below the deck:** the sides drop to Z = −5 (below the water line). Add buttresses every 30 m. Optionally, a few steps down to the water.
-
-### 17. `Kit_Boat`: small harbour boat (2 variants)
-**Used:** 6 boats moored beside the piers, slightly rotated.
-**Size:** 6 m wide, 16 m long. The hull's waterline is at Z = 0, sitting about 1 m into the water.
-**Budget:** 250 triangles each.
-
-> Design two small cartoon harbour boats, each 16 m long along Y with the bow at −Y.
->
-> **Variants:**
-> - `Kit_Boat_A`: a fishing boat. White hull (`Corneria_Wall`) with a red stripe (`Corneria_Lighthouse`), a small wheelhouse with glass windows (`Corneria_Glass`) towards the stern, and a short mast.
-> - `Kit_Boat_B`: a small motor launch. Low, sleek hull, an open cockpit and a windscreen.
->
-> **Hull:** smooth-shaded, a simple chunky shape.
+> A `Concrete` pier: a wall with rounded ends, or two columns with a cap beam. Plain; it stands in water.
 
 ---
 
-## Military base
+## Trees and rocks (gen_wilds.py, and the city's and villages' trees)
 
-The Cornerian military base: a runway, hangars and support buildings on flat ground, all at one level. Use `Corneria_Military` (olive), `Corneria_Concrete` and `Corneria_Wall`, with `Corneria_Marking` details.
+### Kit_Tree_Broadleaf / Kit_Tree_Pine: trees
+- **Where and how many:** broadleaves about 53,000 (forests, parks, gardens); pines about 28,000 (hills and highlands).
+- **Size:** scaled uniformly 1.0–2.3× (and height ±10 %) from their own size: broadleaf about 10 × 14, pine about 7 × 16.
+- **Variants:** broadleaf A–C, pine A–C.
+- **Budget:** **60 triangles each.** This is the hardest budget in the kit; a forest is thousands of them.
 
-### 18. `Kit_Runway`: runway and taxiway pieces
-**Used:** one runway (70 × 1,300 m), one parallel taxiway (30 × 900 m) and three cross taxiways (200 × 26 m).
-**Budget:** 300 triangles per piece.
+> Stylised trees in the *Assault* look:
+> - **broadleaf crown:** two or three lumpy low-poly blobs or a faceted rounded crown, in `TreeLight` with a `Tree` underside or second blob;
+> - **pine crown:** two or three stacked cones in `Tree`;
+> - **trunk:** a short `Trunk` trunk, 4–5 sides.
+>
+> No ink lines are drawn on foliage, so the colour bands carry the shape. Vary the silhouette between variants: round, tall, lopsided.
 
-> Design flat airfield surface pieces, each 0.6 m thick, with the top at Z = 0.6. All markings are painted faces, not raised.
->
-> **`Kit_Runway_Main`:** a 70 × 1,300 m runway along Y, in `Corneria_Road`. Markings in `Corneria_Marking`:
-> - a dashed centre line (30 m dashes, 63 m apart);
-> - six 4 × 40 m threshold bars at each end;
-> - edge lines;
-> - painted runway numbers at each end, as simple blocky numerals.
->
-> **`Kit_Runway_Taxiway`:** a 30 m wide strip, 100 m long along Y and tiling, with a yellow centre line. Add a `Corneria_TaxiYellow` material, about (0.95, 0.80, 0.20).
->
-> **`Kit_Runway_Apron`:** a 60 × 60 m concrete pad (`Corneria_Concrete`) with parking bays.
+### Kit_Rock_Boulder / Kit_Rock_Outcrop: rocks
+- **Where and how many:** boulders 4,500 on slopes and hilltops; outcrops 660 on steep high ground.
+- **Size:**
+  - boulders fitted to 4–12 wide, 3–8 tall;
+  - outcrops to 20–45 wide, 11–29 tall;
+  - each sunk 30 % of its height into the ground.
+- **Variants:** A–C each, with different proportions: flat, round, tall.
+- **Budget:** boulder 40, outcrop 120.
 
-### 19. `Kit_Hangar`: Quonset hangar (2 variants)
-**Used:** 4 large hangars beside the runway, plus 1 small one used as the mess hall.
-**Size:**
-- Large: 60 m wide, 30 m tall (a half-cylinder of radius 30 m), 90 m long along Y.
-- Small: radius 11 m, 44 m long.
+> Faceted `Rock`: a few big flat facets, flat-shaded, like cut stone in a cartoon. An outcrop can be a cluster of two or three slabs, or a stepped crag with a `TreeLight` grassy top face.
 
-**Budget:** 1,000 triangles (large), 500 (small).
+### Kit_Rock_Stack: sea stacks
+- **Where and how many:** 35, in clusters in shallow water.
+- **Size:** fitted to 22–35 wide, 50–105 tall, standing on the sea bed (up to 30 m deep).
+- **Variants:** A 24 × 60, B 30 × 50, C 20 × 80.
+- **Budget:** 300.
 
-> Design a military Quonset hangar: a half-cylinder shell lying along Y, in `Corneria_Military`, smooth-shaded, with 16–20 segments over the curve.
->
-> **Large hangar (`Kit_Hangar_Large`):**
-> - **Front (−Y) end:** a large sliding door, 40 m wide and 22 m tall. Paint it as darker panels (add `Corneria_MilitaryDark`, about (0.30, 0.34, 0.28)) with door seams. Above the door, a painted unit number in `Corneria_Marking`.
-> - **Back end:** closed, with a small personnel door.
-> - **Ribs:** three or four subtle ribs over the shell, raised at most 0.5 m.
->
-> **Small hangar (`Kit_Hangar_Small`):** a mess hall, radius 11 m and 44 m long. It has a normal door and a row of windows along each side instead of the big door.
->
-> **Closure:** both ends must be closed walls.
-
-### 20. `Kit_ControlTower`: airfield control tower
-**Used:** once.
-**Size:** 57 m tall including the beacon. Base about 12 m across, cab 24 m across.
-**Budget:** 1,200 triangles.
-
-> Design an airfield control tower.
->
-> **Shaft:** a slender concrete shaft (`Corneria_Concrete`), 12 m across at the base and 10 m at the top, 45 m tall, with a vertical window strip.
->
-> **Cab:** an octagonal glass cab (`Corneria_Glass`) from Z = 45 to 53, flaring outwards (22 m across at the bottom, 24 m at the top), with white mullions.
->
-> **Roof:** a dark overhanging roof (`Corneria_RoofDark`, 26 m across, 2 m thick).
->
-> **Top:** a small antenna, and a `Corneria_WarningLight` beacon on top at Z ≈ 55.
->
-> **Base:** an optional low annex building at the base, within a 30 m footprint.
-
-### 21. `Kit_RadarDish`: radar dish
-**Used:** once.
-**Size:** pole 20 m tall, dish 28 m across. **Budget:** 800 triangles.
-
-> Design a radar installation.
->
-> **Pole:** a steel lattice or tube pole (`Corneria_Steel`), 3 m thick and 20 m tall, on a small concrete pad.
->
-> **Dish:** a 28 m parabolic dish (`Corneria_Wall` face, `Corneria_Steel` back and frame), tilted about 35° up and facing −Y, with a feed horn on struts at its focus.
->
-> **Normals:** the dish is an open bowl. Give it real thickness, about 0.5 m, so both the inside and the back render.
->
-> **Dish as its own object:** make it a separate object, `Kit_RadarDish_Dish`, with its origin at the pivot where it meets the pole, so the game can rotate it.
-
-### 22. `Kit_FuelTank`: fuel tank
-**Used:** 3 in a row.
-**Size:** 20 m across, 14 m walls plus a 3 m domed roof. **Budget:** 500 triangles.
-
-> Design a squat cylindrical fuel storage tank.
->
-> **Body:** white walls (`Corneria_Wall`), radius 10 m and 14 m tall, smooth-shaded, with a gentle domed roof (3 m high).
->
-> **Details:**
-> - a red band near the top (`Corneria_Lighthouse`);
-> - a painted hazard number;
-> - a spiral or straight access ladder in `Corneria_Steel` (a flat strip, not individual rungs);
-> - a low concrete bund ring around the base (`Corneria_Concrete`, 1 m high, 26 m across).
-
-### 23. `Kit_Headquarters`: base headquarters
-**Used:** once.
-**Size:**
-- Footprint about 76 × 92 m in an L shape: a 22 × 92 m wing along Y, plus a 54 × 22 m wing off its north end towards +X.
-- 15 m tall (three storeys).
-
-**Budget:** 2,000 triangles.
-
-> Design the base's headquarters: a three-storey L-shaped administrative building, modernist and military-tidy.
->
-> **Main wing:** 22 × 92 m along Y.
->
-> **Second wing:** 54 × 22 m, joined at the main wing's north (+Y) end and extending towards +X.
->
-> **Walls and roof:**
-> - **Walls:** `Corneria_Wall`.
-> - **Window bands:** three continuous horizontal glass bands (`Corneria_Glass`), 1.8 m tall, at Z ≈ 3, 8 and 12.5.
-> - **Roof:** a flat roof with a dark inset (`Corneria_RoofDark`), and a few rooftop units.
->
-> **Front (west, −X):**
-> - **Porch:** an entrance porch on the main wing's west face (`Corneria_Concrete`, 8 × 12 m, 4 m tall), with a painted emblem above it.
-> - **Flagpole:** in front of the porch, an 18 m steel flagpole with a red flag (`Corneria_BridgeRed`). The flag is a thin box, about 3 × 5 m and 0.3 m thick, so it's visible from both sides.
->
-> **Roof antenna:** a 14 m steel antenna on the roof near the south end.
-
-### 24. `Kit_Car` and `Kit_ParkingLot`
-**Used:** a 56 × 36 m parking lot with about 11 cars.
-**Budget:** car 120 triangles, lot 100.
-
-> **`Kit_ParkingLot`:** a flat 56 × 36 m tarmac pad (`Corneria_Road`), 0.4 m thick, with the top at Z = 0.4. Paint two rows of eight parking bays in `Corneria_Marking`.
->
-> **`Kit_Car`:** a chunky, toy-like cartoon car, 2.2 m wide, 4.4 m long along Y and 1.6 m tall, with the front at −Y.
-> - Body in one material slot named `Corneria_CarBody`. The game will recolour cars, so model the body with that one material.
-> - Windows in `Corneria_Glass`, wheels in `Corneria_RoofDark`.
-> - Simple rounded shape, smooth-shaded.
-
-### 25. `Kit_Depot` and `Kit_Truck`: maintenance depot and military truck
-**Used:** one depot, 4 trucks parked in front.
-**Size:** depot 64 × 36 m, 11 m tall; truck 3.4 m wide, 8 m long, 3.2 m tall.
-**Budget:** depot 600 triangles, truck 250.
-
-> **`Kit_Depot`:** a vehicle maintenance shed in `Corneria_Military`.
-> - Four large roller doors on the front (−Y) face, in darker panels (`Corneria_MilitaryDark`).
-> - A shallow-pitched roof (`Corneria_RoofDark`).
-> - A painted hazard stripe along the door tops: alternating yellow and black, as painted faces. Add a `Corneria_HazardBlack` material, about (0.12, 0.12, 0.14), and use `Corneria_TaxiYellow` for the yellow.
->
-> **`Kit_Truck`:** a chunky military utility truck, front at −Y.
-> - Cab in `Corneria_Military`, with `Corneria_Glass` windows.
-> - A canvas-covered cargo bed (`Corneria_MilitaryDark`).
-> - Six chunky wheels (`Corneria_RoofDark`).
-> - Toy-like proportions.
-
-### 26. `Kit_Helipad`: helipad
-**Used:** once. **Size:** 30 m across. **Budget:** 150 triangles.
-
-> **`Kit_Helipad`:** a round concrete helipad, 30 m across and 0.4 m thick, with the top at Z = 0.4.
-> - Dark surface (`Corneria_Road`).
-> - A white edge ring and a white "H" (`Corneria_Marking`), painted as faces.
-> - Four small yellow edge lights: low boxes in `Corneria_TaxiYellow`, raised 0.3 m.
-
-### 27. `Kit_RadioMast`: lattice radio mast
-**Used:** once (possibly reused on mountain tops later).
-**Size:** 64 m tall, legs spreading to 8 m square at the base, 1.6 m at the top.
-**Budget:** 1,200 triangles.
-
-> Design a tapering four-legged lattice radio mast.
->
-> **Legs:** four corner legs (`Corneria_BridgeRed`, 0.6 m square beams), tapering from an 8 × 8 m base to a 1.6 × 1.6 m top over 64 m.
->
-> **Bracing:** diagonal cross braces (`Corneria_Steel`, 0.3 m) between the legs in four levels.
->
-> **Bands:** alternate red and white (`Corneria_Wall`) bands on the legs, like aviation-marked masts.
->
-> **Top:** a few small antenna panels near the top, and a `Corneria_WarningLight` beacon at the tip.
->
-> **Style:** it should read as a red-and-white lattice from 300 m. The beams are thin, so keep their count modest: the ink lines will outline each one.
-
-### 28. `Kit_GuardPost`: gate guard post
-**Used:** once, where the road enters the base.
-**Size:** booth 4 × 4 m, 3 m tall; barrier arm 14 m long.
-**Budget:** 300 triangles.
-
-> Design a small checkpoint at the base gate.
->
-> **Booth:** a guard booth (`Corneria_Wall`, 4 × 4 m and 3 m tall) with glass windows on all sides and an overhanging flat roof (`Corneria_RoofDark`, 5 × 5 m).
->
-> **Barrier:** next to it, a barrier post with a 14 m horizontal barrier arm at 1.2 m height, extending towards −X across the road. The arm is striped red and white (`Corneria_Lighthouse` / `Corneria_Wall`) and is 0.4 m thick.
->
-> **Arm as its own object:** make the arm a separate object, `Kit_GuardPost_Arm`, with its origin at the hinge, so it could swing up.
+> Tall faceted rock pillars in `Rock`:
+> - **form:** narrowing or overhanging a little near the top, and a grassy `TreeLight` cap;
+> - **strata:** a band or two of `Stone`.
 
 ---
 
-## Vegetation
+## The harbour town, villages and farms (gen_town.py)
 
-### 29. `Kit_Tree`: trees (3 variants)
-**Used:** about **6,000 times**, in forest clumps on the hills and in city parks, rotated randomly and scaled 11–19 m tall. **No collision**: the player flies through them.
-**Reference size:** 15 m tall, crown 10 m across.
-**Budget:** **40 triangles** per tree (hard limit: they're drawn thousands of times).
+### Kit_Town_House: coastal houses
+- **Where and how many:** 1,650 in the harbour town and villages.
+- **Size:** fitted to 8–22 wide, 7–14 tall, 6–16 deep.
+- **Variants:** A 10 × 9 × 10 (cottage), B 14 × 10 × 10, C 20 × 12 × 10 (a terrace row), D 14 × 13 × 14 (two storeys).
+- **Budget:** 200 each.
 
-> Design three very low-poly cartoon trees, readable from 50–500 m. Each is a few chunky shapes: no individual leaves or branches.
+> A seaside town:
+> - **walls and roofs:** whitewashed `Wall` with terracotta `Roof`, some with `Teal` or `AwningBlue` roofs or shutters painted on;
+> - **front:** painted doors on the −Y front;
+> - **details:** a chimney or a little balcony.
 >
-> **Variants:**
-> - `Kit_Tree_Conifer`: two or three stacked cones of foliage in `Corneria_Tree`, with a short brown trunk. Add `Corneria_Trunk`, about (0.40, 0.28, 0.18).
-> - `Kit_Tree_ConiferLight`: the same idea in `Corneria_TreeLight`, a slightly different shape.
-> - `Kit_Tree_Round`: a round deciduous tree for city parks, a smooth-shaded low-poly ball crown in `Corneria_TreeLight` on a trunk.
->
-> **Geometry:** 5–6 segments per cone. The bottom of each cone must be closed, or face outward, since players see the underside when flying low. The trunk base is at Z = 0 and goes 1 m below it (Z = −1), so trees on slopes don't float.
+> Cheerful, simple, Mediterranean.
+
+### Kit_Town_Hall: town and village halls
+- **Where and how many:** 5. Placed at its own size: keep the footprint 18 × 26.
+- **Size:** 18 × 16 × 26.
+- **Budget:** 800.
+
+> A civic hall: `Cream` walls, a terracotta roof and a small clock tower or teal dome rising above it, with an arcaded front painted on −Y.
+
+### Kit_Town_Shed: harbour sheds
+- **Where and how many:** 7.
+- **Size:** fitted to 7–23 wide, 8–11 tall, 6–18 deep.
+- **Variants:** A 12 × 9 × 10, B 22 × 10 × 16.
+- **Budget:** 150.
+
+> Fishing sheds and boathouses: `Steel` or timber (`Trunk`) walls, `RoofDark` or `Teal` pitched roofs, big painted doors.
+
+### Kit_Town_Lighthouse: the lighthouse
+- **Where and how many:** 1, on a headland east of the town. Not stretched.
+- **Size:** 10 × 36 × 10 (the lantern may go above 36 m, up to 40).
+- **Budget:** 1,500.
+
+> A tapering round tower in `Wall` with `Lighthouse` red bands, a gallery deck with a railing (a solid low wall), and a glass lantern with a glowing `Lamp` inside and a `RoofDark` cap. Smooth-shaded.
+
+### Kit_Town_Jetty: jetty decks
+- **Where and how many:** 5. Stretched **3.3–4.1× along y**.
+- **Size:** 6 × 2 × 60.
+- **Budget:** 60.
+
+> A timber (`Trunk`) deck slab, uniform along its length (it is stretched): plank lines may run along y only.
+
+### Kit_Town_Post: jetty legs
+- **Where and how many:** 120. Stretched 0.3–2× in height.
+- **Size:** 0.8 × 4 × 0.8.
+- **Budget:** 12.
+
+> A plain 4- to 6-sided `Trunk` post.
+
+### Kit_Town_Boat: moored boats
+- **Where and how many:** 9, floating, sunk a little.
+- **Size:** 5 × 3 × 14, not stretched; the waterline is at about 1 m.
+- **Variants:** A (fishing boat: a wheelhouse aft), B (motor yacht).
+- **Budget:** 400.
+
+> Hulls in `AwningBlue`, `Wall` or `Teal`, with a cabin; bow towards −Y.
+
+### Kit_Farm_Barn / Kit_Farm_Silo: farmsteads
+- **Where and how many:** 15 each. Not stretched.
+- **Size:** barn 16 × 10 × 26; silo 7 × 18 × 7.
+- **Budget:** barn 400, silo 200.
+
+> - **Barn:** a big pitched or gambrel `Roof`-red barn with `Wall` trims and a painted cross-braced door.
+> - **Silo:** a `Steel` drum with a domed `Teal` cap.
 
 ---
 
-## Optional
+## The military base (gen_base.py)
 
-### 30. `Kit_GreatFox` (optional, large job): the team mothership
-**Why:** the current Great Fox model ([models/great_fox/](../great_fox/)) came without a licence. It appears behind the Corneria start and on every mission, so a home-made replacement would remove that problem.
-**Size:** about 460 m long, 310 m wide, 100 m tall. Bow at −Y, origin at the middle of the hull.
-**Budget:** 15,000 triangles.
+The Cornerian Army airfield. Everything is placed at its own size: **keep the footprints**. Practical forms in `Military`, `MilitaryDark`, `Concrete` and `Steel`, with `TaxiYellow` / `HazardBlack` stripes, `Orange` markers and a few `LightStrip` details for the sci-fi look.
 
-> Design an original large starship carrier inspired by the Great Fox from *Star Fox 64*:
-> - a long white-and-grey hull with a pointed bow;
-> - two swept forward-reaching side prongs;
-> - large rear engines;
-> - blue and red accent stripes;
-> - a glowing hangar opening (emissive) underneath.
->
-> **Viewing distance:** it's seen only from far away (700 m and more, through haze), so favour a bold silhouette and large colour areas over detail.
->
-> **Materials and normals:** follow the global brief: flat materials, outward normals, smooth-shaded curves. Name the materials `GreatFox_<Name>`.
->
-> **Delivery:** export it to `models/great_fox_new/great_fox.glb` with its `.blend` source beside it.
+### Kit_Base_Hangar
+- **Where and how many:** 10, in a row facing the apron.
+- **Size:** 60 × 22 × 50, its doors on the −Y front.
+- **Budget:** 1,200.
+
+> A fighter hangar with a barrel-vaulted (smooth) or angled roof. Its front is huge painted doors (`MilitaryDark`, a `TaxiYellow` / `HazardBlack` frame) with a large painted hangar number panel (`Marking`).
+
+### Kit_Base_ControlTower
+- **Where and how many:** 1.
+- **Size:** 14 × 40 × 14.
+- **Budget:** 1,500.
+
+> A `Concrete` shaft with a wide glass cab (`GlassDark`), canted outward, with a `RoofDark` roof, a mast and a `WarningLight`.
+
+### Kit_Base_HQ
+- **Where and how many:** 1.
+- **Size:** 70 × 24 × 40.
+- **Budget:** 1,500.
+
+> Command headquarters: a long `Concrete` block with a glass band, an entrance canopy on −Y, a rooftop helipad (`Marking` H on `RoofDark`) and a comms mast.
+
+### Kit_Base_Barracks / Kit_Base_Shed
+- **Where and how many:** 72 barracks, 54 sheds.
+- **Size:** barracks 40 × 10 × 14; shed 30 × 8 × 20.
+- **Budget:** 300 / 200.
+
+> Long low `Military` buildings: painted windows, a `MilitaryDark` low-pitched roof; the shed with a big door.
+
+### Kit_Base_Radar
+- **Where and how many:** 3.
+- **Size:** 18 × 22 × 18.
+- **Budget:** 1,000.
+
+> A radar dome (`Wall`, a smooth sphere on a drum) or a dish on a tower, on a concrete base.
+
+### Kit_Base_Bunker
+- **Where and how many:** 6.
+- **Size:** 10 × 4 × 10.
+- **Budget:** 150.
+
+> A low armoured bunker: a sloped `Concrete` block with a dark slit (`HazardBlack`).
 
 ---
 
-## Not on this list (generated by the game or the level script)
+## Landmarks (gen_landmarks.py)
 
-Don't model these; they're built from data:
-- **Terrain:** the ground, coast, plateau, cliffs, canyon, mesas and islands. It's a height grid in `corneria_map.tres`, with painted sand, grass, rock and snow.
-- **Sea:** made by the game's water shader, including foam, wakes and splashes.
-- **Plateau lake and river surfaces:** follow the terrain.
-- **Road from the bridge to the base:** follows a graded curve. The script lays it as a ribbon; `Kit_Street_Straight`'s look is the reference for its markings.
-- **Clouds, sky and fog.**
+### Kit_Landmark_Arch: the bay's arches
+- **Where and how many:** 5, standing in the sea in a row along the approach to the city. The player flies through them heading north, along y.
+- **Size:** 170 × 120 × 26, scaled 0.93–1.09 and stretched up to 1.25× in height in deep water. It stands on the sea bed; its feet are sunk 2 m.
+- **The opening is gameplay:** at least **0.70 × the width wide** (119 m) and **0.72 × the height high** (86 m), with a round top.
+- **Budget:** 3,000.
 
-## Integration (done after delivery, not by the modeller)
+> Monumental Cornerian stone gateways:
+> - **stone:** `Stone` with `Cream` dressings; a keystone and impost bands painted on;
+> - **top:** a beacon or a pair of `LightStrip` bands along the top;
+> - **piers:** a stepped plinth at each pier.
+>
+> Grand and simple, readable from 3 km.
 
-`build_corneria.py` places these assets where its boxes used to stand (see `load_kit()` and `Batch.kit()`, and the GUIDE's Corneria section):
-- It reads the kit from `corneria_kit.blend`, stacks tower parts to the required heights, and merges each group (`City`, `Town`, `Base`, `Arches`, `RiverBridge`, `SeaStacks`, `Water`, `Trees`) into one object.
-- It re-exports `corneria_props.glb` and the AI's structure-height map, so wingmen and enemies keep flying over the buildings.
-- Materials are matched by name to the script's palette; the colours set in the kit file are ignored.
+### Kit_Rock_Arch: the natural arch
+- **Where and how many:** 1, on the big island's south shore.
+- **Size:** 110 × 70 × 22, not stretched; opening at least 75 wide and 50 high.
+- **Budget:** 1,500.
 
-To change a piece: edit it in `corneria_kit.blend` (same object names, origins and sizes), then re-run the script with `--export`. Keep the group names. Collision is built from the merged meshes by name, so nothing else in the game changes.
+> A natural sea arch in faceted `Rock` with strata bands of `Stone` and a grassy `TreeLight` top.

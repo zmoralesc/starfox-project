@@ -19,7 +19,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.dirname(HERE)          # models/corneria2: the exported files
+OUT = os.path.dirname(HERE)          # models/corneria: the exported files
 MAP_FILE = os.path.join(HERE, "corneria.blend")
 KIT_FILE = os.path.join(HERE, "kit.blend")
 
@@ -64,7 +64,7 @@ PALETTE = {
     "Pavement": ((0.66, 0.64, 0.6), 0), "Park": ((0.36, 0.58, 0.28), 0),
     "FieldWheat": ((0.86, 0.76, 0.42), 0), "FieldGreen": ((0.4, 0.6, 0.26), 0),
     "FieldBrown": ((0.58, 0.46, 0.3), 0), "FieldLight": ((0.62, 0.74, 0.34), 0),
-    # The kit (models/corneria2/ASSETS.md): Cornerian architecture's warm
+    # The kit (models/corneria/ASSETS.md): Cornerian architecture's warm
     # stone, dark glass bands, teal and orange accents, and light strips.
     "Cream": ((0.9, 0.85, 0.74), 0), "GlassDark": ((0.16, 0.3, 0.5), 0),
     "Teal": ((0.16, 0.58, 0.62), 0), "Orange": ((0.95, 0.55, 0.16), 0),

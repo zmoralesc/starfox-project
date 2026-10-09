@@ -1,12 +1,11 @@
 [gd_scene format=3]
 
 [ext_resource type="PackedScene" path="res://levels/level_base.tscn" id="1_base"]
-[ext_resource type="Environment" path="res://world/planet_environment.tres" id="2_env"]
+[ext_resource type="Environment" path="res://world/planet_environment_wide.tres" id="2_env"]
 [ext_resource type="Script" path="res://world/terrain.gd" id="3_terrain"]
 [ext_resource type="Script" path="res://world/clouds.gd" id="4_clouds"]
 [ext_resource type="Shader" path="res://effects/terrain.gdshader" id="5_terrain_shader"]
 [ext_resource type="Shader" path="res://effects/water.gdshader" id="6_water"]
-[ext_resource type="Shader" path="res://effects/toon.gdshader" id="7_toon"]
 [ext_resource type="Script" path="res://world/play_boundary.gd" id="8_boundary"]
 [ext_resource type="PackedScene" path="res://world/great_fox.tscn" id="9_great_fox"]
 [ext_resource type="Resource" path="res://models/corneria/corneria_map.tres" id="10_map"]
@@ -16,6 +15,9 @@
 [ext_resource type="PackedScene" path="res://world/waterfall.tscn" id="14_waterfall"]
 [ext_resource type="Resource" path="res://models/corneria/corneria_layout.tres" id="15_layout"]
 [ext_resource type="PackedScene" path="res://models/corneria/corneria_kit.glb" id="16_kit"]
+[ext_resource type="Resource" path="res://models/corneria/corneria_markers.tres" id="17_markers"]
+[ext_resource type="Script" path="res://world/marker_placer.gd" id="18_placer"]
+[ext_resource type="Script" path="res://enemies/obstacle_box.gd" id="19_obstacle_box"]
 
 [sub_resource type="ShaderMaterial" id="Mat_ground"]
 shader = ExtResource("5_terrain_shader")
@@ -33,32 +35,20 @@ intro_line = "We're approaching Corneria City now."
 [node name="WorldEnvironment" parent="."]
 environment = ExtResource("2_env")
 
+[node name="ChaseCamera" parent="."]
+far = 12000.0
+
 [node name="Sun" parent="."]
 rotation = Vector3(-0.95, 2.4, 0)
 light_energy = 1.4
 directional_shadow_max_distance = 600.0
 
-[node name="Ship" parent="."]
-position = Vector3(-450, 120, 3400)
-
-[node name="Falco" parent="."]
-position = Vector3(-460, 118.5, 3402)
-
-[node name="Slippy" parent="."]
-position = Vector3(-450, 130, 3390)
-
-[node name="Krystal" parent="."]
-position = Vector3(-440, 118.5, 3402)
-
-[node name="IntroStart" parent="."]
-position = Vector3(-450, 120, 3700)
-
-[node name="IntroCameraSpot" parent="."]
-position = Vector3(-420, 124, 3400)
-
 [node name="Terrain" type="Node3D" parent="."]
 script = ExtResource("3_terrain")
 map = ExtResource("10_map")
+chunks = 16
+snow_height = 480.0
+paved_color = Color(0.36, 0.36, 0.4, 1)
 material = SubResource("Mat_ground")
 water_material = SubResource("Mat_water")
 water_to_horizon = true
@@ -69,11 +59,18 @@ script = ExtResource("12_map_props")
 layout = ExtResource("15_layout")
 kit = ExtResource("16_kit")
 water_material = SubResource("Mat_water")
+solid_groups = PackedStringArray("City", "Town", "Base", "Landmarks", "Rocks", "Water")
+piece_draw_distance = Dictionary[String, float]({
+"Kit_Rock_Boulder": 2500.0,
+"Kit_Rock_Outcrop": 5000.0,
+"Kit_Tree_Broadleaf": 4000.0,
+"Kit_Tree_Pine": 4000.0
+})
 
 [node name="Clouds" type="Node3D" parent="."]
 script = ExtResource("4_clouds")
-count = 170
-spread = 3600.0
+count = 680
+spread = 7200.0
 clear_radius = 0.0
 layers = PackedFloat32Array(650, 950)
 material = SubResource("Mat_cloud")
@@ -82,12 +79,30 @@ material = SubResource("Mat_cloud")
 destroyer_every = 0
 
 [node name="PlayBoundary" type="Node3D" parent="."]
-position = Vector3(0, 0, 500)
 script = ExtResource("8_boundary")
-radius = 3300.0
+radius = 7000.0
+
+[node name="MarkerPlacer" type="Node" parent="." node_paths=PackedStringArray()]
+script = ExtResource("18_placer")
+markers = ExtResource("17_markers")
+targets = Dictionary[String, NodePath]({
+"GreatFox": NodePath("../GreatFox"),
+"IntroCameraSpot": NodePath("../IntroCameraSpot"),
+"IntroStart": NodePath("../IntroStart"),
+"Spire": NodePath("../SpireAvoidance"),
+"Start": NodePath("../Ship"),
+"Waterfall": NodePath("../Waterfall")
+})
 
 [node name="GreatFox" parent="." instance=ExtResource("9_great_fox")]
-transform = Transform3D(0.34202015, 0, 0.9396926, 0, 1, 0, -0.9396926, 0, 0.34202015, 500, 700, 4500)
 
 [node name="Waterfall" parent="." instance=ExtResource("14_waterfall")]
-transform = Transform3D(0.832050, 0, -0.554700, 0, 1, 0, 0.554700, 0, 0.832050, 1890, 120.3, -1860)
+drop = 172.0
+
+[node name="SpireAvoidance" type="Node3D" parent="."]
+
+[node name="Box" type="Node3D" parent="SpireAvoidance"]
+position = Vector3(0, 175, 0)
+script = ExtResource("19_obstacle_box")
+size = Vector3(64, 350, 64)
+margin = 8.0

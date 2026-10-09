@@ -3,7 +3,7 @@ is in the map; nothing has to be pasted by hand.
 
     blender --background corneria.blend --python export_corneria.py
 
-Writes, into models/corneria2/:
+Writes, into models/corneria/:
     corneria_map.tres      the TerrainMap: the terrain sampled from above at
                            every grid point, per-cell paint (from the Paint
                            colour layer), the high-water level, and the

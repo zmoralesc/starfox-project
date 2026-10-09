@@ -1,4 +1,4 @@
-"""The landmarks' kit pieces (models/corneria2/ASSETS.md, "Landmarks"): the
+"""The landmarks' kit pieces (models/corneria/ASSETS.md, "Landmarks"): the
 bay's monumental stone arches (Kit_Landmark_Arch) and the natural sea arch on
 the big island's shore (Kit_Rock_Arch).
 

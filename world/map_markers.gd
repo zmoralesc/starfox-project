@@ -1,8 +1,8 @@
 class_name MapMarkers
 extends Resource
 ## Named places on a map, exported from its Blender master copy (the Markers
-## empties in models/corneria2/source/corneria.blend, written by
-## export_corneria.py as models/corneria2/corneria_markers.tres): where the
+## empties in models/corneria/source/corneria.blend, written by
+## export_corneria.py as models/corneria/corneria_markers.tres): where the
 ## player starts, the intro's points, the waterfall, the Great Fox. A
 ## MarkerPlacer in the level moves nodes onto them.
 

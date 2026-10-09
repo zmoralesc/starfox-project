@@ -1,4 +1,4 @@
-"""The city's low kit pieces (models/corneria2/ASSETS.md, "City"): the
+"""The city's low kit pieces (models/corneria/ASSETS.md, "City"): the
 suburban houses, the old town's shops, the mid-rise apartments, the port's
 warehouses, tanks and gantry crane, and the road bridge deck and its piers.
 The offices, towers, round towers and spire are another batch's.

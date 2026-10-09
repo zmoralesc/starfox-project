@@ -1,5 +1,5 @@
 """Shared by the kit build scripts (kit_*.py beside this file), which build
-the real kit pieces into kit.blend (spec: models/corneria2/ASSETS.md).
+the real kit pieces into kit.blend (spec: models/corneria/ASSETS.md).
 
     blender --background --python kit_city.py            builds into kit.blend
     KIT_OUT=<copy.blend> blender --background --python kit_city.py

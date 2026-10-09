@@ -1,4 +1,4 @@
-"""The wilds' kit pieces (models/corneria2/ASSETS.md, "Trees and rocks"): the
+"""The wilds' kit pieces (models/corneria/ASSETS.md, "Trees and rocks"): the
 broadleaf and pine trees of the forests, parks and gardens, the boulders and
 outcrops of the hills, and the sea stacks of the coast.
 

@@ -1,4 +1,4 @@
-"""The military base's kit pieces (models/corneria2/ASSETS.md, "The military
+"""The military base's kit pieces (models/corneria/ASSETS.md, "The military
 base"): the Cornerian Army airfield's hangars, control tower, headquarters,
 barracks, motor-pool sheds, radar domes and bunkers. gen_base.py places every
 one at its own size (no variants, no stretching), so each keeps the footprint
