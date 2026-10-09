@@ -98,7 +98,7 @@ effects/
   hit_burst.gd/.tscn       HitBurst: a bolt hitting anything with take_hit: cartoon star (0.2 s, 5 poses, min on-screen size but at most star_max_grow 2.5× its own, so far hits still shrink) + 8 sparks back at the shooter; no ink; settings on the .tscn
   surface_hit.tscn         HitBurst for bolts hitting things that can't be shot (ground, buildings, hulls): rounder 1.3 m pop in the bolt's impact_color (star_max_grow 1.5), 6 sparks glancing off, 4 dust puffs (0.7 s)
   hit_burst.gdshader       The star: camera-facing quad cut into a banded spiky star (core, yellow, orange rim) that pops out and hollows (instance uniforms age/seed)
-  hit_reaction.gd          HitReaction: on EnemyFighter / DestroyerPart: red flash (hit_flash instance uniform, 0.12 s), flinch (fighters, 0.8 m / 6°), smoke at ≤ 70 % health, fire at ≤ 40 % (Explosion.trail), from the target's smoke point (fighters: Model/SmokePoint, the engine) or else where it was first hit
+  hit_reaction.gd          HitReaction: on EnemyFighter / DestroyerPart: red flash (hit_flash instance uniform, not on the instanced map props, 0.12 s), flinch (fighters, 0.8 m / 6°), smoke at ≤ 70 % health, fire at ≤ 40 % (Explosion.trail), from the target's smoke point (fighters: Model/SmokePoint, the engine) or else where it was first hit
   explosion.gd             Explosion.spawn(parent, at, style, size, velocity): flash, fireball, smoke, sparks, debris, shockwave, light; Explosion.prewarm(); Explosion.trail(): a world-space puff trail (wrecks, debris, damage smoke)
   explosion_style.gd       ExplosionStyle resource: every look value, in units of size (fireball radius, m)
   explosion_puff.gdshader  Puff: banded fire cooling into toon-lit smoke, breaking up; transparent pass, no ink outlines

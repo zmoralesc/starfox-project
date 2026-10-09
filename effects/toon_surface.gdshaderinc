@@ -15,8 +15,14 @@ uniform sampler2D emission_texture : source_color, hint_default_white, filter_li
 uniform float emission_energy : hint_range(0.0, 16.0) = 1.0;
 // Flash when hit (HitReaction): rgb the colour, a how much (0 = none). Per
 // instance, so every shot target flashes on its own with shared materials. It
-// glows rather than tints, so it reads on the shadow side too.
+// glows rather than tints, so it reads on the shadow side too. Not on
+// instanced map props (TOON_INSTANCED): scenery never flashes, and Godot
+// reserves 16 slots of the global shader buffer (rendering/limits/
+// global_shader_variables/buffer_size, 4096 instances by default) for every
+// instance whose material has an instance uniform; Corneria has ~5,800 of them.
+#ifndef TOON_INSTANCED
 instance uniform vec4 hit_flash = vec4(0.0);
+#endif
 
 #ifdef TOON_INSTANCED
 // Glow strength that vertex alpha 0 stands for (export_corneria.py's KIT_GLOW).
@@ -124,8 +130,10 @@ void fragment() {
 	ALBEDO *= COLOR.rgb;
 	EMISSION += COLOR.rgb * (1.0 - COLOR.a) * vertex_glow_energy;
 #endif
+#ifndef TOON_INSTANCED
 	ALBEDO = mix(ALBEDO, hit_flash.rgb, hit_flash.a);
 	EMISSION = mix(EMISSION, hit_flash.rgb, hit_flash.a);
+#endif
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 #ifdef TOON_UNLINED
