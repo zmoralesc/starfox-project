@@ -42,6 +42,7 @@ import time
 
 import bpy
 import numpy as np
+from mathutils import Matrix
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import corneria_common as cc  # noqa: E402
@@ -335,6 +336,25 @@ def plant_park(lot, placer, rng):
                 placer.put("tree", x, lot.top, z, rng.uniform(0, 2 * math.pi), None, "Trees", scale=tree_scale(rng))
 
 
+def place_spire_marker(placer):
+    """The Spire marker (an empty in Markers) onto the spire's foot, so the
+    level's spire avoidance box follows it (MarkerPlacer). The spire is a
+    needle far above everything round it: the AI's fly-over-the-cells
+    clearance let chasing fighters reach it from the side and wedge under its
+    collars, so the level adds a box the AI steers round."""
+    spire = next((m for name, m, _ in placer.items if name.startswith(PIECES["spire"])), None)
+    if spire is None:
+        return
+    o = bpy.data.objects.get("Spire")
+    if o is None:
+        o = bpy.data.objects.new("Spire", None)
+        o.empty_display_type = "ARROWS"
+        o.empty_display_size = 60.0
+        bpy.data.collections["Markers"].objects.link(o)
+    loc, rot, _ = (cc.TO_BLENDER @ spire @ cc.TO_GAME).decompose()
+    o.matrix_world = Matrix.LocRotScale(loc, rot, None)
+
+
 def place_bridges(lines, ground, placer):
     """A bridge wherever a road crosses water: a deck from bank to bank at the
     banks' height, and piers down to the bed."""
@@ -432,6 +452,7 @@ def main():
     cols = {"City": st.own_collection("City_Buildings", "City", GENERATOR),
             "Trees": st.own_collection("City_Trees", "Trees", GENERATOR)}
     st.instantiate(placer, cols, GENERATOR)
+    place_spire_marker(placer)
     ground_col = st.own_collection("City_Ground", "Roads", GENERATOR)
     ground_col.objects.link(st.slab_mesh("City_Lots", [l for l in lots if not l.park], "Pavement", GENERATOR))
     ground_col.objects.link(st.slab_mesh("City_Parks", [l for l in lots if l.park], "Park", GENERATOR))

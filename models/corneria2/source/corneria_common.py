@@ -45,7 +45,7 @@ GROUPS = {
 KIT_PREFIX = "Kit_"                   # a collection instance of one of these is a kit piece
 PAINT_ATTRIBUTE = "Paint"             # the terrain's colour layer: red = paved, blue = high water
 WATER_MATERIAL = "Corneria_Water"     # the game gives faces with it the level's water material
-MARKERS = ("Start", "IntroStart", "IntroCameraSpot", "Waterfall", "GreatFox")
+MARKERS = ("Start", "IntroStart", "IntroCameraSpot", "Waterfall", "GreatFox", "Spire")
 
 # Colours: sRGB, as they look in the game; material() converts them to linear
 # for Blender and glTF. The light is bright: keep big surfaces off pure white.

@@ -40,6 +40,7 @@ MARKER_START = {
     "IntroCameraSpot": (30.0, 154.0, 7200.0),
     "Waterfall": (4000.0, 200.0, -4000.0),
     "GreatFox": (1000.0, 900.0, 9500.0),
+    "Spire": (0.0, 0.0, 0.0),           # moved onto the spire by gen_city.py
 }
 SEA_FLOOR = -20.0
 

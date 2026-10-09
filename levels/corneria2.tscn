@@ -17,6 +17,7 @@
 [ext_resource type="PackedScene" path="res://models/corneria2/corneria_kit.glb" id="16_kit"]
 [ext_resource type="Resource" path="res://models/corneria2/corneria_markers.tres" id="17_markers"]
 [ext_resource type="Script" path="res://world/marker_placer.gd" id="18_placer"]
+[ext_resource type="Script" path="res://enemies/obstacle_box.gd" id="19_obstacle_box"]
 
 [sub_resource type="ShaderMaterial" id="Mat_ground"]
 shader = ExtResource("5_terrain_shader")
@@ -88,6 +89,7 @@ targets = Dictionary[String, NodePath]({
 "GreatFox": NodePath("../GreatFox"),
 "IntroCameraSpot": NodePath("../IntroCameraSpot"),
 "IntroStart": NodePath("../IntroStart"),
+"Spire": NodePath("../SpireAvoidance"),
 "Start": NodePath("../Ship"),
 "Waterfall": NodePath("../Waterfall")
 })
@@ -97,3 +99,10 @@ targets = Dictionary[String, NodePath]({
 [node name="Waterfall" parent="." instance=ExtResource("14_waterfall")]
 drop = 172.0
 
+[node name="SpireAvoidance" type="Node3D" parent="."]
+
+[node name="Box" type="Node3D" parent="SpireAvoidance"]
+position = Vector3(0, 175, 0)
+script = ExtResource("19_obstacle_box")
+size = Vector3(64, 350, 64)
+margin = 8.0
