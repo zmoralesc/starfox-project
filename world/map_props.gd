@@ -33,8 +33,10 @@ extends Node3D
 @export var solid_groups: PackedStringArray = ["City", "Town", "Base", "Arches", "RiverBridge", "SeaStacks", "Water"]
 ## Materials (by name) drawn without ink outlines: the foliage (trees, and the
 ## green tufts on the sea stacks), whose thousands of small cones were a tangle
-## of lines. See effects/toon_unlined.gdshader.
-@export var unlined_materials: PackedStringArray = ["Corneria_Tree", "Corneria_TreeLight", "Corneria_Trunk"]
+## of lines. See effects/toon_unlined.gdshader. Corneria_KitFoliage is the
+## new map's foliage, its palette colours baked into vertex colours.
+@export var unlined_materials: PackedStringArray = ["Corneria_Tree", "Corneria_TreeLight", "Corneria_Trunk",
+		"Corneria_KitFoliage"]
 
 @export_group("Draw distance")
 ## How far away each group is still drawn (group name: metres; 0 or absent =

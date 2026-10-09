@@ -18,6 +18,11 @@ uniform float emission_energy : hint_range(0.0, 16.0) = 1.0;
 // glows rather than tints, so it reads on the shadow side too.
 instance uniform vec4 hit_flash = vec4(0.0);
 
+#ifdef TOON_INSTANCED
+// Glow strength that vertex alpha 0 stands for (export_corneria.py's KIT_GLOW).
+uniform float vertex_glow_energy = 8.0;
+#endif
+
 #ifdef TOON_CLIP
 // World-space plane (normal, distance): fragments behind it (dot(normal, p) <
 // distance) aren't drawn. Per instance; the default (all zero) clips nothing.
@@ -110,6 +115,15 @@ void fragment() {
 	ALBEDO = mix(ALBEDO, wear_color.rgb * texture(albedo_texture, UV).rgb, wear_mask(UV));
 #endif
 	EMISSION = emission.rgb * texture(emission_texture, UV).rgb * emission_energy;
+#ifdef TOON_INSTANCED
+	// Map kit pieces carry their palette colours as vertex colours (one
+	// material, one draw per piece; see export_corneria.py's bake_palette()),
+	// the glow in alpha as 1 - strength / vertex_glow_energy. A mesh without
+	// vertex colours reads white and opaque: no change, no glow. The colours
+	// are linear (glTF's, kept as they are by Godot's import), like albedo.
+	ALBEDO *= COLOR.rgb;
+	EMISSION += COLOR.rgb * (1.0 - COLOR.a) * vertex_glow_energy;
+#endif
 	ALBEDO = mix(ALBEDO, hit_flash.rgb, hit_flash.a);
 	EMISSION = mix(EMISSION, hit_flash.rgb, hit_flash.a);
 	ROUGHNESS = 1.0;

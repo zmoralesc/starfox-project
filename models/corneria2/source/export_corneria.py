@@ -200,6 +200,68 @@ def kit_mesh(piece):
     return joined(piece_parts(piece, Matrix.Identity(4)), piece.name)
 
 
+# Kit pieces are drawn one MultiMesh per piece per tile, and every material
+# is a draw call of its own: a five-colour house cost five. So the palette
+# colours are baked into vertex colours instead, and a piece's faces share
+# KIT_MATERIAL (foliage: KIT_FOLIAGE, which the game draws without ink lines).
+# Alpha carries the glow: 1 - emission strength / KIT_GLOW (the game's
+# toon_instanced shader reads it back), so colours without glow keep alpha 1.
+KIT_MATERIAL = "Corneria_Kit"
+KIT_FOLIAGE = "Corneria_KitFoliage"
+KIT_GLOW = 8.0                       # = toon_surface.gdshaderinc's vertex_glow_energy
+FOLIAGE = ("Tree", "TreeLight", "Trunk")
+
+
+def kit_material(name):
+    """The shared white material a baked kit piece's faces use."""
+    m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
+    if not m.node_tree:
+        m.use_nodes = True
+    bsdf = next(n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    bsdf.inputs["Base Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+    bsdf.inputs["Emission Strength"].default_value = 0.0
+    return m
+
+
+def bake_palette(o):
+    """Kit mesh `o`'s palette materials as vertex colours (linear, glow in
+    alpha) on two shared materials. Faces of any other material keep it."""
+    me = o.data
+    colours = []
+    for mat in me.materials:
+        entry = cc.PALETTE.get(mat.name[len("Corneria_"):]) if mat and mat.name.startswith("Corneria_") else None
+        if entry is None:
+            colours.append(None)
+        else:
+            (r, g, b), emit = entry
+            colours.append(((cc.srgb_to_linear(r), cc.srgb_to_linear(g), cc.srgb_to_linear(b),
+                             1.0 - min(emit, KIT_GLOW) / KIT_GLOW), mat.name[len("Corneria_"):] in FOLIAGE))
+    attr = me.color_attributes.new("Col", "FLOAT_COLOR", "CORNER")
+    me.color_attributes.active_color = attr
+    slots = [m for m in me.materials]
+    targets = [None] * len(slots)
+    for k, c in enumerate(colours):
+        if c is not None:
+            targets[k] = KIT_FOLIAGE if c[1] else KIT_MATERIAL
+    # The new slot list: the shared materials first, then any left as they were.
+    new_slots = []
+    for k, m in enumerate(slots):
+        name = targets[k] or m.name
+        if name not in new_slots:
+            new_slots.append(name)
+    data = attr.data
+    for p in me.polygons:
+        c = colours[p.material_index]
+        rgba = c[0] if c is not None else (1.0, 1.0, 1.0, 1.0)
+        for li in p.loop_indices:
+            data[li].color = rgba
+        p.material_index = new_slots.index(targets[p.material_index] or slots[p.material_index].name)
+    me.materials.clear()
+    for name in new_slots:
+        me.materials.append(kit_material(name) if name in (KIT_MATERIAL, KIT_FOLIAGE)
+                            else bpy.data.materials[name])
+
+
 def tile_of(x, z):
     """The export tile of a game-space point."""
     return (int(math.floor((x + cc.HALF) / cc.PROP_TILE)), int(math.floor((z + cc.HALF) / cc.PROP_TILE)))
@@ -296,7 +358,7 @@ def structure_heights(props, kit_objects, leftover_objects):
 
 
 # --- Writing ------------------------------------------------------------------
-def export_glb(objects, path):
+def export_glb(objects, path, **options):
     col = bpy.data.collections.new("ExportTemp")
     bpy.context.scene.collection.children.link(col)
     try:
@@ -307,7 +369,7 @@ def export_glb(objects, path):
         bpy.context.view_layer.objects.active = objects[0]
         bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, use_active_scene=True,
                                   export_apply=True, export_yup=True, export_materials="EXPORT",
-                                  export_cameras=False, export_lights=False)
+                                  export_cameras=False, export_lights=False, **options)
     finally:
         for o in objects:
             col.objects.unlink(o)
@@ -403,7 +465,9 @@ def main():
         print("  warning: nothing but kit instances: corneria_props.glb not written")
     used = [kit_objects[p] for p in pieces]
     if used:
-        export_glb(used, os.path.join(cc.OUT, "corneria_kit.glb"))
+        for o in used:
+            bake_palette(o)
+        export_glb(used, os.path.join(cc.OUT, "corneria_kit.glb"), export_vertex_color="ACTIVE")
     log(t0, "written")
     for o in list(kit_objects.values()) + rest:
         me = o.data

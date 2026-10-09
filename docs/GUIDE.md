@@ -1266,6 +1266,23 @@ The first run made about 11,600 lots and 13,900 instances: 5,500 houses, 3,000 s
 
 With them: GPU up to 2.4 ms, CPU up to 2.6 ms, up to 6,100 draw calls.
 
+**Baked palette (the performance pass).** The export now merges each piece's colours into one material, so a piece costs one draw per tile instead of one per colour:
+- `bake_palette()` in `export_corneria.py` writes each face's palette colour into a linear vertex colour, with its glow in alpha as `1 − strength / KIT_GLOW` (8).
+- It moves the faces onto `Corneria_Kit`, or `Corneria_KitFoliage` for foliage, which is in `MapProps.unlined_materials`.
+- `toon_instanced` multiplies the albedo by the vertex colour and adds the glow (`vertex_glow_energy`, under `TOON_INSTANCED` in `toon_surface.gdshaderinc`). A mesh without vertex colours reads white and opaque, so the old map is unaffected.
+- `kit.blend` keeps its palette materials; the bake happens only in the export.
+
+Result: GPU unchanged (up to 2.1 ms), CPU up to 1.3 ms, and draw calls down to 2,400 at most.
+
+**The whole kit is real models** (no placeholder is placed any more):
+- `kit/kit_town.py`, 14 pieces: four coastal houses, the town hall with a clock tower, two sheds, the lighthouse, the jetty and its posts, two boats, a barn and a silo;
+- `kit/kit_base.py`, 7 pieces: vaulted hangars, the control tower, HQ with a helipad, barracks, sheds, radomes and bunkers;
+- `kit/kit_landmarks.py`, 2 pieces:
+  - the bay arch: a half-ellipse opening, verified clear by ray casts at 0.70 × the width and 0.73 × the height, with a lit keystone beacon;
+  - the natural rock arch.
+
+**Measured with everything in** (ten viewpoints, 1920 × 1080): GPU 1.0–2.0 ms, CPU 0.5–1.3 ms, up to 5.9 M triangles and 2,440 draw calls, load 1.3 s.
+
 **Measured with the real city kit** (ten viewpoints, 1920 × 1080): GPU 0.9–2.2 ms, CPU up to 2.3 ms, up to 5.7 M triangles (LODs off, see the kit's import settings) and 5,500 draw calls (from 1,630 in greybox).
 - **Why the calls tripled:** each piece is one MultiMesh per 500 m tile, and each of its materials is a separate draw. So a variant with five palette colours costs five calls per tile, where a one-colour box cost one.
 - **The planned fix** comes in the perf pass: fewer surfaces per piece, or draw distances for the small buildings.
