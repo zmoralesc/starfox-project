@@ -61,7 +61,7 @@ Use only palette materials: `fichina_common.PALETTE`, named `Fichina_<name>`. ki
 | `Concrete` | 0.64, 0.64, 0.66 | plinths, pads, foundations |
 | `RoofDark` | 0.34, 0.36, 0.41 | roofs where snow doesn't lie |
 | `Glass` / `GlassDark` | 0.30, 0.55, 0.80 / 0.16, 0.30, 0.50 | unlit glazing |
-| `WindowLit` | 1.00, 0.78, 0.45, glows | lit windows (generously, see Light) |
+| `WindowLit` | 1.00, 0.78, 0.45, glows (1.5) | lit windows (generously, see Light) |
 | `Greenhouse` | 0.62, 0.95, 0.55, glows | greenhouse glazing |
 | `Signal` | 0.90, 0.32, 0.14 | signal orange: the accent colour |
 | `SignalYellow` / `HazardBlack` | 0.95, 0.78, 0.20 / 0.12, 0.12, 0.14 | hazard stripes, industrial |
