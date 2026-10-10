@@ -60,10 +60,10 @@ enum Stunt { NONE, PULL_UP, BACK, PULL_THROUGH, ROLL_OUT, U_ROLL, U_PULL, U_ROLL
 ## Catching up with the formation, the wingman may go this fast (m/s) instead
 ## of boost_speed. The arrival limit below keeps it to far from the slot: a
 ## closing speed v needs v² / (2 · arrival_deceleration) m to shed, so behind a
-## cruising leader (60 m/s) it passes boost_speed beyond about 135 m and
-## sprints flat out beyond about 240 m; behind a faster leader, nearer. The
+## cruising leader (66 m/s) it passes boost_speed beyond about 165 m and
+## sprints flat out beyond about 290 m; behind a faster leader, nearer. The
 ## engine glow grows with it (see engine_glow_range in wingman.tscn).
-@export var rejoin_sprint_speed := 180.0
+@export var rejoin_sprint_speed := 198.0
 ## Joining from behind, close in no faster than lets us brake at this rate
 ## (m/s²) to match the leader's speed exactly at the slot, instead of arriving
 ## fast and stopping hard. Also caps formation flight's pull towards the slot.
@@ -345,6 +345,9 @@ var target: Node3D
 ## Free to fight, evading or disengaged (see Status). Read by the HUD.
 var status := Status.NORMAL
 var shields := 0.0
+## Cheat (DevConsole's `wingmen_god`): hits take nothing off the shields, so
+## the wingman never evades or disengages.
+var invincible := false
 
 ## Who flies this ship: the `speaker` export, when it's a Pilot (null for a
 ## plain CommsSpeaker or none).
@@ -645,10 +648,12 @@ func take_hit(damage: int, at: Vector3) -> void:
 	_last_attacker = null
 	if status == Status.DISENGAGED:
 		return
-	_since_hit = 0.0
-	shields = maxf(shields - damage, 0.0)
 	if _shield_fx:
 		_shield_fx.flash(at)
+	if invincible:
+		return
+	_since_hit = 0.0
+	shields = maxf(shields - damage, 0.0)
 	if shields < 1.0:
 		_disengage()
 		return

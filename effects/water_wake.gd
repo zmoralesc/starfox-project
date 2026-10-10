@@ -3,8 +3,9 @@ extends Node3D
 ## Water splitting under a ship skimming low over it, stronger the lower and
 ## faster it flies: a V of foam lines spreading behind it on the water, with
 ## churned foam down the middle (drawn by the water shader from the trail
-## this reports to WaterMarks), and two sheets of spray thrown up either side
-## (effects/water_spray.gdshader on a plane each, moving with the ship).
+## this reports to WaterMarks), and two solid sheets of spray thrown up
+## either side with lobed top edges (effects/water_spray.gdshader on a plane
+## each, moving with the ship).
 ## Below `start_height` over water it starts; at `full_height` and `full_speed`
 ## it's at full strength.
 ##
@@ -18,8 +19,12 @@ const SPRAY_SHADER := preload("res://effects/water_spray.gdshader")
 ## strength.
 @export var start_height := 12.0
 @export var full_height := 3.0
-## Speed (m/s) for full strength; slower ships kick up proportionally less.
-@export var full_speed := 90.0
+## Speed (m/s) for full strength, and how sharply it falls off below it
+## (strength goes with (speed / full_speed) ^ speed_curve): 1 is in
+## proportion, higher keeps cruising and braking ships calmer while boosting
+## stays at full.
+@export var full_speed := 105.0
+@export var speed_curve := 1.2
 
 @export_group("Spray")
 ## The sheets at full strength: length back along the track, how far out they
@@ -32,16 +37,25 @@ const SPRAY_SHADER := preload("res://effects/water_spray.gdshader")
 ## water behind the ship is out of sight below it, so the spray has to rise
 ## beside the ship to be seen.
 @export var spray_ahead := 3.0
-@export var spray_height := 4.5
+@export var spray_height := 3.5
 @export_range(0.05, 0.95) var spray_peak_at := 0.25
 @export var spray_lean := 2.0
-## Speed (m/s) and size (m) of the churning blobs streaming back along them.
+## The lobes along their top edges: length (m), how deep the dips between
+## them cut (fraction of the height), and how fast they stream back (m/s).
+@export var lobe_length := 3.5
+@export_range(0.0, 1.0) var lobe_depth := 0.35
 @export var churn_speed := 30.0
-@export var churn_scale := 1.3
+## How far the foot wobbles in and out (m), in step with the lobes.
+@export var foot_wobble := 0.5
+## A painted shade along the base of the sheets, where they meet the water:
+## its colour and how far up it reaches (fraction of the height).
+@export var base_color := Color(0.62, 0.8, 1.0)
+@export_range(0.0, 1.0) var base_height := 0.45
 @export var water_color := Color(0.93, 0.97, 1.0)
-## Toon light on the spray: shade floor and middle band (higher = paler).
-@export var shadow_tone := 0.6
-@export var mid_tone := 0.82
+## Toon light on the spray: shade floor and middle band (higher = paler); the
+## sun's shadow tint cools the shade.
+@export var shadow_tone := 0.55
+@export var mid_tone := 0.8
 
 var _ship: Node3D
 var _terrain: Terrain
@@ -71,8 +85,12 @@ func _ready() -> void:
 	material.set_shader_parameter("sheet_height", spray_height)
 	material.set_shader_parameter("peak_at", spray_peak_at)
 	material.set_shader_parameter("lean", spray_lean)
+	material.set_shader_parameter("lobe_length", lobe_length)
+	material.set_shader_parameter("lobe_depth", lobe_depth)
 	material.set_shader_parameter("churn_speed", churn_speed)
-	material.set_shader_parameter("churn_scale", churn_scale)
+	material.set_shader_parameter("foot_wobble", foot_wobble)
+	material.set_shader_parameter("base_color", base_color)
+	material.set_shader_parameter("base_height", base_height)
 	material.set_shader_parameter("water_color", water_color)
 	material.set_shader_parameter("shadow_tone", shadow_tone)
 	material.set_shader_parameter("mid_tone", mid_tone)
@@ -99,7 +117,7 @@ func _physics_process(_delta: float) -> void:
 	if _ship.is_visible_in_tree() and water > -INF:
 		var low := 1.0 - smoothstep(full_height, start_height, at.y - water)
 		var speed := (_ship as CharacterBody3D).velocity.length() if _ship is CharacterBody3D else full_speed
-		strength = low * clampf(speed / full_speed, 0.0, 1.0)
+		strength = low * pow(clampf(speed / full_speed, 0.0, 1.0), speed_curve)
 	# On the water under the ship, turned to its heading (flattened).
 	var forward := -_ship.global_basis.z
 	forward.y = 0.0

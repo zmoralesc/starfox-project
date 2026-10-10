@@ -132,6 +132,10 @@ var overheated := false
 ## After death, the wreck the ship left (null once it has exploded). The
 ## ChaseCamera follows it.
 var wreck: Wreck
+## Cheats (set by DevConsole): hits and crashes take nothing off the shields;
+## enemies and turrets ignore the ship (see is_targetable()).
+var invincible := false
+var untargetable := false
 
 var _pad_active := false
 ## Throttle in use this tick (-1..1): the input, or 0 while overheated.
@@ -179,6 +183,11 @@ func notify_kill(victim: Node) -> void:
 func take_hit(damage: int, at: Vector3) -> void:
 	if is_dead:
 		return
+	if invincible:
+		# Still show the hit, so it's clear what would have happened.
+		damage_flash = 1.0
+		_shield_fx.flash(at)
+		return
 	_since_hit = 0.0
 	if shields_down or shields < 1.0:
 		_die()
@@ -192,6 +201,18 @@ func take_hit(damage: int, at: Vector3) -> void:
 		shields_down = true
 		_shield_fx.collapse()
 		shields_depleted.emit()
+
+
+## True if enemies may pick the ship as a target: alive, and not hidden by
+## the `untargetable` cheat.
+func is_targetable() -> bool:
+	return not is_dead and not untargetable
+
+
+## Destroys the ship at once, whatever its shields (DevConsole's `die`).
+func destroy() -> void:
+	if not is_dead:
+		_die()
 
 
 ## 0..1 progress of the shield reboot while shields_down. Read by the HUD.

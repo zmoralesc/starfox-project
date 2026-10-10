@@ -42,13 +42,30 @@ extends Node
 @export var spawn_altitude := 80.0
 ## ...and at least this far inside the play boundary (if the mission has one).
 @export var spawn_boundary_margin := 250.0
+## A destroyer flies level this high (its centre; its keel hangs about 60 m
+## lower on the Juggernaut) above the highest ground, water or building it
+## could pass over: anywhere within zone_radius + destroyer_ground_margin of
+## the zone's centre. The same height whatever side it comes from.
+@export var destroyer_altitude := 400.0
+## How far past zone_radius that ground is checked: the portal and the
+## hull's length behind its centre.
+@export var destroyer_ground_margin := 600.0
+## Spacing of the ground samples for that check, in metres.
+@export var destroyer_ground_step := 50.0
 
 ## Current wave number (0 before the first wave). Read by the HUD.
 var wave := 0
 ## The destroyer currently in play, if any.
 var destroyer: Destroyer
+## Off = due waves are held back until it's turned on again (set_waves_enabled();
+## the developer console's `waves off`).
+var waves_enabled := true
 
 var _wave_pending := false
+## True once start() has run: before that, enemies dying don't bring a wave.
+var _started := false
+## A wave came due while waves were off.
+var _wave_held := false
 
 
 func _ready() -> void:
@@ -57,7 +74,17 @@ func _ready() -> void:
 
 ## Begins the waves. Called by the level once the player has control.
 func start() -> void:
+	_started = true
 	_schedule_wave(first_wave_delay)
+
+
+## Turns the waves on or off. Turning them on sends a wave that came due
+## meanwhile (after wave_delay).
+func set_waves_enabled(on: bool) -> void:
+	waves_enabled = on
+	if on and _wave_held:
+		_wave_held = false
+		_schedule_wave(wave_delay)
 
 
 ## Enemy fighters currently alive.
@@ -81,8 +108,18 @@ func _schedule_wave(delay: float) -> void:
 	# A non-process-always timer, so it waits while the game is paused.
 	await get_tree().create_timer(delay, false).timeout
 	_wave_pending = false
-	if is_inside_tree():
-		_spawn_wave()
+	if not is_inside_tree():
+		return
+	if not waves_enabled:
+		_wave_held = true
+		return
+	_spawn_wave()
+
+
+## Sends the next wave now (and its destroyer, if it's a destroyer wave),
+## whether or not the current one is over. Used by the developer console.
+func spawn_wave_now() -> void:
+	_spawn_wave()
 
 
 func _spawn_wave() -> void:
@@ -91,9 +128,19 @@ func _spawn_wave() -> void:
 		return
 	wave += 1
 	var count := mini(mini(first_wave_size + (wave - 1) * wave_growth, max_wave_size), fighter_room())
+	spawn_squad(squad_center(), count)
 
-	# Appear roughly ahead of the player, out of detection range and facing
-	# random directions, so the player can find them before being found.
+	if destroyer_every > 0 and wave % destroyer_every == 0 and not is_instance_valid(destroyer):
+		spawn_destroyer()
+
+
+## Where a new group of fighters appears: roughly ahead of the player, out of
+## detection range, inside the boundary, above the ground and clear of the
+## station. Vector3.ZERO if there is no player.
+func squad_center() -> Vector3:
+	var player := get_tree().get_first_node_in_group("player") as Node3D
+	if player == null:
+		return Vector3.ZERO
 	var jitter := Vector3(randf_range(-1, 1), randf_range(-0.4, 0.4), randf_range(-1, 1)) * 0.7
 	var direction := (-player.global_basis.z + jitter).normalized()
 	var center := player.global_position + direction * spawn_distance
@@ -106,10 +153,21 @@ func _spawn_wave() -> void:
 	var station := get_tree().get_first_node_in_group("station") as SpaceStation
 	if station:
 		center = station.push_clear(center, spawn_station_margin)
+	return center
+
+
+## Spawns `count` fighters of `scene` (default: enemy_scene) as one squad
+## around `center`, patrolling there and facing random directions, and tracks
+## them towards ending the wave. Ignores max_fighters (waves apply it first).
+func spawn_squad(center: Vector3, count: int, scene: PackedScene = null) -> Array[EnemyFighter]:
+	if scene == null:
+		scene = enemy_scene
+	var spawned: Array[EnemyFighter] = []
+	var terrain := get_tree().get_first_node_in_group("terrain") as Terrain
 	var parent := get_parent()
 	var squad := EnemySquad.new()
 	for i in count:
-		var enemy := enemy_scene.instantiate() as EnemyFighter
+		var enemy := scene.instantiate() as EnemyFighter
 		enemy.position = center + Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * 40.0
 		if terrain:
 			# Each one clear of the ground under it, which can rise within the group.
@@ -119,16 +177,24 @@ func _spawn_wave() -> void:
 		enemy.patrol_center = center
 		squad.add(enemy)
 		track(enemy)
+		spawned.append(enemy)
+	return spawned
 
-	if destroyer_every > 0 and wave % destroyer_every == 0 and not is_instance_valid(destroyer):
-		_spawn_destroyer()
 
-
-func _spawn_destroyer() -> void:
+## Sends in a destroyer_scene (warping in at the zone's edge, announced by
+## mission control), unless one is already in play. Returns it, or null.
+func spawn_destroyer() -> Destroyer:
+	if is_instance_valid(destroyer):
+		return null
 	var angle := randf() * TAU
 	var direction := Vector3(cos(angle), randf_range(-0.08, 0.08), sin(angle)).normalized()
 	destroyer = destroyer_scene.instantiate() as Destroyer
 	destroyer.position = direction * zone_radius
+	# It flies level from here, so on a planet it must start high enough to
+	# clear everything (it would otherwise warp in at sea level).
+	var terrain := get_tree().get_first_node_in_group("terrain") as Terrain
+	if terrain:
+		destroyer.position.y = _destroyer_height(terrain)
 	destroyer.spawner = self
 	if destroyer.level_fighters:
 		destroyer.fighter_scene = enemy_scene
@@ -142,15 +208,34 @@ func _spawn_destroyer() -> void:
 		from_station.y = 0.0
 		destination = station.global_position \
 			+ from_station.normalized() * (station.bounding_radius() + destroyer_station_clearance)
+	destination.y = destroyer.position.y
 	destroyer.arrive(destination)
 	track(destroyer)
 	get_tree().call_group("mission_control", "announce_destroyer", destroyer)
+	return destroyer
+
+
+## Height for a destroyer's centre: destroyer_altitude above the highest
+## clearance (ground, water, buildings) in the disc it could fly over.
+func _destroyer_height(terrain: Terrain) -> float:
+	var reach := zone_radius + destroyer_ground_margin
+	var step := maxf(destroyer_ground_step, 1.0)
+	var highest := -INF
+	var x := -reach
+	while x <= reach:
+		var z := -reach
+		while z <= reach:
+			if x * x + z * z <= reach * reach:
+				highest = maxf(highest, terrain.clearance_height(x, z))
+			z += step
+		x += step
+	return highest + destroyer_altitude
 
 
 func _on_enemy_destroyed() -> void:
 	# Wait a frame so the destroyed enemy has actually left the scene.
 	await get_tree().process_frame
-	if not is_inside_tree() or _wave_pending:
+	if not is_inside_tree() or not _started or _wave_pending or _wave_held:
 		return
 	if fighter_count() == 0 and not is_instance_valid(destroyer):
 		_schedule_wave(wave_delay)

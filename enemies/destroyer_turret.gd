@@ -125,7 +125,7 @@ func _update_lock(delta: float) -> void:
 ## retaliation_range for whoever has shot it lately (Destroyer.reach_for).
 func _pick_target() -> Node3D:
 	var player := get_tree().get_first_node_in_group("player") as Ship
-	if player and not player.is_dead \
+	if player and player.is_targetable() \
 			and global_position.distance_to(player.global_position) <= destroyer.reach_for(player, aggro_range):
 		return player
 	var best: Node3D = null

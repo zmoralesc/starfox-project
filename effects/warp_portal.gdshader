@@ -1,9 +1,9 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled, shadows_disabled, depth_draw_never;
 
-// A warp portal on a flat quad (see WarpPortal): a tear into a dark tunnel,
-// with fine spiral filaments flowing inwards into it, faint speed lines
-// streaming to a far-off pinpoint core, and a thin white-hot rim crackling
+// A warp portal on a flat quad (see WarpPortal): a glowing well of energy,
+// a white-hot core blooming out through a hot haze that churns slowly and
+// throws soft rays, fading to dark towards a thin white-hot rim crackling
 // with energy, bleeding crimson inwards, plus a soft halo outside.
 // `open` grows it from nothing to full size (and past it, for the overshoot).
 
@@ -12,40 +12,52 @@ uniform float open = 1.0;
 // Half the quad's size over the full radius (room for the overshoot and halo).
 uniform float extent = 1.3;
 uniform vec4 rim_color : source_color = vec4(1.0, 0.12, 0.18, 1.0);
-uniform vec4 swirl_color : source_color = vec4(0.55, 0.18, 1.0, 1.0);
-uniform vec4 core_color : source_color = vec4(1.0, 0.8, 1.0, 1.0);
+// The haze round the core.
+uniform vec4 glow_color : source_color = vec4(1.0, 0.3, 0.45, 1.0);
+uniform vec4 core_color : source_color = vec4(1.0, 0.85, 0.9, 1.0);
 uniform vec4 void_color : source_color = vec4(0.05, 0.0, 0.09, 1.0);
-// Brightness of the rim, swirls and core (above 1 they bloom).
+// Brightness of the rim and core (above 1 they bloom), and of the haze as a
+// fraction of that.
 uniform float glow = 2.5;
-// Number of spiral filaments (whole numbers keep the pattern seamless).
-uniform float arms = 15.0;
-// How tightly they wind (turns per step into the tunnel).
-uniform float twist = 1.4;
-// How fast their pieces and the speed lines flow inwards.
-uniform float flow = 0.9;
-// Faint speed lines streaming to the core (lanes round the circle).
-uniform float streaks = 40.0;
+uniform float haze_glow = 0.7;
+// Radius of the white-hot core and of the haze round it (fractions of the
+// portal's radius: the brightness falls to 1/e there).
+uniform float core_size = 0.13;
+uniform float haze_size = 0.36;
+// How much the haze churns (0 = a smooth glow), and the size of its churn
+// (cells per radius).
+uniform float churn = 0.5;
+uniform float churn_scale = 2.5;
+// Soft rays of light drifting round the core: strength and sharpness.
+uniform float rays = 0.6;
+uniform float ray_sharpness = 4.0;
+// Breathing of the glow: depth (fraction of brightness) and rate (rad/s).
+uniform float pulse = 0.08;
+uniform float pulse_rate = 2.5;
 // Half-width of the white-hot rim line (fraction of the radius).
 uniform float rim_width = 0.012;
-// How fast the arms turn (radians per second).
-uniform float spin = 1.2;
-// Opacity of the hole: below 1, stars show faintly through.
+// Opacity of the hole: below 1, stars show faintly through the dark.
 uniform float hole_opacity : hint_range(0.0, 1.0) = 0.92;
 
-float hash(vec2 p) {
+#include "res://effects/noise.gdshaderinc"
+
+// Value noise on a float hash for the rim (its wobble, crackle and rays: small
+// coordinates, where it holds up). The churn uses the shared gradient noise:
+// this one broke into hard-edged cells there.
+float rim_hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
 
-float noise(vec2 p) {
+float rim_noise(vec2 p) {
 	vec2 i = floor(p);
 	vec2 f = fract(p);
 	vec2 u = f * f * (3.0 - 2.0 * f);
-	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
-			mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+	return mix(mix(rim_hash(i), rim_hash(i + vec2(1.0, 0.0)), u.x),
+			mix(rim_hash(i + vec2(0.0, 1.0)), rim_hash(i + vec2(1.0, 1.0)), u.x), u.y);
 }
 
-float fbm(vec2 p) {
-	return 0.5 * noise(p) + 0.3 * noise(p * 2.1 + 3.7) + 0.2 * noise(p * 4.3 + 9.1);
+float rim_fbm(vec2 p) {
+	return 0.5 * rim_noise(p) + 0.3 * rim_noise(p * 2.1 + 3.7) + 0.2 * rim_noise(p * 4.3 + 9.1);
 }
 
 void fragment() {
@@ -54,53 +66,43 @@ void fragment() {
 	}
 	vec2 p = (UV - 0.5) * 2.0 * extent;  // 1 = the full radius
 	float r = length(p) / open;          // 1 = the current edge
+	vec2 q = p / open;                   // position inside the disc, 1 = its edge
 	vec2 dir = p / max(length(p), 0.0001);
-	float a = atan(p.y, p.x);
 	// The edge wobbles (noise on the direction, so there's no seam).
-	float edge = 1.0 + (fbm(dir * 2.5 + vec2(TIME * 0.6, -TIME * 0.4)) - 0.5) * 0.08;
+	float edge = 1.0 + (rim_fbm(dir * 2.5 + vec2(TIME * 0.6, -TIME * 0.4)) - 0.5) * 0.08;
 	float aa = fwidth(r) * 1.5;
 
-	// Tunnel coordinates: `depth` is 0 at the rim and grows towards the
-	// middle (logarithmically, so equal steps look like equal steps into a
-	// tunnel), the angle in turns.
-	float depth = -log(max(r, 0.015));
-	float turns = a / TAU;
-
-	// Spiral filaments: many fine arms, each its own brightness and width,
-	// breaking into pieces that flow inwards and fading into the dark.
-	float s = turns * arms + depth * twist - TIME * spin * 0.25;
-	float strand = mod(floor(s), arms);  // whole arms: no seam where the angle wraps
-	float strand_rand = hash(vec2(strand, 3.1));
-	float half_w = mix(0.06, 0.2, strand_rand);
-	float filament = 1.0 - smoothstep(half_w, half_w + aa * arms * 0.5, abs(fract(s) - 0.5));
-	filament *= smoothstep(0.35, 0.65, noise(vec2(strand * 5.3, depth * 2.5 - TIME * flow)));
-	filament *= exp(-depth * 1.1) * mix(0.5, 1.0, strand_rand);
-
-	// Speed lines streaming in towards the core, faint.
-	float lane = floor(turns * streaks);
-	float lane_rand = hash(vec2(lane, 8.7));
-	float dash = fract(depth * 0.6 + TIME * flow * (0.6 + lane_rand) + lane_rand * 5.0);
-	float streak = (1.0 - smoothstep(0.02, 0.06, abs(fract(turns * streaks) - 0.5) * (1.0 + depth)))
-			* smoothstep(0.75, 0.95, dash) * step(0.55, lane_rand) * smoothstep(0.1, 0.6, depth);
+	// The glow: a white-hot core blooming out through the haze, which churns
+	// slowly (two drifting layers of noise, so it never settles) and throws
+	// soft rays round the core (noise on the direction, seamless round the
+	// circle, drifting round), the whole breathing gently.
+	float breath = 1.0 + pulse * sin(TIME * pulse_rate);
+	float core = exp(-r * r / (core_size * core_size));
+	float haze = exp(-r * r / (haze_size * haze_size));
+	float churned = noise2(q * churn_scale + vec2(TIME * 0.17, -TIME * 0.11))
+			+ noise2(q * churn_scale * 1.7 - vec2(TIME * 0.09, TIME * 0.14)) - 1.0;
+	haze *= 1.0 + churn * churned * 2.0;
+	float ray = pow(rim_fbm(dir * 3.0 + vec2(TIME * 0.12, TIME * 0.07)), ray_sharpness) * 8.0;
+	haze *= 1.0 + rays * ray * smoothstep(0.0, 0.4, r);
 
 	vec3 color = void_color.rgb;
-	color += swirl_color.rgb * glow * filament;
-	color += core_color.rgb * glow * 0.5 * streak;
-	// Core: a far-off pinpoint of light.
-	color += core_color.rgb * glow * (exp(-r * r * 160.0) * 1.5 + exp(-r * r * 18.0) * 0.15);
+	color += glow_color.rgb * glow * haze_glow * breath * max(haze, 0.0);
+	// The core, with a pinpoint of pure light in the middle.
+	color += core_color.rgb * glow * breath * (core * 1.3 + exp(-r * r * 160.0) * 0.8);
 
 	// Rim: a thin white-hot line, crimson bleeding inwards from it, and energy
 	// crackling along it in bright arcs.
 	float rim_line = 1.0 - smoothstep(rim_width, rim_width + aa, abs(r - edge));
 	float bleed = smoothstep(edge - 0.22, edge, r) * 0.55;
-	float crackle = smoothstep(0.62, 0.8, fbm(dir * 7.0 + vec2(TIME * 2.3, -TIME * 1.7)))
+	float crackle = smoothstep(0.62, 0.8, rim_fbm(dir * 7.0 + vec2(TIME * 2.3, -TIME * 1.7)))
 			* (1.0 - smoothstep(0.0, 0.07, abs(r - edge)));
 	color = mix(color, rim_color.rgb * glow, clamp(bleed, 0.0, 1.0));
 	color = mix(color, mix(rim_color.rgb, core_color.rgb, 0.7) * glow * 1.4, max(rim_line, crackle));
 
 	float alpha;
 	if (r < edge) {
-		alpha = hole_opacity;
+		// Solid where the glow is bright; the dark lets stars through faintly.
+		alpha = clamp(hole_opacity + haze, 0.0, 1.0);
 	} else {
 		// Outside: the rim line's edge, then a soft halo.
 		float out_d = r - edge;

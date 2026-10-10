@@ -25,8 +25,33 @@ const VIEW_MARGIN := 3.0
 @export var fire_tolerance_deg := 1.5
 ## Break off a run on a static target when this close to its surface.
 @export var break_distance := 50.0
-## How far out to fly before turning in for another run.
+## Chasing a fighter: breaking off (too close, or head-on), pull out this far
+## (× 0.6) before turning in again. Structures use run_out_distance.
 @export var break_out_distance := 150.0
+
+@export_group("Attacking structures")
+## Strafing runs on a structure (a destroyer part): how far out (beyond its
+## radius) to fly, away from it, before turning in for the next run. Far
+## enough to turn round and still have a long run in.
+@export var run_out_distance := 260.0
+## With the nose more than turn_in_angle_deg off the structure and closer than
+## this (beyond its radius), turning in would only line the guns up as the run
+## ends (or circle it for good, inside our turning circle): fly out and come
+## back instead. Keep it well below run_out_distance, which is where that
+## leaves us.
+@export var min_run_distance := 130.0
+@export var turn_in_angle_deg := 45.0
+## Speed while turning in (nose more than turn_in_slow_deg off the structure).
+## Slower turns tighter, so the guns come round sooner and the run is longer.
+## Keep it above the turrets' lock_speed, or they lock on.
+@export var turn_in_speed := 60.0
+@export var turn_in_slow_deg := 30.0
+## Break off a run no closer than this many turning radii (at the current
+## speed, at the slower of pitch_rate and yaw_rate) from its surface, so we can
+## turn away before the hull it's mounted on (break_distance is the minimum).
+@export var break_turn_factor := 1.2
+
+@export_group("AI")
 ## How far behind an enemy fighter to sit while chasing it.
 @export var pursuit_distance := 50.0
 ## Seconds of flight ahead to check for obstacles.
@@ -197,12 +222,16 @@ func _attack_goal(target: Node3D, side: float) -> Vector3:
 			return _start_break(target_pos, r + break_out_distance * 0.6, side)
 		return _lead_point(target)
 
-	_target_speed = max_speed
 	# A structure (a destroyer part) can be shot only from where it can be
 	# seen: if the hull it's on is in the way, reposition rather than press on.
 	var view_margin := r + VIEW_MARGIN
-	if dist < r + break_distance or not _clear_view(global_position, target_pos, view_margin):
-		return _start_break(target_pos, r + break_out_distance, side, view_margin)
+	var off_angle := rad_to_deg((-global_basis.z).angle_to(target_pos - global_position))
+	# Break off in time to turn before the surface it's on, however fast we are.
+	var pull_out := maxf(break_distance, speed / minf(pitch_rate, yaw_rate) * break_turn_factor)
+	if dist < r + pull_out or not _clear_view(global_position, target_pos, view_margin) \
+			or (off_angle > turn_in_angle_deg and dist < r + min_run_distance):
+		return _start_break(target_pos, r + run_out_distance, side, view_margin)
+	_target_speed = turn_in_speed if off_angle > turn_in_slow_deg else max_speed
 	return _lead_point(target)
 
 
@@ -220,10 +249,22 @@ func _start_break(from: Vector3, distance: float, side: float, view_margin := 0.
 	# Pull out sideways and towards world up (not our own up, which may point
 	# down if we're banked), so we climb away from whatever the target sits on.
 	var away := (global_basis.x * side + Vector3.UP * 0.5 - global_basis.z * 0.5).normalized()
+	var ours := (global_position - from).normalized()
+	if view_margin > 0.0 and ours.dot(global_basis.z) < cos(deg_to_rad(turn_in_angle_deg)):
+		# A structure we aren't diving at: straight out from it (bent our way a
+		# little), for room to turn round. Sideways from our heading, this break
+		# just circles it at the same distance. (At the end of a run, that
+		# would be back the way we came: a U-turn into the hull. We pull out
+		# over it as above instead, which leads away from it just the same.)
+		away = (ours + away * 0.5).normalized()
 	var point := _clear_of_obstacles(from + away * distance)
 	if view_margin > 0.0 and not _clear_view(point, from, view_margin):
-		point = _viewpoint(from, distance, away, view_margin)
-	_fly_to_then_attack(point, 4.0)
+		# The nearest point that can see it, from our side: one beyond the hull
+		# is a long trip, which the timeout below would cut short, leaving us
+		# to pick another from wherever we got to, and circle the hull.
+		point = _viewpoint(from, distance, (ours + away * 0.5).normalized(), view_margin)
+	# Long enough to get there at full speed (it may be across the target).
+	_fly_to_then_attack(point, maxf(4.0, global_position.distance_to(point) / max_speed * 1.5))
 	_engage = null
 	_target_speed = max_speed
 	return _waypoint
@@ -318,6 +359,14 @@ func _avoid_obstacles(goal: Vector3) -> Vector3:
 	# count either; avoiding it would keep us from ever lining up a shot (the
 	# break-off takes us away). Not for fighters: a rock beside one still counts.
 	var structure: Node3D = _engage if is_instance_valid(_engage) and not _engage is Fighter else null
+	# On the run itself (nose on it), skip the boxes' own margins: a hull's is
+	# meant for flying past it, and with it a shallow run on a turret meets the
+	# box far enough out to count, so we were pushed off our aim all the way
+	# in. The run keeps a clear view of the target (_clear_view(), against the
+	# real hull) and breaks off before it. Not while turning in: the boxes are
+	# a loose fit, and the margin covers what sticks out of them.
+	var on_run := structure != null \
+			and forward.angle_to(structure.global_position - global_position) < deg_to_rad(turn_in_slow_deg)
 	var nearest := INF
 	var result := goal
 	for node in get_tree().get_nodes_in_group("obstacles"):
@@ -326,7 +375,7 @@ func _avoid_obstacles(goal: Vector3) -> Vector3:
 			continue
 		var box := node as ObstacleBox
 		if box:
-			var grow := box.margin + avoid_margin
+			var grow := avoid_margin if on_run else box.margin + avoid_margin
 			if global_position.distance_to(box.global_position) > look + box.radius + grow:
 				continue
 			var entry_t := box.entry_distance(global_position, forward, minf(look, nearest), grow)

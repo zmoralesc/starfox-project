@@ -110,6 +110,9 @@ uniform vec4 ring_bounds = vec4(0.0);
 uniform float ring_life = 1.2;
 uniform vec2 ring_radius = vec2(0.6, 6.0);
 uniform float ring_width = 0.45;
+// Last fraction of a ring's life over which it fades out (thinning alone left
+// a pixel-wide line that vanished at once, most of all in the distance).
+uniform float ring_fade : hint_range(0.01, 1.0) = 0.45;
 // Wake trails: points (x, z, time passed, strength 0..1) from oldest to
 // newest; a negative strength starts a new trail (no segment from the point
 // before), its size is the strength. The first wake_count used.
@@ -205,7 +208,8 @@ float ring_foam(vec2 xz, float px) {
 		// Ragged: the line thins away in places as it fades.
 		float rag = noise((xz - r.xy) / 1.5 + r.z * 13.0);
 		float width = ring_width * r.w * (1.0 - t) * (0.4 + rag);
-		foam = max(foam, 1.0 - px_step(width, abs(d - radius), px));
+		float fade = 1.0 - smoothstep(1.0 - ring_fade, 1.0, t);
+		foam = max(foam, (1.0 - px_step(width, abs(d - radius), px)) * fade);
 		// A churned centre for the first moments.
 		foam = max(foam, 1.0 - px_step(radius * 0.5 * (1.0 - t * 2.0) * rag, d, px));
 	}

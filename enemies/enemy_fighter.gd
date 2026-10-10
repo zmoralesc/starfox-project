@@ -201,7 +201,7 @@ func _think(delta: float) -> void:
 ## chase them if they're within tracking range, otherwise go and look for
 ## them. Ignored while already chasing or still launching.
 func alert(player: Ship) -> void:
-	if player == null or player.is_dead or state == State.CHASE or _launch_time_left > 0.0:
+	if player == null or not player.is_targetable() or state == State.CHASE or _launch_time_left > 0.0:
 		return
 	quarry = player
 	_remember_quarry()
@@ -471,10 +471,10 @@ func _remember_quarry() -> void:
 	_last_known_velocity = quarry.velocity
 
 
-## The player, unless they're dead (or there is none).
+## The player, unless they're dead or untargetable (or there is none).
 func _player() -> Ship:
 	var player := get_tree().get_first_node_in_group("player") as Ship
-	return player if player and not player.is_dead else null
+	return player if player and player.is_targetable() else null
 
 
 ## True while our quarry is still worth chasing: alive, and not a wingman who
@@ -483,7 +483,7 @@ func _quarry_valid() -> bool:
 	if not is_instance_valid(quarry):
 		return false
 	if quarry is Ship:
-		return not (quarry as Ship).is_dead
+		return (quarry as Ship).is_targetable()
 	if quarry is Wingman:
 		return (quarry as Wingman).is_targetable()
 	return true

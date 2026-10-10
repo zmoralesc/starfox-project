@@ -63,20 +63,20 @@ worn_paint = ExtResource("12_worn")
 [node name="Hull" parent="." instance=ExtResource("5_hull")]
 
 [node name="Bridge" type="StaticBody3D" parent="."]
-position = Vector3(0, 204, 234)
+position = Vector3(0, 235, 232)
 collision_layer = 4
 collision_mask = 0
 script = ExtResource("2_part")
 kind = 0
-max_health = 900
+max_health = 420
 radius = 50.0
 score = 3
 display_name = "BRIDGE"
 
 [node name="Model" parent="Bridge" instance=ExtResource("6_bridge")]
+position = Vector3(0, -31, 2)
 
 [node name="Shape" type="CollisionShape3D" parent="Bridge"]
-position = Vector3(0, 31, -2)
 shape = SubResource("Shape_bridge")
 
 [node name="ThrusterL" type="StaticBody3D" parent="."]
@@ -85,7 +85,7 @@ collision_layer = 4
 collision_mask = 0
 script = ExtResource("2_part")
 kind = 1
-max_health = 450
+max_health = 210
 radius = 34.0
 score = 2
 display_name = "THRUSTER"
@@ -108,7 +108,7 @@ collision_layer = 4
 collision_mask = 0
 script = ExtResource("2_part")
 kind = 1
-max_health = 450
+max_health = 210
 radius = 40.0
 score = 2
 display_name = "THRUSTER"
@@ -131,7 +131,7 @@ collision_layer = 4
 collision_mask = 0
 script = ExtResource("2_part")
 kind = 1
-max_health = 450
+max_health = 210
 radius = 34.0
 score = 2
 display_name = "THRUSTER"
@@ -166,7 +166,7 @@ launch_point = NodePath("../LaunchL")
 bay_glow = NodePath("../BayGlowL")
 open_height = 54.0
 kind = 3
-max_health = 150
+max_health = 70
 radius = 40.0
 score = 2
 display_name = "HANGAR"
@@ -193,7 +193,7 @@ launch_point = NodePath("../LaunchR")
 bay_glow = NodePath("../BayGlowR")
 open_height = 54.0
 kind = 3
-max_health = 150
+max_health = 70
 radius = 40.0
 score = 2
 display_name = "HANGAR"

@@ -10,13 +10,16 @@ extends Node3D
 ##   destroyer part, an asteroid, a wreck, the player's shields). A big gold
 ##   flash with long rays, sparks thrown back towards the shooter.
 ## - effects/surface_hit.tscn: hits on things that can't be shot (the ground,
-##   buildings, hulls). A smaller flash in the bolt's colour, short rays, sparks
-##   glancing off the surface and a puff of dust, so a miss never reads as a hit.
+##   buildings, hulls). A small pop in the bolt's colour with a ring and no
+##   rays, a cloud of drawn dust lobes (effects/dust_puff.gdshader) and a few
+##   chips arcing off, no sparks: a miss never reads as a hit.
 ##
-## The settings live on the scene. spawn()'s `size` scales the flash, sparks
-## and dust, not the timing.
+## The settings live on the scene. spawn()'s `size` scales the flash, sparks,
+## dust and chips, not the timing.
 
 const SHADER := preload("res://effects/hit_burst.gdshader")
+const DUST_SHADER := preload("res://effects/dust_puff.gdshader")
+const CHIP_SHADER := preload("res://effects/toon_unlined.gdshader")
 
 @export_group("Flash")
 ## Flash radius (metres) and how long it lasts (seconds).
@@ -28,6 +31,8 @@ const SHADER := preload("res://effects/hit_burst.gdshader")
 @export var rim_color := Color(1.0, 0.45, 0.1)
 ## Overall strength (above 1 blooms).
 @export var flash_brightness := 1.4
+## The core disc's radius at the start (fraction of the flash's).
+@export_range(0.0, 1.0) var core_size := 0.24
 ## Rays: how many, how much their lengths vary, and their width at the root
 ## (fraction of each ray's slice of the circle).
 @export var ray_count := 9.0
@@ -65,8 +70,10 @@ const SHADER := preload("res://effects/hit_burst.gdshader")
 @export var spark_glow := 1.15
 
 @export_group("Dust")
-## Puffs kicked up (0 = none): toon smoke puffs (the explosions' shader, born
-## cold), growing from `dust_size.x` to `dust_size.y` metres over
+## Puffs kicked up (0 = none): clouds of round lobes drawn by
+## effects/dust_puff.gdshader, each lobe toon-lit with a flat body tone and one
+## shadow crescent, swelling apart and then shrinking away lobe by lobe. Each
+## cloud grows from `dust_size.x` to `dust_size.y` metres across over
 ## `dust_lifetime` seconds, drifting off along the spawn direction at up to
 ## `dust_drift` m/s in a cone `dust_spread` degrees wide.
 @export var dust_count := 0
@@ -74,8 +81,26 @@ const SHADER := preload("res://effects/hit_burst.gdshader")
 @export var dust_lifetime := 0.7
 @export var dust_drift := 4.0
 @export var dust_spread := 35.0
-## Its colour: light, so it reads as dust kicked up rather than smoke.
-@export var dust_color := Color(0.78, 0.74, 0.66)
+## Its colour: light, so it reads as dust kicked up rather than smoke, and
+## the shadow crescent's tone (fraction of it; the sun's shadow tint cools it).
+@export var dust_color := Color(0.84, 0.75, 0.58)
+@export_range(0.0, 1.0) var dust_shadow_tone := 0.6
+## Lobes per cloud (up to 6).
+@export_range(1, 6) var dust_lobes := 4
+
+@export_group("Chips")
+## Bits knocked off the surface (0 = none): small flat-shaded chunks that fly
+## out along the spawn direction in a cone `chip_spread` degrees wide at
+## `chip_speed` m/s (min, max), tumbling, pulled down by `chip_gravity` m/s²,
+## shrinking to nothing over `chip_lifetime` seconds.
+@export var chip_count := 0
+@export var chip_size := 0.14
+@export var chip_speed := Vector2(6.0, 14.0)
+@export var chip_lifetime := 0.55
+@export var chip_spread := 45.0
+@export var chip_gravity := 30.0
+## Their colour: a darker take on the dust.
+@export var chip_color := Color(0.6, 0.52, 0.42)
 
 ## Shared by every burst of a scene and bolt colour (built on first use):
 ## meshes and materials.
@@ -122,37 +147,37 @@ func _build(scene: PackedScene, out: Vector3, size: float, tint: Color) -> void:
 	_flash.set_instance_shader_parameter("age", 0.0)
 	add_child(_flash)
 
-	# Sparks and dust in this node's space, +Y along `out`, scaled by `size`.
+	# Sparks, dust and chips in this node's space, +Y along `out`, scaled by `size`.
 	var facing := Transform3D(_facing(out).scaled(Vector3.ONE * size), Vector3.ZERO)
-	var sparks := GPUParticles3D.new()
-	sparks.draw_pass_1 = assets.spark
-	sparks.process_material = assets.spark_process
-	sparks.amount = spark_count
-	sparks.lifetime = spark_lifetime
-	sparks.one_shot = true
-	sparks.explosiveness = 1.0
-	sparks.randomness = 0.3
-	sparks.local_coords = true
-	sparks.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	sparks.visibility_aabb = AABB(Vector3.ONE * -40.0, Vector3.ONE * 80.0)
-	sparks.transform = facing
-	sparks.emitting = true
-	add_child(sparks)
-
+	if spark_count > 0:
+		_add_particles(assets.spark, assets.spark_process, spark_count, spark_lifetime, 1.0, 0.3,
+			facing, 40.0)
 	if dust_count > 0:
-		var dust := GPUParticles3D.new()
-		dust.draw_pass_1 = assets.dust
-		dust.process_material = assets.dust_process
-		dust.amount = dust_count
-		dust.lifetime = dust_lifetime
-		dust.one_shot = true
-		dust.explosiveness = 0.8
-		dust.local_coords = true
-		dust.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		dust.visibility_aabb = AABB(Vector3.ONE * -20.0, Vector3.ONE * 40.0)
-		dust.transform = facing
-		dust.emitting = true
-		add_child(dust)
+		_add_particles(assets.dust, assets.dust_process, dust_count, dust_lifetime, 0.8, 0.0,
+			facing, 20.0)
+	if chip_count > 0:
+		_add_particles(assets.chip, assets.chip_process, chip_count, chip_lifetime, 1.0, 0.2,
+			facing, 40.0)
+
+
+## A one-shot emitter of `count` particles, all at once (`explosiveness`),
+## in this node's space (`facing`), never culled within `reach` metres.
+func _add_particles(mesh: Mesh, process: Material, count: int, life: float, explosiveness: float,
+		randomness: float, facing: Transform3D, reach: float) -> void:
+	var particles := GPUParticles3D.new()
+	particles.draw_pass_1 = mesh
+	particles.process_material = process
+	particles.amount = count
+	particles.lifetime = life
+	particles.one_shot = true
+	particles.explosiveness = explosiveness
+	particles.randomness = randomness
+	particles.local_coords = true
+	particles.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	particles.visibility_aabb = AABB(Vector3.ONE * -reach, Vector3.ONE * reach * 2.0)
+	particles.transform = facing
+	particles.emitting = true
+	add_child(particles)
 
 
 ## A basis whose +Y (the particles' direction) points along `dir`.
@@ -169,9 +194,13 @@ func _process(delta: float) -> void:
 	_flash.set_instance_shader_parameter("age", 1.0 if _hidden else minf(_age / flash_time, 0.999))
 	if _age >= flash_time:
 		_flash.visible = false
-	var last := maxf(flash_time, spark_lifetime)
+	var last := flash_time
+	if spark_count > 0:
+		last = maxf(last, spark_lifetime)
 	if dust_count > 0:
 		last = maxf(last, dust_lifetime)
+	if chip_count > 0:
+		last = maxf(last, chip_lifetime)
 	if _age >= last:
 		queue_free()
 
@@ -195,6 +224,7 @@ func _assets(scene: PackedScene, tint: Color) -> Dictionary:
 	flash_material.set_shader_parameter("mid_color", mid)
 	flash_material.set_shader_parameter("rim_color", rim)
 	flash_material.set_shader_parameter("brightness", flash_brightness)
+	flash_material.set_shader_parameter("core_size", core_size)
 	flash_material.set_shader_parameter("rays", ray_count)
 	flash_material.set_shader_parameter("ray_variety", ray_variety)
 	flash_material.set_shader_parameter("ray_width", ray_width)
@@ -244,14 +274,62 @@ func _assets(scene: PackedScene, tint: Color) -> Dictionary:
 
 	var assets := {flash = flash, spark = spark, spark_process = process}
 	if dust_count > 0:
-		# The wrecks' puff trail, born cold (all smoke): its mesh and settings
-		# borrowed for a one-shot puff.
-		var style := ExplosionStyle.new()
-		style.smoke_color = dust_color
-		var trail := Explosion.trail(style, 1.0, dust_lifetime, dust_size.x, dust_size.y,
-			0.001, 0.4, 0.3, dust_drift, dust_spread)
-		assets.dust = trail.draw_pass_1
-		assets.dust_process = trail.process_material
-		trail.free()
+		# Dust clouds: a quad each, drawn by the dust puff shader; the particle
+		# scale is the cloud's width, swelling fast at first.
+		var dust_material := ShaderMaterial.new()
+		dust_material.shader = DUST_SHADER
+		dust_material.set_shader_parameter("dust_color", dust_color)
+		dust_material.set_shader_parameter("lobes", float(dust_lobes))
+		dust_material.set_shader_parameter("shadow_tone", dust_shadow_tone)
+		dust_material.set_shader_parameter("mid_tone", lerpf(dust_shadow_tone, 1.0, 0.6))
+		dust_material.set_shader_parameter("glint", 0.0)
+		dust_material.set_shader_parameter("rim", 0.0)
+		var dust := QuadMesh.new()
+		dust.material = dust_material
+		var dust_process := ParticleProcessMaterial.new()
+		dust_process.direction = Vector3.UP
+		dust_process.spread = dust_spread
+		dust_process.initial_velocity_min = dust_drift * 0.3
+		dust_process.initial_velocity_max = dust_drift
+		dust_process.damping_min = dust_drift * 0.8
+		dust_process.damping_max = dust_drift * 1.2
+		dust_process.gravity = Vector3.ZERO
+		dust_process.scale_min = dust_size.y * 0.8
+		dust_process.scale_max = dust_size.y * 1.2
+		dust_process.scale_curve = _curve([Vector2(0.0, dust_size.x / dust_size.y), Vector2(0.3, 0.8), Vector2(1.0, 1.0)])
+		assets.dust = dust
+		assets.dust_process = dust_process
+	if chip_count > 0:
+		# Chips: flat-shaded little blocks (the unlined toon shader, so no ink
+		# outlines on something this small), tumbling, falling, shrinking away.
+		var chip_material := ShaderMaterial.new()
+		chip_material.shader = CHIP_SHADER
+		chip_material.set_shader_parameter("albedo", chip_color)
+		var chip := BoxMesh.new()
+		chip.size = Vector3(chip_size, chip_size * 0.6, chip_size * 1.3)
+		chip.material = chip_material
+		var chip_process := ParticleProcessMaterial.new()
+		chip_process.direction = Vector3.UP
+		chip_process.spread = chip_spread
+		chip_process.initial_velocity_min = chip_speed.x
+		chip_process.initial_velocity_max = chip_speed.y
+		chip_process.gravity = Vector3.DOWN * chip_gravity
+		chip_process.angular_velocity_min = -720.0
+		chip_process.angular_velocity_max = 720.0
+		chip_process.particle_flag_rotate_y = true
+		chip_process.scale_min = 0.8
+		chip_process.scale_max = 1.3
+		chip_process.scale_curve = _curve([Vector2(0.0, 1.0), Vector2(0.6, 1.0), Vector2(1.0, 0.0)])
+		assets.chip = chip
+		assets.chip_process = chip_process
 	_cache[key] = assets
 	return assets
+
+
+static func _curve(points: Array[Vector2]) -> CurveTexture:
+	var curve := Curve.new()
+	for point in points:
+		curve.add_point(point)
+	var texture := CurveTexture.new()
+	texture.curve = curve
+	return texture

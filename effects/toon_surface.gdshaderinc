@@ -3,6 +3,7 @@
 // before including it to add a clip plane (see toon_clip.gdshader), or
 // TOON_UNLINED to draw it in the transparent pass, without ink outlines (see
 // toon_unlined.gdshader). TOON_WEAR adds worn paint (see toon_worn.gdshader).
+// The clip plane also glows where the surface meets it (the seam_* uniforms).
 // TOON_INSTANCED corrects the normals of MultiMesh instances (see
 // toon_instanced.gdshader), and TOON_FOLIAGE rounds off faceted trees (see
 // toon_unlined_instanced.gdshader).
@@ -41,11 +42,62 @@ uniform float foliage_round : hint_range(0.0, 1.0) = 1.0;
 uniform float foliage_axis_margin = 0.8;
 #endif
 
+#if defined(TOON_CLIP) || defined(TOON_WEAR)
+#include "res://effects/noise.gdshaderinc"
+#endif
+
 #ifdef TOON_CLIP
 // World-space plane (normal, distance): fragments behind it (dot(normal, p) <
 // distance) aren't drawn. Per instance; the default (all zero) clips nothing.
 instance uniform vec4 clip_plane = vec4(0.0);
 varying vec3 world_position;
+// The seam where the surface comes through the plane (the destroyer's warp
+// portal): a band of portal energy, white-hot at the cut and fading to
+// `seam_color` over `seam_width` metres, flickering and licking up the hull in
+// tongues. The cut itself is ragged (it eats up to `seam_ragged` metres into
+// the surface in front of the plane, never behind it), so the hull seems to
+// form out of the energy rather than slide through a clean slice. Set per
+// destroyer by Destroyer.seam_* (zero energy: a clean cut, no glow).
+uniform vec4 seam_color : source_color = vec4(1.0, 0.3, 0.45, 1.0);
+uniform vec4 seam_hot_color : source_color = vec4(1.0, 0.85, 0.9, 1.0);
+uniform float seam_width = 45.0;
+uniform float seam_energy = 5.0;
+uniform float seam_ragged = 6.0;
+// Size (m) of the flicker's tongues and ragged bites.
+uniform float seam_scale = 14.0;
+// How fast the energy churns.
+uniform float seam_speed = 1.5;
+
+// How far (m) in front of the cut `p` is, after the ragged bites (negative:
+// cut away), and the seam's glow there (0 to 1). (0, 0) far from the plane.
+// No glow when there's no plane (all zero).
+vec2 clip_seam(vec3 p) {
+	if (dot(clip_plane.xyz, clip_plane.xyz) < 0.5) {
+		return vec2(1.0, 0.0);
+	}
+	float d = dot(clip_plane.xyz, p) - clip_plane.w;
+	// Past the longest tongue (reach below is at most 1.35 × seam_width).
+	if (d > seam_width * 1.4 + seam_ragged) {
+		return vec2(d, 0.0);
+	}
+	// Noise laid out on the plane: across it and up it.
+	vec3 across = normalize(cross(clip_plane.xyz, abs(clip_plane.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+	vec3 up = cross(across, clip_plane.xyz);
+	vec2 q = vec2(dot(p, across), dot(p, up)) / seam_scale;
+	float t = TIME * seam_speed;
+	float bite = noise2(q + vec2(t * 0.7, -t * 0.4));
+	d -= seam_ragged * smoothstep(0.3, 0.8, bite);
+	// Tongues: the band's reach varies along the cut and churns.
+	float reach = seam_width * (0.45 + 0.9 * clamp(noise2(q * 0.6 - vec2(t * 0.3, t * 0.9)), 0.0, 1.0));
+	// Falls off from the cut, then fades smoothly to exactly nothing at the
+	// tongue's tip: the exponential alone still had a fifth of its brightness
+	// where the band stopped, which showed as a hard edge.
+	float x = max(d, 0.0) / max(reach, 0.01);
+	float glow = exp(-x * 2.0) * (1.0 - smoothstep(0.35, 1.0, x));
+	// Crackle: bright flecks dancing in the band.
+	glow *= 0.7 + 0.6 * noise(q * 3.0 + vec2(-t * 2.3, t * 1.9));
+	return vec2(d, clamp(glow, 0.0, 1.5));
+}
 #endif
 
 #if defined(TOON_CLIP) || defined(TOON_INSTANCED) || defined(TOON_FOLIAGE)
@@ -86,8 +138,7 @@ void vertex() {
 // model must map at `uv_metres` per unit (the Juggernaut's plating UVs), so
 // the wear is sized in metres, sticks to the hull and never repeats. The
 // albedo texture is read as plating: where it's dark (seams, hatch edges) the
-// paint wears more.
-#include "res://effects/noise.gdshaderinc"
+// paint wears more. (noise.gdshaderinc is included above.)
 // Bare metal under the paint (multiplied by the albedo texture like the paint).
 uniform vec4 wear_color : source_color = vec4(0.2, 0.22, 0.26, 1.0);
 // Metres of surface per UV unit (the model's UV scale).
@@ -139,7 +190,8 @@ float wear_mask(vec2 uv) {
 
 void fragment() {
 #ifdef TOON_CLIP
-	if (dot(clip_plane.xyz, world_position) < clip_plane.w) {
+	vec2 seam = clip_seam(world_position);
+	if (seam.x < 0.0) {
 		discard;
 	}
 #endif
@@ -148,6 +200,15 @@ void fragment() {
 	ALBEDO = mix(ALBEDO, wear_color.rgb * texture(albedo_texture, UV).rgb, wear_mask(UV));
 #endif
 	EMISSION = emission.rgb * texture(emission_texture, UV).rgb * emission_energy;
+#ifdef TOON_CLIP
+	if (seam.y > 0.0 && seam_energy > 0.0) {
+		// White-hot at the cut, the portal's colour further up the band; the
+		// surface's own colour darkens under it so the glow reads as heat.
+		vec3 heat = mix(seam_color.rgb, seam_hot_color.rgb, smoothstep(0.6, 1.2, seam.y));
+		ALBEDO *= 1.0 - 0.8 * min(seam.y, 1.0);
+		EMISSION += heat * seam.y * seam_energy;
+	}
+#endif
 #ifdef TOON_INSTANCED
 	// Map kit pieces carry their palette colours as vertex colours (one
 	// material, one draw per piece; see export_corneria.py's bake_palette()),

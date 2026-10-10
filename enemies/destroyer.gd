@@ -129,6 +129,20 @@ static var _hull_shapes := {}
 @export var warp_speed := 100.0
 ## Seconds to slow from warp_speed to cruise speed once out.
 @export var warp_brake_time := 5.0
+## The seam where the hull meets the portal glows with its energy (the clip
+## shaders' seam_* uniforms, toon_surface.gdshaderinc): the band's colour,
+## white-hot at the cut...
+@export var seam_color := Color(1.0, 0.3, 0.45)
+@export var seam_hot_color := Color(1.0, 0.85, 0.9)
+## ...how far up the hull it reaches (m, on average; it licks up in tongues)...
+@export var seam_width := 45.0
+## ...its brightness (above 1 it blooms; 0: a clean cut, no glow)...
+@export var seam_energy := 5.0
+## ...how far (m) the ragged cut bites into the hull in front of the portal...
+@export var seam_ragged := 6.0
+## ...the size (m) of the tongues and bites, and how fast they churn.
+@export var seam_scale := 14.0
+@export var seam_speed := 1.5
 
 @export_group("Death")
 ## The chain of blasts along the hull when it dies: up to this high above the
@@ -219,6 +233,7 @@ func _ready() -> void:
 	_collect_visuals(self)
 	_use_worn_paint()
 	_use_clip_shader()
+	_apply_seam_look()
 	_set_visibility(0.0)
 	for part in all_parts():
 		if is_armoured(part):
@@ -428,7 +443,7 @@ func _warp_speed(delta: float) -> float:
 
 
 ## Lights come on as they pass the portal; once the stern is out the portal
-## shuts, the clip plane goes and the parts become solid (and shootable).
+## shuts and the parts become solid (and shootable).
 func _update_warp() -> void:
 	for light: Light3D in _lights:
 		if is_instance_valid(light):
@@ -439,7 +454,9 @@ func _update_warp() -> void:
 	_brake_left = warp_brake_time
 	if is_instance_valid(_portal):
 		_portal.close()
-	_set_clip(Plane())
+	# The clip plane stays until _end_warp(): nothing is behind it any more,
+	# and the seam's glow on the stern fades as the stern pulls away from it
+	# instead of switching off.
 	# The parts and the hull turn solid: the turrets open fire as soon as the
 	# parts can be shot, and the hull has to block their shots (and the
 	# player's) from then on too.
@@ -523,6 +540,30 @@ func _use_clip_shader() -> void:
 			mesh.set_surface_override_material(surface, _clip_copies[material])
 
 
+## Give every clip-plane material (the toon_clip copies and the worn paint)
+## this destroyer's seam look.
+func _apply_seam_look() -> void:
+	var done := {}
+	for node in _meshes:
+		var mesh := node as MeshInstance3D
+		if mesh == null or mesh.mesh == null:
+			continue
+		for surface in mesh.mesh.get_surface_count():
+			var material := mesh.get_active_material(surface) as ShaderMaterial
+			if material == null or done.has(material):
+				continue
+			if material.shader != TOON_CLIP and (worn_paint == null or material.shader != worn_paint.shader):
+				continue
+			done[material] = true
+			material.set_shader_parameter(&"seam_color", seam_color)
+			material.set_shader_parameter(&"seam_hot_color", seam_hot_color)
+			material.set_shader_parameter(&"seam_width", seam_width)
+			material.set_shader_parameter(&"seam_energy", seam_energy)
+			material.set_shader_parameter(&"seam_ragged", seam_ragged)
+			material.set_shader_parameter(&"seam_scale", seam_scale)
+			material.set_shader_parameter(&"seam_speed", seam_speed)
+
+
 ## Hide everything behind `plane` (an empty Plane() clips nothing).
 func _set_clip(plane: Plane) -> void:
 	var value := Vector4(plane.normal.x, plane.normal.y, plane.normal.z, plane.d)
@@ -566,6 +607,12 @@ func _on_part_destroyed() -> void:
 		return
 	_check_shields()
 	if bridge.is_destroyed and intact_count(thrusters) == 0:
+		_die()
+
+
+## Sinks the ship at once, whatever is left of it (DevConsole's `killall`).
+func destroy() -> void:
+	if not _dying:
 		_die()
 
 

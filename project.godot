@@ -20,6 +20,7 @@ config/icon="res://icon.svg"
 SceneFader="*res://ui/scene_fader.gd"
 Settings="*res://settings/settings.gd"
 Music="*res://audio/music.gd"
+DevConsole="*res://ui/dev_console.gd"
 
 [display]
 

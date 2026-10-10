@@ -81,7 +81,8 @@ void fragment() {
 	float width = ray_width * (1.0 - along) * (1.0 - t);
 	// Angular width to screen distance, for the edge's antialiasing.
 	float across_aa = aa * rays / (TAU * max(r, 0.05));
-	float ray = smoothstep(width + across_aa, width, across) * step(root, r) * step(r, reach);
+	// (`rays` 0 = none: the smoothstep's edges would meet.)
+	float ray = smoothstep(width + across_aa, width, across) * step(root, r) * step(r, reach) * step(0.5, rays);
 
 	// Shock ring racing out, thinning to nothing.
 	float ring_r = mix(0.2, 1.0, burst);

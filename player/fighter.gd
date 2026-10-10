@@ -86,6 +86,9 @@ const LAYER_HURTBOX := 8
 var speed := 0.0
 ## Point the guns aim at (see parallel_fire).
 var aim_point := Vector3.ZERO
+## Damage of each bolt this ship fires; negative = the laser scene's own
+## `damage`. Set by the developer console (DevConsole).
+var bolt_damage := -1
 
 var _rates := Vector3.ZERO
 var _fire_cooldown := 0.0
@@ -295,6 +298,8 @@ func _fire() -> void:
 	_next_cannon = (_next_cannon + 1) % _cannons.size()
 	var laser := laser_scene.instantiate() as Laser
 	get_tree().current_scene.add_child(laser)
+	if bolt_damage >= 0:
+		laser.damage = bolt_damage
 	var origin := muzzle.global_position
 	var direction := origin.direction_to(aim_point)
 	if parallel_fire:

@@ -7,9 +7,9 @@
 script = ExtResource("2_wingman")
 collision_mask = 1
 lead_turns = true
-cruise_speed = 45.0
-max_speed = 80.0
-boost_speed = 150.0
+cruise_speed = 50.0
+max_speed = 88.0
+boost_speed = 165.0
 acceleration = 35.0
 engine_glow_per_speed = 0.015
 engine_glow_range = Vector2(0.5, 3.0)
