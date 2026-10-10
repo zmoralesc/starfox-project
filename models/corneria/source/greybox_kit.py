@@ -228,4 +228,5 @@ def main():
     print("greybox kit: %d placeholders built, %d real pieces kept" % (made, kept))
 
 
-main()
+if __name__ == "__main__":
+    main()

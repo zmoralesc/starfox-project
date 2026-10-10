@@ -83,6 +83,10 @@ extends Node3D
 ## Water reaches the horizon instead of stopping at the map's edge (for a map
 ## with a coast: sea beyond it rather than the far ground).
 @export var water_to_horizon := false
+## The water is ice (Fichina's frozen lakes, with effects/ice.gdshader as the
+## water_material): no splashes, wakes or foam rings, and bolts spark on it as
+## on the ground (is_water_surface() says false).
+@export var frozen_water := false
 ## Colour of the flat ground beyond the map's edge.
 @export var far_ground_color := Color(0.3, 0.5, 0.25)
 ## How far the far ground extends, in metres.
@@ -214,6 +218,8 @@ func water_level_at(x: float, z: float) -> float:
 ## True if `point` lies on the water's surface (within `tolerance` metres), e.g.
 ## where a bolt hit: the splash goes there instead of the impact flash.
 func is_water_surface(point: Vector3, tolerance := 0.5) -> bool:
+	if frozen_water:
+		return false
 	return absf(point.y - water_level_at(point.x, point.z)) < tolerance
 
 
@@ -380,7 +386,8 @@ func _grid_normal(i: int, j: int) -> Vector3:
 
 
 ## Gives the ground material (effects/terrain.gdshader) the colours and heights
-## exported here, and the map's paved cells as a texture.
+## exported here, and the map's paint as a texture: paved cells in red, glacier
+## ice in green.
 func _feed_ground(ground: Material) -> void:
 	var shader_material := ground as ShaderMaterial
 	if shader_material == null:
@@ -397,11 +404,12 @@ func _feed_ground(ground: Material) -> void:
 	if map == null:
 		return
 	var cells := _points - 1
-	var paved := PackedByteArray()
-	paved.resize(cells * cells)
+	var texels := PackedByteArray()
+	texels.resize(cells * cells * 2)
 	for k in cells * cells:
-		paved[k] = 255 if map.paint[k] == TerrainMap.PAINT_PAVED else 0
-	var image := Image.create_from_data(cells, cells, false, Image.FORMAT_R8, paved)
+		texels[k * 2] = 255 if map.paint[k] == TerrainMap.PAINT_PAVED else 0
+		texels[k * 2 + 1] = 255 if map.paint[k] == TerrainMap.PAINT_ICE else 0
+	var image := Image.create_from_data(cells, cells, false, Image.FORMAT_RG8, texels)
 	var half := size * 0.5
 	shader_material.set_shader_parameter("paint_map", ImageTexture.create_from_image(image))
 	shader_material.set_shader_parameter("paint_grid", Vector4(-half, -half, _cell, cells))
@@ -427,7 +435,7 @@ func _build_water(body: StaticBody3D) -> void:
 		water_material.render_priority = water_render_priority
 	# Splash rings and wakes, drawn by the water shader (shared with the map's
 	# lakes and rivers).
-	if water_material is ShaderMaterial:
+	if water_material is ShaderMaterial and not frozen_water:
 		var marks := WaterMarks.new()
 		marks.name = "WaterMarks"
 		marks.material = water_material

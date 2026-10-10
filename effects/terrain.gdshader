@@ -33,12 +33,20 @@ uniform float rock_slope = 0.78;
 group_uniforms;
 
 group_uniforms paint;
-// Set by Terrain from its map: one texel per map cell, 1 where paved. Linear
-// filtering rounds the corners of the paved areas instead of stepping round
-// each cell. `paint_grid` is (x, z of the grid's corner, cell size, cells).
+// Set by Terrain from its map: one texel per map cell, red 1 where paved,
+// green 1 on glacier ice. Linear filtering rounds the corners of the painted
+// areas instead of stepping round each cell. `paint_grid` is (x, z of the
+// grid's corner, cell size, cells).
 uniform sampler2D paint_map : filter_linear, repeat_disable;
 uniform vec4 paint_grid = vec4(0.0, 0.0, 1.0, 1.0);
 uniform bool has_paint = false;
+// Glacier ice (green in paint_map, Fichina's glacier): its colour, and the
+// darker blue of the crevasse bands crossing it (bands `glacier_band_scale`
+// metres apart, stretched along x; `glacier_bands` of the surface).
+uniform vec4 glacier_color : source_color = vec4(0.7, 0.85, 0.96, 1.0);
+uniform vec4 glacier_dark_color : source_color = vec4(0.45, 0.66, 0.88, 1.0);
+uniform float glacier_band_scale = 70.0;
+uniform float glacier_bands : hint_range(0.0, 1.0) = 0.3;
 group_uniforms;
 
 group_uniforms patches;
@@ -121,8 +129,13 @@ void fragment() {
 	vec2 uv = (xz - paint_grid.xy) / (paint_grid.z * paint_grid.w);
 	// Only on the map: the backdrop beyond it would get the edge cells' paint.
 	if (has_paint && uv == clamp(uv, 0.0, 1.0)) {
-		float paved = texture(paint_map, uv).r;
-		color = mix(color, paved_color.rgb, aa_step(0.5, paved + wobble * paint_wobble));
+		vec2 paint = texture(paint_map, uv).rg;
+		// Glacier ice, with crevasse bands across it; rock still shows on
+		// steep ground.
+		float bands = aa_step(1.0 - glacier_bands, noise(xz / vec2(glacier_band_scale * 3.0, glacier_band_scale * 0.6)));
+		vec3 glacier = mix(glacier_color.rgb, glacier_dark_color.rgb, bands);
+		color = mix(color, glacier, aa_step(0.5, paint.g + wobble * paint_wobble) * (1.0 - rock));
+		color = mix(color, paved_color.rgb, aa_step(0.5, paint.r + wobble * paint_wobble));
 	}
 	ALBEDO = color;
 

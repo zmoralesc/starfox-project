@@ -11,6 +11,8 @@ const PAINT_AUTO := 0
 const PAINT_PAVED := 1
 ## Map cell lies under water above sea level (a plateau lake, at high_water_level).
 const PAINT_HIGH_WATER := 2
+## Map cell is glacier ice (Fichina): terrain.gdshader's glacier colours.
+const PAINT_ICE := 3
 
 ## Width and depth of the map in metres (square, centred on the origin).
 @export var size := 8000.0

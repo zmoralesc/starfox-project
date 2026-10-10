@@ -22,6 +22,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.dirname(HERE)          # models/corneria: the exported files
 MAP_FILE = os.path.join(HERE, "corneria.blend")
 KIT_FILE = os.path.join(HERE, "kit.blend")
+# Another map's common module (models/fichina/source/fichina_common.py) runs
+# this file with its own values for these and the constants below, and the
+# shared scripts (settlement, kit_tools, export_corneria) then serve it.
+NAME = "corneria"                     # the exported files' prefix: <NAME>_map.tres...
+MATERIAL_PREFIX = "Corneria_"         # palette materials are <MATERIAL_PREFIX><name>
+FOLIAGE = ("Tree", "TreeLight", "Trunk")   # palette colours drawn without ink lines (foliage)
 
 SIZE = 16000.0                        # the map: SIZE x SIZE metres, centred on the origin
 HALF = SIZE / 2
@@ -96,9 +102,9 @@ def srgb_to_linear(c):
 
 
 def material(name):
-    """The palette material `name` (as "Corneria_<name>"), made or updated."""
+    """The palette material `name` (as "<MATERIAL_PREFIX><name>"), made or updated."""
     srgb, emit = PALETTE[name]
-    full = "Corneria_" + name
+    full = MATERIAL_PREFIX + name
     m = bpy.data.materials.get(full) or bpy.data.materials.new(full)
     rgb = tuple(srgb_to_linear(c) for c in srgb)
     if not m.node_tree:

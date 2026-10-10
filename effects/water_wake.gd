@@ -112,7 +112,8 @@ func _ready() -> void:
 
 func _physics_process(_delta: float) -> void:
 	var at := _ship.global_position
-	var water := _terrain.water_level_at(at.x, at.z)
+	# Frozen water (ice) throws up no spray.
+	var water := -INF if _terrain.frozen_water else _terrain.water_level_at(at.x, at.z)
 	strength = 0.0
 	if _ship.is_visible_in_tree() and water > -INF:
 		var low := 1.0 - smoothstep(full_height, start_height, at.y - water)

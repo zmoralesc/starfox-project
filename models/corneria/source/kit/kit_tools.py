@@ -347,13 +347,13 @@ def check(col):
                 problems += 1
                 notes.append("%s: a part of %d faces faces inward (volume %.1f)" % (o.name, len(part), vol))
         bm.free()
-    foreign = [m for m in mats if not (m.startswith("Corneria_") and m[9:] in cc.PALETTE)]
+    foreign = [m for m in mats if not (m.startswith(cc.MATERIAL_PREFIX) and m[len(cc.MATERIAL_PREFIX):] in cc.PALETTE)]
     if foreign:
         problems += 1
         notes.append("materials not in the palette: " + ", ".join(sorted(foreign)))
     print("  %-28s %6d tris  %6.1f x %5.1f x %5.1f m  base z %+.2f  centre (%+.1f, %+.1f)  %s" % (
         col.name, tris, hi.x - lo.x, hi.z - lo.z, hi.y - lo.y, lo.z, (lo.x + hi.x) / 2, (lo.y + hi.y) / 2,
-        ", ".join(sorted(m[9:] for m in mats))))
+        ", ".join(sorted(m[len(cc.MATERIAL_PREFIX):] for m in mats))))
     for n in notes:
         print("      ! " + n)
     return problems

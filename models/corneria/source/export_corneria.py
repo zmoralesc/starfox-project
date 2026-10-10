@@ -6,7 +6,8 @@ is in the map; nothing has to be pasted by hand.
 Writes, into models/corneria/:
     corneria_map.tres      the TerrainMap: the terrain sampled from above at
                            every grid point, per-cell paint (from the Paint
-                           colour layer), the high-water level, and the
+                           colour layer: red paved, blue high water,
+                           green glacier ice), the high-water level, and the
                            structure heights the AI flies over (measured from
                            the props' actual geometry)
     corneria_layout.tres   the PropLayout: every kit piece instance in Props
@@ -37,7 +38,7 @@ import corneria_common as cc  # noqa: E402
 
 CELLS = cc.POINTS - 1
 MISSING_GROUND = -20.0   # height where a ray finds no terrain
-PAVED, HIGH_WATER = 1, 2  # TerrainMap.PAINT_*
+PAVED, HIGH_WATER, ICE = 1, 2, 3   # TerrainMap.PAINT_*
 
 
 def number(v, places=2):
@@ -78,6 +79,8 @@ def terrain_samples():
                 face_paint[k] = PAVED
             elif c[2] > 0.5:
                 face_paint[k] = HIGH_WATER
+            elif c[1] > 0.5:
+                face_paint[k] = ICE
     ev.to_mesh_clear()
 
     down = Vector((0, 0, -1))
@@ -206,10 +209,10 @@ def kit_mesh(piece):
 # KIT_MATERIAL (foliage: KIT_FOLIAGE, which the game draws without ink lines).
 # Alpha carries the glow: 1 - emission strength / KIT_GLOW (the game's
 # toon_instanced shader reads it back), so colours without glow keep alpha 1.
-KIT_MATERIAL = "Corneria_Kit"
-KIT_FOLIAGE = "Corneria_KitFoliage"
+KIT_MATERIAL = cc.MATERIAL_PREFIX + "Kit"
+KIT_FOLIAGE = cc.MATERIAL_PREFIX + "KitFoliage"
 KIT_GLOW = 8.0                       # = toon_surface.gdshaderinc's vertex_glow_energy
-FOLIAGE = ("Tree", "TreeLight", "Trunk")
+FOLIAGE = cc.FOLIAGE
 
 
 def kit_material(name):
@@ -229,13 +232,13 @@ def bake_palette(o):
     me = o.data
     colours = []
     for mat in me.materials:
-        entry = cc.PALETTE.get(mat.name[len("Corneria_"):]) if mat and mat.name.startswith("Corneria_") else None
+        entry = cc.PALETTE.get(mat.name[len(cc.MATERIAL_PREFIX):]) if mat and mat.name.startswith(cc.MATERIAL_PREFIX) else None
         if entry is None:
             colours.append(None)
         else:
             (r, g, b), emit = entry
             colours.append(((cc.srgb_to_linear(r), cc.srgb_to_linear(g), cc.srgb_to_linear(b),
-                             1.0 - min(emit, KIT_GLOW) / KIT_GLOW), mat.name[len("Corneria_"):] in FOLIAGE))
+                             1.0 - min(emit, KIT_GLOW) / KIT_GLOW), mat.name[len(cc.MATERIAL_PREFIX):] in FOLIAGE))
     attr = me.color_attributes.new("Col", "FLOAT_COLOR", "CORNER")
     me.color_attributes.active_color = attr
     slots = [m for m in me.materials]
@@ -378,7 +381,7 @@ def export_glb(objects, path, **options):
 
 def write_map(heights, paint, tops):
     scene = bpy.context.scene
-    with open(os.path.join(cc.OUT, "corneria_map.tres"), "w", newline="\n") as f:
+    with open(os.path.join(cc.OUT, cc.NAME + "_map.tres"), "w", newline="\n") as f:
         f.write('[gd_resource type="Resource" script_class="TerrainMap" format=3]\n\n')
         f.write('[ext_resource type="Script" path="res://world/terrain_map.gd" id="1_map"]\n\n')
         f.write('[resource]\nscript = ExtResource("1_map")\n')
@@ -393,7 +396,7 @@ def write_layout(props):
     placed = [(g, c.name, m) for g, c, m in props.instances if m.determinant() > 0]
     pieces = sorted({p[1] for p in placed})
     groups = sorted({p[0] for p in placed})
-    with open(os.path.join(cc.OUT, "corneria_layout.tres"), "w", newline="\n") as f:
+    with open(os.path.join(cc.OUT, cc.NAME + "_layout.tres"), "w", newline="\n") as f:
         f.write('[gd_resource type="Resource" script_class="PropLayout" format=3]\n\n')
         f.write('[ext_resource type="Script" path="res://world/prop_layout.gd" id="1_layout"]\n\n')
         f.write('[resource]\nscript = ExtResource("1_layout")\n')
@@ -424,7 +427,7 @@ def write_markers():
         # Godot's Transform3D text: the basis row by row, then the origin.
         vals = [number(m[r][c], 6) for r in range(3) for c in range(3)] + [number(m[r][3]) for r in range(3)]
         lines.append('"%s": Transform3D(%s)' % (name, ", ".join(vals)))
-    with open(os.path.join(cc.OUT, "corneria_markers.tres"), "w", newline="\n") as f:
+    with open(os.path.join(cc.OUT, cc.NAME + "_markers.tres"), "w", newline="\n") as f:
         f.write('[gd_resource type="Resource" script_class="MapMarkers" format=3]\n\n')
         f.write('[ext_resource type="Script" path="res://world/map_markers.gd" id="1_markers"]\n\n')
         f.write('[resource]\nscript = ExtResource("1_markers")\n')
@@ -460,14 +463,14 @@ def main():
     count, pieces = write_layout(props)
     write_markers()
     if rest:
-        export_glb(rest, os.path.join(cc.OUT, "corneria_props.glb"))
+        export_glb(rest, os.path.join(cc.OUT, cc.NAME + "_props.glb"))
     else:
         print("  warning: nothing but kit instances: corneria_props.glb not written")
     used = [kit_objects[p] for p in pieces]
     if used:
         for o in used:
             bake_palette(o)
-        export_glb(used, os.path.join(cc.OUT, "corneria_kit.glb"), export_vertex_color="ACTIVE")
+        export_glb(used, os.path.join(cc.OUT, cc.NAME + "_kit.glb"), export_vertex_color="ACTIVE")
     log(t0, "written")
     for o in list(kit_objects.values()) + rest:
         me = o.data
@@ -475,9 +478,9 @@ def main():
         bpy.data.meshes.remove(me)
     for holder, name in renamed:
         holder.name = name
-    print("exported: %d kit instances of %d pieces, %d prop tiles, %d structure cells, %d paved, %d high water" % (
+    print("exported: %d kit instances of %d pieces, %d prop tiles, %d structure cells, %d paved, %d high water, %d ice" % (
         count, len(pieces), len(rest), int((tops > 0).sum()), int((paint == PAVED).sum()),
-        int((paint == HIGH_WATER).sum())))
+        int((paint == HIGH_WATER).sum()), int((paint == ICE).sum())))
 
 
 main()

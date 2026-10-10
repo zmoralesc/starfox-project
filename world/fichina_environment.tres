@@ -1,0 +1,37 @@
+[gd_resource type="Environment" load_steps=4 format=3]
+
+[ext_resource type="Shader" path="res://world/polar_dusk_sky.gdshader" id="1_sky"]
+
+[sub_resource type="ShaderMaterial" id="SkyMaterial_dusk"]
+shader = ExtResource("1_sky")
+
+[sub_resource type="Sky" id="Sky_dusk"]
+sky_material = SubResource("SkyMaterial_dusk")
+process_mode = 1
+radiance_size = 2
+
+[resource]
+background_mode = 2
+sky = SubResource("Sky_dusk")
+ambient_light_source = 2
+ambient_light_color = Color(0.42, 0.45, 0.72, 1)
+ambient_light_energy = 0.55
+reflected_light_source = 2
+tonemap_mode = 2
+glow_enabled = true
+glow_intensity = 0.7
+glow_bloom = 0.03
+ssao_enabled = true
+ssao_radius = 2.0
+ssao_intensity = 1.5
+ssao_light_affect = 0.2
+fog_enabled = true
+fog_light_color = Color(0.5, 0.44, 0.64, 1)
+fog_sun_scatter = 0.45
+fog_aerial_perspective = 0.55
+fog_mode = 1
+fog_density = 1.0
+fog_depth_begin = 900.0
+fog_depth_end = 9500.0
+fog_depth_curve = 1.5
+fog_sky_affect = 0.0
