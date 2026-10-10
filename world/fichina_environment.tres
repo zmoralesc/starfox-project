@@ -4,6 +4,7 @@
 
 [sub_resource type="ShaderMaterial" id="SkyMaterial_dusk"]
 shader = ExtResource("1_sky")
+shader_parameter/aurora_enabled = false
 
 [sub_resource type="Sky" id="Sky_dusk"]
 sky_material = SubResource("SkyMaterial_dusk")

@@ -10,22 +10,21 @@
 [ext_resource type="AudioStream" uid="uid://bw7352g4sqs8m" path="res://audio/sfx/thrusters.mp3" id="sfx_thrusters"]
 [ext_resource type="Script" uid="uid://c7ltkt2mp8ftg" path="res://player/ship_model.gd" id="ship_model"]
 [ext_resource type="Script" uid="uid://8iqf7g8ddbm7" path="res://effects/water_wake.gd" id="water_wake"]
+[ext_resource type="Shader" path="res://effects/thruster_glow.gdshader" id="thruster_glow"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_hull"]
 size = Vector3(6.2, 1.2, 6.5)
 
-[sub_resource type="StandardMaterial3D" id="Mat_engine_glow"]
-albedo_color = Color(0.5, 0.75, 1, 1)
-emission_enabled = true
-emission = Color(0.35, 0.65, 1, 1)
-emission_energy_multiplier = 6.0
+[sub_resource type="ShaderMaterial" id="Mat_engine_glow"]
+render_priority = 0
+shader = ExtResource("thruster_glow")
 
 [sub_resource type="SphereMesh" id="Mesh_engine_glow"]
 material = SubResource("Mat_engine_glow")
 radius = 0.26
 height = 0.52
-radial_segments = 12
-rings = 6
+radial_segments = 24
+rings = 12
 
 [sub_resource type="ShaderMaterial" id="Mat_shield"]
 render_priority = 0
@@ -80,6 +79,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.6969086, 0.26277447, -0.480
 [node name="Glow" type="MeshInstance3D" parent="Model" unique_id=319916097]
 transform = Transform3D(0.71, 0, 0, 0, 1.295, 0, 0, 0, 0.4, 0, -0.25, 0.8)
 cast_shadow = 0
+extra_cull_margin = 4.0
 mesh = SubResource("Mesh_engine_glow")
 
 [node name="EngineLight" type="OmniLight3D" parent="Model" unique_id=1153663872]

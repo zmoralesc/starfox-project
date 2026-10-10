@@ -67,6 +67,7 @@ func _ready() -> void:
 		WaterSplash.prewarm(prewarm_splash, self)
 	for burst in prewarm_hit_bursts:
 		HitBurst.prewarm(burst, self)
+	MuzzleFlash.prewarm(self)
 	Music.play(music)
 	($Ship as Ship).wreck_destroyed.connect(_on_player_lost)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED

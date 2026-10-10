@@ -51,6 +51,8 @@ uniform float star_scale = 260.0;
 group_uniforms;
 
 group_uniforms aurora;
+// Off skips the aurora altogether (none of its slices are sampled).
+uniform bool aurora_enabled = true;
 uniform vec4 aurora_low_color : source_color = vec4(0.25, 1.0, 0.55, 1.0);
 uniform vec4 aurora_high_color : source_color = vec4(0.75, 0.3, 1.0, 1.0);
 uniform float aurora_strength = 1.4;
@@ -119,7 +121,7 @@ float ribbons(vec2 p) {
 }
 
 vec3 aurora(vec3 dir, vec3 sun, vec2 pixel) {
-	if (dir.y < 0.01) {
+	if (!aurora_enabled || dir.y < 0.01) {
 		return vec3(0.0);
 	}
 	float away = mix(1.0, smoothstep(0.3, -0.6, dot(normalize(dir.xz + vec2(1e-5)), normalize(sun.xz + vec2(1e-5)))), aurora_away);

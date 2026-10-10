@@ -100,11 +100,15 @@ var _next_cannon := 0
 ## engine sound whose pitch follows speed.
 @onready var _fire_sound := get_node_or_null("FireSound") as AudioStreamPlayer3D
 @onready var _engine_sound := get_node_or_null("EngineSound") as AudioStreamPlayer3D
-## Optional engine glow (an emissive mesh) and light, scaled with speed.
+## Optional engine glow (an emissive mesh, or one drawn by a shader with a
+## `strength` instance uniform, like thruster_glow.gdshader) and light, scaled
+## with speed.
 @onready var _engine_glow := get_node_or_null("Model/Glow") as MeshInstance3D
 @onready var _engine_light := get_node_or_null("Model/EngineLight") as OmniLight3D
-## This ship's copy of the glow material, and the glow's look at cruise speed.
+## This ship's copy of an emissive glow material (null for a shader glow, which
+## takes its strength per instance), and the glow's look at cruise speed.
 var _glow_material: StandardMaterial3D
+var _glow_shader := false
 var _glow_energy := 1.0
 var _glow_scale := Vector3.ONE
 var _light_energy := 1.0
@@ -134,8 +138,9 @@ func _ready() -> void:
 	if _engine_glow:
 		# The material is shared by every ship of this scene: copy it so each
 		# ship's glow follows its own speed.
-		var shared := _engine_glow.mesh.surface_get_material(0) as StandardMaterial3D
-		if shared:
+		var shared := _engine_glow.mesh.surface_get_material(0)
+		_glow_shader = shared is ShaderMaterial
+		if shared is StandardMaterial3D:
 			_glow_material = shared.duplicate()
 			_engine_glow.material_override = _glow_material
 			_glow_energy = _glow_material.emission_energy_multiplier
@@ -273,6 +278,8 @@ func _update_engine_glow() -> void:
 		engine_glow_range.x, engine_glow_range.y)
 	if _glow_material:
 		_glow_material.emission_energy_multiplier = _glow_energy * strength
+	elif _glow_shader:
+		_engine_glow.set_instance_shader_parameter("strength", strength)
 	if _engine_glow:
 		# Size, not just brightness: bloom washes a bright glow out to white
 		# whatever its energy, and from the chase camera only its width and
