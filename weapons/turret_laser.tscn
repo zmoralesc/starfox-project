@@ -7,16 +7,16 @@
 [sub_resource type="ShaderMaterial" id="Mat_bolt"]
 render_priority = 0
 shader = ExtResource("2_bolt")
-shader_parameter/bolt_length = 6.0
+shader_parameter/bolt_length = 8.034782
 shader_parameter/color = Color(1, 0.18, 0.1, 1)
-shader_parameter/energy = 20.0
+shader_parameter/energy = 16.0
 shader_parameter/radius = 0.7
 
 [sub_resource type="CylinderMesh" id="Mesh_bolt"]
 material = SubResource("Mat_bolt")
 top_radius = 0.105
 bottom_radius = 0.7
-height = 6.0
+height = 8.034782
 radial_segments = 8
 rings = 12
 cap_top = false
@@ -26,8 +26,8 @@ cap_bottom = false
 render_priority = 0
 shader = ExtResource("3_glow")
 shader_parameter/color = Color(1, 0.18, 0.1, 1)
-shader_parameter/size = 2.5
-shader_parameter/bolt_length = 6.0
+shader_parameter/size = 0.8
+shader_parameter/bolt_length = 8.034782
 
 [sub_resource type="QuadMesh" id="Mesh_glow"]
 material = SubResource("Mat_glow")
@@ -38,6 +38,7 @@ lifetime = 3.0
 damage = 12
 impact_color = Color(1, 0.4, 0.25, 1)
 collision_mask = 3
+trail_length = 40.0
 
 [node name="Bolt" type="MeshInstance3D" parent="."]
 rotation = Vector3(1.5708, 0, 0)
@@ -50,5 +51,5 @@ mesh = SubResource("Mesh_glow")
 
 [node name="Light" type="OmniLight3D" parent="."]
 light_color = Color(1, 0.3, 0.2, 1)
-light_energy = 3.0
-omni_range = 12.0
+light_energy = 2.0
+omni_range = 8.0

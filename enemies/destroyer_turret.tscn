@@ -44,6 +44,7 @@ script = ExtResource("1_turret")
 max_health = 12
 radius = 6.0
 display_name = "TURRET"
+bolt_speed = 1200.0
 
 [node name="Base" type="MeshInstance3D" parent="."]
 position = Vector3(0, 1.5, 0)

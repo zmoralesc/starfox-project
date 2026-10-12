@@ -70,8 +70,8 @@ enemies/
 weapons/
   laser.gd                 Laser: bolt movement + hit detection (shared by both sides); splash on water (water_splash)
   laser.tscn               Player-side bolt (green, 2400 m/s on ship.tscn, 40 m streak; Bolt + Glow, see laser_bolt/laser_glow)
-  enemy_laser.tscn         Enemy fighter bolt (red)
-  turret_laser.tscn        Destroyer turret bolt (bigger, slower, 12 damage)
+  enemy_laser.tscn         Enemy fighter and Trooper bolt (red, 4 damage, 40 m streak like the player's)
+  turret_laser.tscn        Destroyer turret bolt (red, thicker, 12 damage, 40 m streak)
   laser_bolt.gdshader      Bolt look: additive (no ink outline), white core, tail fade, 1 px minimum width; on a tapered open cylinder (0.2 m radius player bolt, 12 rings) bent to a pointed head
   laser_glow.gdshader      Soft halo along a bolt, even along it and fading towards the tail, laid out on screen; shrinks with distance (no minimum size)
 world/
@@ -437,7 +437,7 @@ Measured (GUIDE §8.5, 12 runs each, Weapons Free, patrols kept on the player): 
 |---|---|
 | `HOVER` | CHASE: spring-holds a ring point 120–220 m behind its quarry (`hover_spring` 4, ≤ 60 m/s², ≤ 40 m/s). The point jitters ±7 m (`hover_jitter`, 0.8 Hz). PATROL / SEEK: drifts between roam points at 14 m/s |
 | `DASH` | 60–110 m hop peaking at 63–90 m/s (`dash_speed` 90 × 0.7–1); sideways/up/down, never towards its target inside its ring (back in from beyond it, out from inside it); every 0.4–1.6 s in CHASE, 40% chained after 0.05–0.25 s, 35% swerve partway; also the dodge (EVADE) |
-| `weapon`: `WINDUP` → `BURST` | Runs beside the mode, so it fires while hovering, dashing or landed. 0.4 s tell (`Model/Charge` glows), then 3 bolts 0.18 s apart (enemy laser, 250 m/s, lead aim, `aim_scatter` 2). Cooldown 2.5 s. Needs the quarry within 350 m, in sight and in the arm's arc (±70° yaw, −60°..+85° pitch). No dodging or retargeting until the last bolt |
+| `weapon`: `WINDUP` → `BURST` | Runs beside the mode, so it fires while hovering, dashing or landed. 0.4 s tell (`Model/Charge` glows), then 3 bolts 0.18 s apart (enemy laser, 1200 m/s, lead aim, `aim_scatter` 2). Cooldown 2.5 s. Needs the quarry within 350 m, in sight and in the arm's arc (±70° yaw, −60°..+85° pitch). No dodging or retargeting until the last bolt |
 | `APPROACH` → `DESCEND` → `LANDED` → `TAKEOFF` | Planets only. Lands after 10–20 s of CHASE, or at 30% of patrol roam points; stays 6–10 s, firing but not dashing; takes off when shot, out of sight, beyond 500 m or straight overhead. Take-off: 0.5 s crouch, then climbs at 15 m/s |
 
 | Value | Setting |
@@ -459,7 +459,7 @@ Measured (GUIDE §8.5, 12 runs each, Weapons Free, patrols kept on the player): 
   | Bridge | (0, 235, 232) (its centre; `Model` at (0, −31, 2), base on the pedestal), `radius` 50, health 420, score 3; shielded until 4 turrets are down; on the castle's upper pedestal (`BRIDGE_Y` in `juggernaut_c2.py`) |
   | Thrusters | keel (0, 30, 502.5) `radius` 40; sides (±93, 54, 502.5) `radius` 34; health 210, score 2; shielded until the bridge is down |
   | Hangar doors | (±132, 36, 15), 114 × 51 m, `open_height` 54; health 70, score 2; launch elites (`level_fighters` off) |
-  | Turrets | 8, `juggernaut_turret.tscn` (health 28, `aggro_range` 600, `bolt_speed` 450; otherwise the old turret's values): bow glacis (±22.5, 112.7, −360), sponson plates (±112.5, 121, −165), main deck (±78, 115, −82.5), castle bastions (±63, 188.5, 195); positions from `MOUNT_PADS` in `juggernaut_c2.py` |
+  | Turrets | 8, `juggernaut_turret.tscn` (health 28, `aggro_range` 600, `bolt_speed` 1200; otherwise the old turret's values): bow glacis (±22.5, 112.7, −360), sponson plates (±112.5, 121, −165), main deck (±78, 115, −82.5), castle bastions (±63, 188.5, 195); positions from `MOUNT_PADS` in `juggernaut_c2.py` |
   | Hull collision | trimesh from the model (`hull_collision_from_model`) |
   | Surface detail | painted into the hull mesh (`paint_juggernaut_hull()`): 163 panels, 1,164 windows, 26 running lights, 6 markings, flush (no geometry stands off the surface); hull 11,400 → ~28,000 triangles, collision included |
   | Plating texture | one tiling greyscale texture (`build_plating_pixels()`, 2048 px per 48 m) multiplied over the four hull greys: plates 9–24 m (layout × `PLATE_SCALE` 3), seams, bolts, hatches, vents; box-projected UVs (`add_plating_uvs()`); no extra geometry |
@@ -704,7 +704,7 @@ Two tips:
 - **Twin lasers** (`Fighter.parallel_fire`, on in `ship.tscn`, so the player and wingmen; off on enemies).
   - **Path:** each bolt flies from its muzzle parallel to the line from the point between the muzzles through the aim point, so the pair stays 0.87 m either side of the crosshair line at every range (under an enemy's 1.1 m hit sphere). No bends. Off = each bolt flies straight to the aim point.
   - **Muzzle flash:** `Fighter.muzzle_flash_size` (0.6 on `ship.tscn`, 0 = none) spawns `MuzzleFlash` (`effects/muzzle_flash.gd`) on the muzzle: 70 ms, bolt's `impact_color`, drawn by `muzzle_flash.gdshader` (core, plume along the barrel, four-spike star; `energy` 1.6), depth-tested so the hull hides it where it covers the muzzle (pulled only `pull` 0.15 m towards the camera), plus a small light. One shared mesh and material; prewarmed by `Level._ready()`.
-  - **Streak:** `Laser.trail_length` (40 m on `laser.tscn`, 0 on enemy and turret bolts) stretches the bolt mesh behind its head, growing from the muzzle, so a bolt moving ~40 m per frame reads as one long streak.
+  - **Streak:** `Laser.trail_length` (40 m on `laser.tscn`, `enemy_laser.tscn` and `turret_laser.tscn`) stretches the bolt mesh behind its head, growing from the muzzle, so a bolt moving ~40 m per frame reads as one long streak.
 - **Engine glow follows speed** (`Fighter._update_engine_glow()`, *Engine glow* exports): strength 1.0 at cruise, `engine_glow_per_speed` 0.015 per m/s, clamped to `engine_glow_range` (0.5–2.3); the player's `ship.tscn` uses 0.0075 and 0.7–1.5 (0.7 at minimum speed, 1.5 at full throttle; was 0.5 and 2.05), and `wingman.tscn` restores the defaults; scales `Model/Glow`'s size and brightness and `Model/EngineLight`'s energy. On the Arwing the glow is `thruster_glow.gdshader` (`energy` 2.5, `core_size` 0.3), which takes the strength as its `strength` instance uniform, so the material is shared; the enemy fighters use it too (orange, `plume_length` 2.6 m); an emissive `StandardMaterial3D` glow would be duplicated per ship and have its emission energy scaled instead.
 - **Physics interpolation is off.** Ships and the camera update at 60 Hz, so there may be slight judder on high-refresh monitors.
 - **Wingmen and enemies only see the player.** Enemies never target wingmen, and nothing damages wingmen. (Destroyer turrets shoot at wingmen only when the player is out of range, purely for show.)

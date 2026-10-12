@@ -16,7 +16,7 @@ max_health = 28
 radius = 6.0
 display_name = "TURRET"
 aggro_range = 600.0
-bolt_speed = 450.0
+bolt_speed = 1200.0
 
 [node name="Base" type="MeshInstance3D" parent="."]
 mesh = ExtResource("2_base")
