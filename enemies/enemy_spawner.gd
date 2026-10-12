@@ -24,8 +24,18 @@ extends Node
 ## Edge of the play area, centred on the origin. Destroyers arrive from a
 ## random direction on it (warping in just beyond it: Destroyer.portal_margin).
 @export var zone_radius := 1000.0
-## Most enemy fighters allowed alive at once.
+## Most enemy fighters allowed alive at once (troopers count as fighters).
 @export var max_fighters := 12
+
+@export_group("Troopers")
+## Shogun Troopers (Trooper) join the waves from trooper_first_wave on: one,
+## then one more every trooper_wave_step waves, as their own squad beside the
+## fighters. Empty = no troopers.
+@export var trooper_scene: PackedScene = preload("res://enemies/trooper.tscn")
+@export var trooper_first_wave := 3
+@export var trooper_wave_step := 3
+## How far from the fighters' centre the troopers appear (m).
+@export var trooper_offset := 120.0
 
 @export_group("Space station")
 ## Waves appear at least this far from the space station (if the mission has
@@ -128,7 +138,13 @@ func _spawn_wave() -> void:
 		return
 	wave += 1
 	var count := mini(mini(first_wave_size + (wave - 1) * wave_growth, max_wave_size), fighter_room())
-	spawn_squad(squad_center(), count)
+	var center := squad_center()
+	spawn_squad(center, count)
+	var troopers := mini(trooper_count(wave), fighter_room())
+	if troopers > 0:
+		var side := Vector3(randf_range(-1, 1), 0.0, randf_range(-1, 1)).normalized()
+		spawn_squad(_wave_point(center + side * trooper_offset), troopers, trooper_scene)
+		get_tree().call_group("mission_control", "announce_troopers")
 
 	if destroyer_every > 0 and wave % destroyer_every == 0 and not is_instance_valid(destroyer):
 		spawn_destroyer()
@@ -143,7 +159,19 @@ func squad_center() -> Vector3:
 		return Vector3.ZERO
 	var jitter := Vector3(randf_range(-1, 1), randf_range(-0.4, 0.4), randf_range(-1, 1)) * 0.7
 	var direction := (-player.global_basis.z + jitter).normalized()
-	var center := player.global_position + direction * spawn_distance
+	return _wave_point(player.global_position + direction * spawn_distance)
+
+
+## How many troopers wave number `n` brings (see trooper_scene).
+func trooper_count(n: int) -> int:
+	if trooper_scene == null or n < trooper_first_wave:
+		return 0
+	@warning_ignore("integer_division")
+	return 1 + (n - trooper_first_wave) / maxi(trooper_wave_step, 1)
+
+
+## `center` moved inside the boundary, above the ground and clear of the station.
+func _wave_point(center: Vector3) -> Vector3:
 	var boundary := get_tree().get_first_node_in_group("boundary") as PlayBoundary
 	if boundary:
 		center = boundary.clamp_inside(center, spawn_boundary_margin)

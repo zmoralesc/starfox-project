@@ -50,6 +50,29 @@ signal exploded(at: Vector3)
 ## What it crashes into: World (terrain, asteroids, station, destroyer hulls),
 ## Friendly and Enemy ships. Crashing deals no damage.
 @export_flags_3d_physics var crash_mask := Fighter.LAYER_WORLD | Fighter.LAYER_FRIENDLY | Fighter.LAYER_ENEMY
+## Turns its nose along its flight path (a ship). Off for a trooper, which
+## falls as it is and plays death_animation instead.
+@export var align_to_velocity := true
+## Played on the model's AnimationPlayer (its AnimationTree, if any, is
+## switched off first). Empty = none.
+@export var death_animation: StringName = &""
+
+@export_group("Out of control")
+## Flies like a rocket out of control (a trooper whose thrusters are still
+## firing): its velocity heads for rocket_max_speed along a thrust direction
+## that keeps swinging round, changing at this rate (m/s²). 0 = off: a ship's
+## wreck coasts on its velocity.
+@export var rocket_thrust := 0.0
+@export var rocket_max_speed := 60.0
+## How fast the thrust swings (degrees per second); every rocket_jink_interval
+## seconds (random in this range) it swings about a new axis, or, with
+## rocket_snap_chance, jumps to a new direction altogether.
+@export var rocket_turn_deg := 300.0
+@export var rocket_jink_interval := Vector2(0.15, 0.45)
+@export_range(0.0, 1.0) var rocket_snap_chance := 0.0
+## With align_to_velocity off: it tumbles about a random axis at a rate in this
+## range (rad/s), picked anew with each jink. Zero = no tumble.
+@export var tumble_rate := Vector2.ZERO
 
 @export_group("Smoke")
 ## Puffs per second along the trail.
@@ -99,8 +122,8 @@ signal exploded(at: Vector3)
 @export var debris_smoke_start_size := 0.8
 @export var debris_smoke_end_size := 3.5
 
-## The fighters' running lights go out (material name, see FighterModel).
-const LIGHTS_MATERIAL := "Fighter_Lights"
+## Running lights go out (material names, see FighterModel and TrooperModel).
+const LIGHTS_MATERIALS: Array[String] = ["Fighter_Lights", "Trooper_Lights"]
 const DEAD_LIGHTS_COLOR := Color(0.06, 0.05, 0.05)
 
 static var _dead_lights: ShaderMaterial
@@ -122,6 +145,13 @@ var _sound: AudioStream
 ## to fade when the wreck is freed.
 var _smoke: GPUParticles3D
 var _exclude: Array[RID] = []
+## Out of control (rocket_thrust): where the thrust points, the axis it swings
+## about, seconds to the next jink, and the tumble.
+var _thrust_direction := Vector3.UP
+var _swing_axis := Vector3.RIGHT
+var _jink_left := 0.0
+var _tumble_axis := Vector3.UP
+var _tumble_speed := 0.0
 
 
 ## Turns `model` (a dying fighter's Model node) into a wreck flying at
@@ -155,6 +185,18 @@ func _start(model: Node3D, start_velocity: Vector3, sound: AudioStream) -> void:
 	if glow:
 		glow.hide()
 	_douse_lights(model)
+	if death_animation != &"":
+		for tree in model.find_children("*", "AnimationTree", true, false):
+			(tree as AnimationTree).active = false
+		var players := model.find_children("*", "AnimationPlayer", true, false)
+		if not players.is_empty() and (players[0] as AnimationPlayer).has_animation(death_animation):
+			(players[0] as AnimationPlayer).play(death_animation)
+	if rocket_thrust > 0.0:
+		# Off it goes, any way but straight down; the model knows it's out of
+		# control (TrooperModel makes its thrusters sputter).
+		_thrust_direction = (_random_direction() + Vector3.UP * 0.6).normalized()
+		_jink()
+		model.propagate_call(&"on_wrecked")
 	_smoke = _make_smoke(smoke_rate, smoke_puff_lifetime, smoke_start_size, smoke_end_size)
 	get_parent().add_child(_smoke)
 	_smoke.global_position = global_position
@@ -174,6 +216,7 @@ func _physics_process(delta: float) -> void:
 	_age += delta
 	velocity += Vector3.DOWN * _gravity * delta
 	_spiral(delta)
+	_out_of_control(delta)
 	var from := global_position
 	var to := from + velocity * delta
 	var query := PhysicsRayQueryParameters3D.create(from, to, crash_mask)
@@ -206,9 +249,41 @@ func _spiral(delta: float) -> void:
 	velocity = velocity.rotated(axis, deg_to_rad(spiral_turn) * surge * delta)
 
 
+## Rocket out of control (rocket_thrust > 0): thrusts along a direction that
+## swings round, about an axis that changes every jink, and tumbles.
+func _out_of_control(delta: float) -> void:
+	if rocket_thrust <= 0.0:
+		return
+	_jink_left -= delta
+	if _jink_left <= 0.0:
+		_jink()
+	_thrust_direction = _thrust_direction.rotated(_swing_axis, deg_to_rad(rocket_turn_deg) * delta).normalized()
+	# The thrust soon has it flying its way at full speed (gravity still pulls).
+	velocity = velocity.move_toward(_thrust_direction * rocket_max_speed, rocket_thrust * delta)
+	if not align_to_velocity and _tumble_speed > 0.0:
+		global_rotate(_tumble_axis, _tumble_speed * delta)
+
+
+func _jink() -> void:
+	_jink_left = randf_range(rocket_jink_interval.x, rocket_jink_interval.y)
+	if randf() < rocket_snap_chance:
+		_thrust_direction = _random_direction()
+	var axis := _thrust_direction.cross(_random_direction())
+	_swing_axis = axis.normalized() if axis.length_squared() > 0.0001 else Vector3.RIGHT
+	_tumble_axis = _random_direction()
+	_tumble_speed = randf_range(tumble_rate.x, tumble_rate.y)
+
+
+static func _random_direction() -> Vector3:
+	var v := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1))
+	return v.normalized() if v.length_squared() > 0.0001 else Vector3.UP
+
+
 ## Aligns the wreck's nose (-basis.z) with its flight direction while
 ## preserving roll; flight_basis turns the same way, without the roll.
 func _align_with_velocity() -> void:
+	if not align_to_velocity:
+		return
 	global_basis = _aligned(global_basis)
 	flight_basis = _aligned(flight_basis)
 
@@ -268,7 +343,7 @@ func _douse_lights(node: Node) -> void:
 			var mesh := (child as MeshInstance3D).mesh
 			for surface in mesh.get_surface_count():
 				var source := mesh.surface_get_material(surface)
-				if source and source.resource_name == LIGHTS_MATERIAL:
+				if source and source.resource_name in LIGHTS_MATERIALS:
 					(child as MeshInstance3D).set_surface_override_material(surface, _dead_lights)
 		_douse_lights(child)
 

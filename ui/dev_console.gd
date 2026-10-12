@@ -25,6 +25,7 @@ const SPEED_PROPERTIES: Array[StringName] = [&"cruise_speed", &"min_speed", &"ma
 const FIGHTER_SCENES := {
 	"light": preload("res://enemies/light_fighter.tscn"),
 	"elite": preload("res://enemies/enemy_fighter.tscn"),
+	"trooper": preload("res://enemies/trooper.tscn"),
 }
 
 const MISSIONS_DIR := "res://missions"
@@ -329,9 +330,9 @@ func _register_commands() -> void:
 	register("wingmen_god", "wingmen_god [on|off]", "Wingmen take no damage, so they never evade or disengage.",
 		_cmd_cheat.bind("wingmen_god"), on_off)
 	# Spawning.
-	register("spawn", "spawn <fighter|light|elite|destroyer> [count]",
-		"Fighters (the level's type, or light / elite) as one squad ahead of you, or a destroyer.",
-		_cmd_spawn, func() -> PackedStringArray: return PackedStringArray(["fighter", "light", "elite", "destroyer"]))
+	register("spawn", "spawn <fighter|light|elite|trooper|destroyer> [count]",
+		"Fighters (the level's type, or light / elite), or Shogun Troopers, as one squad ahead of you, or a destroyer.",
+		_cmd_spawn, func() -> PackedStringArray: return PackedStringArray(["fighter", "light", "elite", "trooper", "destroyer"]))
 	register("wave", "wave", "Sends the next wave now.", _cmd_wave)
 	register("waves", "waves <on|off>", "Holds back the waves, or lets them come again.", _cmd_waves, on_off)
 	register("killall", "killall", "Destroys every enemy fighter and the destroyer.", _cmd_killall)
@@ -441,7 +442,7 @@ func _cmd_spawn(args: PackedStringArray) -> void:
 		return
 	var scene: PackedScene = spawner.enemy_scene if kind == "fighter" else FIGHTER_SCENES.get(kind)
 	if scene == null:
-		_error("Unknown type '%s': fighter, light, elite or destroyer." % kind)
+		_error("Unknown type '%s': fighter, light, elite, trooper or destroyer." % kind)
 		return
 	var count := 1
 	if args.size() > 1:
@@ -450,8 +451,8 @@ func _cmd_spawn(args: PackedStringArray) -> void:
 			return
 		count = args[1].to_int()
 	var spawned: Array[EnemyFighter] = spawner.spawn_squad(spawner.squad_center(), count, scene)
-	_ok("Spawned %d %sfighter%s, %d m ahead." % [spawned.size(), "" if kind == "fighter" else kind + " ",
-		"" if count == 1 else "s",
+	var noun := "trooper" if kind == "trooper" else ("" if kind == "fighter" else kind + " ") + "fighter"
+	_ok("Spawned %d %s%s, %d m ahead." % [spawned.size(), noun, "" if count == 1 else "s",
 		roundi(spawner.spawn_distance)])
 
 

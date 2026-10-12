@@ -28,3 +28,7 @@ extends CommsSpeaker
 @export_multiline var thrusters_down: PackedStringArray = []
 ## The destroyer has been destroyed.
 @export_multiline var destroyer_killed: PackedStringArray = []
+
+@export_group("Trooper")
+## Said when the mission's first Shogun Troopers arrive: how to beat one.
+@export_multiline var trooper_hints: PackedStringArray = []

@@ -89,6 +89,11 @@ PALETTE = {
     "Water": ((0.62, 0.8, 0.92), 0), "Greybox": ((0.7, 0.7, 0.72), 0),
 }
 FOLIAGE = ("Pine", "PineLight", "PineSnow", "Trunk")
+# The surface detail the game draws on each palette colour of the kit (see
+# corneria_common.SURFACES); colours not listed are drawn plain.
+SURFACES = {"Glass": "glass", "GlassDark": "glass", "WindowLit": "glass", "Greenhouse": "glass",
+            "Panel": "wall", "PanelGrey": "wall", "Concrete": "wall",
+            "RoofDark": "metal", "Steel": "metal", "DarkMetal": "metal"}
 
 # The shared scripts import "corneria_common": make that this module, and
 # give them their folders.

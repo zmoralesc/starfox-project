@@ -535,9 +535,9 @@ func _draw_radar() -> void:
 			# showing above / below / level), so you can find a far-off wave.
 			if flat.length() > 0.01:
 				_draw_radar_enemy(center + flat.normalized() * r, _radar_height(local), RADAR_FAR_SCALE,
-					Color(COLOR_ENEMY, RADAR_FAR_ALPHA))
+					Color(COLOR_ENEMY, RADAR_FAR_ALPHA), enemy is Trooper)
 			continue
-		_draw_radar_enemy(center + flat / radar_range * r, _radar_height(local), 1.0, COLOR_ENEMY)
+		_draw_radar_enemy(center + flat / radar_range * r, _radar_height(local), 1.0, COLOR_ENEMY, enemy is Trooper)
 
 
 ## The destroyer on the radar centred on `center`: a small silhouette of its
@@ -581,9 +581,16 @@ func _draw_radar_destroyer(destroyer: Destroyer, center: Vector2, to_local: Tran
 
 
 ## An enemy on the radar at `p`: ▲ above you (`height` 1), ▼ below (-1), ■ level
-## (0), `icon_scale` times the full size.
-func _draw_radar_enemy(p: Vector2, height: int, icon_scale: float, color: Color) -> void:
+## (0), `icon_scale` times the full size. A trooper (`trooper`) is a ◆ at any
+## height, with a tick above or below it like the wingmen's dots.
+func _draw_radar_enemy(p: Vector2, height: int, icon_scale: float, color: Color, trooper := false) -> void:
 	var s := icon_scale
+	if trooper:
+		draw_colored_polygon(PackedVector2Array([p + Vector2(0, -5) * s, p + Vector2(5, 0) * s,
+			p + Vector2(0, 5) * s, p + Vector2(-5, 0) * s]), color)
+		if height != 0:
+			draw_line(p + Vector2(0.0, -6.0 * height) * s, p + Vector2(0.0, -10.0 * height) * s, color, 1.5)
+		return
 	match height:
 		1:
 			draw_colored_polygon(PackedVector2Array([p + Vector2(0, -5) * s, p + Vector2(4.5, 3.5) * s, p + Vector2(-4.5, 3.5) * s]), color)
@@ -636,7 +643,7 @@ func _draw_gauges() -> void:
 
 
 ## Wing panel, bottom right, laid out like the D-pad that selects the wingmen:
-## Falco on the left, Slippy on top, Krystal on the right, ALL below. Each card
+## Slippy on the left, Falco on top, Krystal on the right, ALL below. Each card
 ## shows an icon for the current order above the call sign; selected cards light
 ## up, and a shield bar sits under the name. The middle shows who the next
 ## order will go to. What a wingman is doing isn't shown (you can see it),
@@ -658,8 +665,8 @@ func _draw_wing_panel() -> void:
 	# The icon-over-name stack is 44 px tall (base): centre it in the square.
 	var stack_offset := (H - 44.0 * k) * 0.5
 	var cells := {
-		0: Rect2(left, top + H + GAP, W, H),                 	# Falco: D-pad left
-		1: Rect2(left + W + GAP, top, W, H),                 	# Slippy: D-pad up
+		0: Rect2(left, top + H + GAP, W, H),                 	# Slippy: D-pad left
+		1: Rect2(left + W + GAP, top, W, H),                 	# Falco: D-pad up
 		2: Rect2(left + 2.0 * (W + GAP), top + H + GAP, W, H),  # Krystal: D-pad right
 	}
 	var pad: bool = Settings.using_gamepad

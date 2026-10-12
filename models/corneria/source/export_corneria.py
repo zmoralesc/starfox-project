@@ -209,10 +209,14 @@ def kit_mesh(piece):
 # KIT_MATERIAL (foliage: KIT_FOLIAGE, which the game draws without ink lines).
 # Alpha carries the glow: 1 - emission strength / KIT_GLOW (the game's
 # toon_instanced shader reads it back), so colours without glow keep alpha 1.
+# Each face's kind of surface (the common module's SURFACES: windows, wall
+# panels...) goes in its UV's u, as SURFACE_KINDS' number, which the shader
+# draws its detail by (TOON_DETAIL in toon_surface.gdshaderinc).
 KIT_MATERIAL = cc.MATERIAL_PREFIX + "Kit"
 KIT_FOLIAGE = cc.MATERIAL_PREFIX + "KitFoliage"
 KIT_GLOW = 8.0                       # = toon_surface.gdshaderinc's vertex_glow_energy
 FOLIAGE = cc.FOLIAGE
+SURFACE_KINDS = {"glass": 1, "wall": 2, "metal": 3, "tiles": 4}   # = the shader's SURFACE_*
 
 
 def kit_material(name):
@@ -228,11 +232,15 @@ def kit_material(name):
 
 def bake_palette(o):
     """Kit mesh `o`'s palette materials as vertex colours (linear, glow in
-    alpha) on two shared materials. Faces of any other material keep it."""
+    alpha) on two shared materials, and its faces' kinds of surface in UV.
+    Faces of any other material keep it."""
     me = o.data
     colours = []
+    kinds = []
     for mat in me.materials:
         entry = cc.PALETTE.get(mat.name[len(cc.MATERIAL_PREFIX):]) if mat and mat.name.startswith(cc.MATERIAL_PREFIX) else None
+        kinds.append(SURFACE_KINDS[cc.SURFACES[mat.name[len(cc.MATERIAL_PREFIX):]]]
+                     if entry is not None and mat.name[len(cc.MATERIAL_PREFIX):] in cc.SURFACES else 0)
         if entry is None:
             colours.append(None)
         else:
@@ -253,11 +261,16 @@ def bake_palette(o):
         if name not in new_slots:
             new_slots.append(name)
     data = attr.data
+    while me.uv_layers:
+        me.uv_layers.remove(me.uv_layers[0])
+    uv = me.uv_layers.new(name="Surface").data
     for p in me.polygons:
         c = colours[p.material_index]
         rgba = c[0] if c is not None else (1.0, 1.0, 1.0, 1.0)
+        kind = kinds[p.material_index]
         for li in p.loop_indices:
             data[li].color = rgba
+            uv[li].uv = (kind, 0.0)
         p.material_index = new_slots.index(targets[p.material_index] or slots[p.material_index].name)
     me.materials.clear()
     for name in new_slots:

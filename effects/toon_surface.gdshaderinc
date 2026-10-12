@@ -6,7 +6,8 @@
 // The clip plane also glows where the surface meets it (the seam_* uniforms).
 // TOON_INSTANCED corrects the normals of MultiMesh instances (see
 // toon_instanced.gdshader), and TOON_FOLIAGE rounds off faceted trees (see
-// toon_unlined_instanced.gdshader).
+// toon_unlined_instanced.gdshader). TOON_DETAIL (with TOON_INSTANCED) draws
+// the map kit's surface detail: windows, wall panels, roofing.
 
 uniform vec4 albedo : source_color = vec4(0.8, 0.8, 0.8, 1.0);
 // Multiplied with `albedo`. White (no change) when unset.
@@ -42,8 +43,108 @@ uniform float foliage_round : hint_range(0.0, 1.0) = 1.0;
 uniform float foliage_axis_margin = 0.8;
 #endif
 
-#if defined(TOON_CLIP) || defined(TOON_WEAR)
+#if defined(TOON_CLIP) || defined(TOON_WEAR) || defined(TOON_DETAIL)
 #include "res://effects/noise.gdshaderinc"
+#endif
+
+#ifdef TOON_DETAIL
+// Surface detail on the map kit (Corneria's and Fichina's buildings), drawn
+// here rather than modelled or textured: the pieces have no texture UVs, and
+// their faces are flat palette colours (vertex colours). The export tags each
+// face with its kind of surface in UV.x (export_corneria.py's bake_palette(),
+// from the map's SURFACES): 0 none, 1 glass, 2 wall panels, 3 metal roofing,
+// 4 roof tiles. Patterns are laid out in metres on the piece as placed (its
+// own x and z times the instance's stretch, and world height, so a tower's
+// stacked parts carry on each other's storeys), so a storey is the same height
+// on every building however its piece was stretched. Every pattern fades to
+// its average colour once it's finer than a few pixels: far towers keep the
+// tone of their windows without shimmering.
+const float SURFACE_GLASS = 1.0;
+const float SURFACE_WALL = 2.0;
+const float SURFACE_METAL = 3.0;
+const float SURFACE_TILES = 4.0;
+
+group_uniforms windows;
+// Height of a storey, which sets the window rows and the wall panels (m).
+uniform float storey_height = 3.6;
+// Width of a window pane (m).
+uniform float pane_width = 2.4;
+// Half-width of the frames between panes, and of the band between storeys (m).
+uniform float frame_width = 0.1;
+uniform float spandrel_width = 0.3;
+uniform vec4 frame_color : source_color = vec4(0.82, 0.85, 0.9, 1.0);
+// How far the frames go from the glass's colour to `frame_color`.
+uniform float frame_amount : hint_range(0.0, 1.0) = 0.85;
+// Sky seen in the glass: brighter where the glass reflects the sky (seen from
+// below or level) and at glancing angles; the ground's darker shade from above.
+uniform vec4 reflect_sky_color : source_color = vec4(0.78, 0.88, 1.0, 1.0);
+uniform float reflect_amount : hint_range(0.0, 1.0) = 0.3;
+// Panes lighter at the top than the bottom (a stylised sheen), and varying in
+// shade from pane to pane (blinds, tint).
+uniform float pane_sheen : hint_range(0.0, 1.0) = 0.25;
+uniform float pane_variation : hint_range(0.0, 1.0) = 0.15;
+// Share of panes lit from inside (0 none), their colour and glow.
+uniform float lit_windows : hint_range(0.0, 1.0) = 0.0;
+uniform vec4 lit_window_color : source_color = vec4(1.0, 0.82, 0.55, 1.0);
+uniform float lit_window_energy = 2.5;
+// How much a glowing glass colour's panes vary in brightness (0 all alike).
+uniform float lit_pane_variation : hint_range(0.0, 1.0) = 0.45;
+group_uniforms walls;
+// Wall panels: seams between panels `panel_width` wide and a storey high,
+// darkened by `panel_seam` (the vertical ones half as much); each panel's
+// shade varies by `panel_variation`; large blotches (`mottle_size` m) of
+// weathering by `wall_mottle`.
+uniform float panel_width = 3.0;
+uniform float seam_width_m = 0.06;
+uniform float panel_seam : hint_range(0.0, 1.0) = 0.08;
+uniform float panel_variation : hint_range(0.0, 1.0) = 0.04;
+uniform float mottle_size = 14.0;
+uniform float wall_mottle : hint_range(0.0, 1.0) = 0.06;
+group_uniforms roofs;
+// Metal roofing: standing seams every `metal_seam_spacing` m.
+uniform float metal_seam_spacing = 1.2;
+uniform float metal_seam : hint_range(0.0, 1.0) = 0.12;
+uniform float roof_mottle : hint_range(0.0, 1.0) = 0.1;
+// Tiled roofs: rows `tile_row` m high (measured in height, so they run level
+// along any slope), tiles `tile_width` wide, each row's lower edge darkened.
+uniform float tile_row = 0.3;
+uniform float tile_width = 0.35;
+uniform float tile_shade : hint_range(0.0, 1.0) = 0.2;
+group_uniforms;
+
+// Position in metres (piece x and z as stretched, world y), the face's normal
+// in that space, and a seed for the instance (where it stands), so identical
+// pieces don't share their panes' shades and lit windows.
+varying vec3 surface_pos;
+varying vec3 surface_normal;
+varying flat vec2 surface_seed;
+
+// How much of a pattern repeating every `period` metres to keep at `px`
+// metres per pixel: all of it while a period spans 6 pixels or more, none
+// once it's down to 2.
+float detail_keep(float period, float px) {
+	return clamp(period / max(px, 1e-4) * 0.25 - 0.5, 0.0, 1.0);
+}
+
+// Lines at every whole multiple of `period` along x, `half_width` either side,
+// antialiased (px metres per pixel) and faded to their average coverage when
+// too fine to draw. 0 away from a line, 1 on one.
+float grid_line(float x, float period, float half_width, float px) {
+	float d = abs(fract(x / period + 0.5) - 0.5) * period;
+	float line = 1.0 - smoothstep(half_width - px * 0.5, half_width + px * 0.5, d);
+	float average = min(2.0 * half_width / period, 1.0);
+	return mix(average, line, detail_keep(period, px));
+}
+
+// The surface's coordinates across a face, in metres: along the wall and up
+// it for walls; x and z for flat roofs.
+vec2 surface_coords(vec3 p, vec3 n) {
+	if (abs(n.y) > 0.7) {
+		return p.xz;
+	}
+	vec2 along = normalize(vec2(-n.z, n.x));
+	return vec2(dot(p.xz, along), p.y);
+}
 #endif
 
 #ifdef TOON_CLIP
@@ -127,8 +228,85 @@ void vertex() {
 	// by inverse(MᵀM), M then brings them to the inverse transpose's result.
 	// MODEL_MATRIX includes the instance's transform here.
 	mat3 m = mat3(MODEL_MATRIX);
+#ifdef TOON_DETAIL
+	// Before NORMAL is changed below: the piece's own normal, in metres.
+	vec3 stretch = vec3(length(m[0]), length(m[1]), length(m[2]));
+	surface_pos = vec3(VERTEX.x * stretch.x, (MODEL_MATRIX * vec4(VERTEX, 1.0)).y, VERTEX.z * stretch.z);
+	surface_normal = NORMAL / stretch;
+	surface_seed = floor(MODEL_MATRIX[3].xz * 0.37);
+#endif
 	NORMAL = inverse(transpose(m) * m) * NORMAL;
 #endif
+}
+#endif
+
+#ifdef TOON_DETAIL
+// The glass: panes in frames, storey bands, sky reflected, a few lit from
+// inside. `base` is the glass's palette colour. Returns the colour; adds any
+// light from inside to `glow`. Glass that glows already (a palette colour
+// with emission: Fichina's lit windows) is split into panes too: its glow
+// varies pane to pane by `lit_pane_variation` and stops at the frames.
+vec3 glass_detail(vec3 base, vec2 c, float px, vec3 view_normal, vec3 view_dir, mat4 inv_view, inout vec3 glow) {
+	vec2 cell = floor(vec2(c.x / pane_width, c.y / storey_height));
+	vec2 f = vec2(fract(c.x / pane_width), fract(c.y / storey_height));
+	float r = hash(cell + surface_seed);
+	float keep = detail_keep(min(pane_width, storey_height), px);
+	// Shade per pane and the sheen up each pane, both faded out at range.
+	float shade = 1.0 + ((r - 0.5) * 2.0 * pane_variation + (f.y - 0.5) * pane_sheen) * keep;
+	vec3 colour = base * shade;
+	// Sky in the glass: where the reflected ray points up, more at a glancing
+	// angle.
+	vec3 reflected = (inv_view * vec4(reflect(-view_dir, view_normal), 0.0)).xyz;
+	float sky = smoothstep(-0.3, 0.6, reflected.y);
+	float fresnel = pow(1.0 - clamp(dot(view_normal, view_dir), 0.0, 1.0), 3.0);
+	colour = mix(colour, reflect_sky_color.rgb * mix(0.55, 1.0, sky), reflect_amount * sky * (0.35 + 0.65 * fresnel));
+	// Lit panes (a hash of the pane, independent of its shade).
+	float lit = step(1.0 - lit_windows, hash(cell + surface_seed + vec2(7919.0, 104729.0)));
+	lit = mix(lit_windows, lit, keep);
+	colour = mix(colour, lit_window_color.rgb, lit * 0.6);
+	// Frames and storey bands: on top of everything else.
+	float frame = max(grid_line(c.x, pane_width, frame_width, px),
+			grid_line(c.y, storey_height, spandrel_width, px));
+	glow *= (1.0 + (r - 0.5) * 2.0 * lit_pane_variation * keep) * (1.0 - frame * frame_amount);
+	glow += lit_window_color.rgb * lit * lit_window_energy * (1.0 - frame);
+	return mix(colour, mix(colour, frame_color.rgb, frame_amount), frame);
+}
+
+// Wall panels: seams, a shade per panel, weathering blotches.
+vec3 wall_detail(vec3 base, vec2 c, float px) {
+	float seam = max(grid_line(c.x, panel_width, seam_width_m, px) * 0.5,
+			grid_line(c.y, storey_height, seam_width_m, px));
+	vec2 cell = floor(vec2(c.x / panel_width, c.y / storey_height));
+	float keep = detail_keep(min(panel_width, storey_height), px);
+	float shade = 1.0 + (hash(cell + surface_seed) - 0.5) * 2.0 * panel_variation * keep;
+	shade += (noise(c / mottle_size + surface_seed * 0.01) - 0.5) * 2.0 * wall_mottle * detail_keep(mottle_size, px);
+	return base * shade * (1.0 - seam * panel_seam);
+}
+
+// Metal roofing: standing seams along the face's first axis, blotches.
+vec3 metal_detail(vec3 base, vec2 c, float px) {
+	float seam = grid_line(c.x, metal_seam_spacing, seam_width_m, px);
+	float shade = 1.0 + (noise(c / mottle_size * 1.7 + 3.1) - 0.5) * 2.0 * roof_mottle * detail_keep(mottle_size, px);
+	return base * shade * (1.0 - seam * metal_seam);
+}
+
+// Roof tiles: level rows (by height), tiles staggered row to row, each row
+// darker at its lower edge where the next row overlaps it.
+vec3 tile_detail(vec3 base, vec3 p, vec3 n, float px_height, float px) {
+	// Rows go by height: a flat face would be one row. Plain there.
+	if (abs(n.y) > 0.95) {
+		return base;
+	}
+	float row = p.y / tile_row;
+	float row_index = floor(row);
+	vec2 along = normalize(vec2(-n.z, n.x) + vec2(1e-5, 0.0));
+	float x = dot(p.xz, along) / tile_width + row_index * 0.5;
+	float keep = detail_keep(tile_row, px_height);
+	float edge = 1.0 - smoothstep(0.0, 0.35, fract(row));
+	float split = grid_line(x * tile_width, tile_width, 0.02, px);
+	float shade = 1.0 - (edge * tile_shade + split * tile_shade * 0.6) * keep - tile_shade * 0.25 * (1.0 - keep);
+	shade *= 1.0 + (noise(p.xz / mottle_size * 2.0) - 0.5) * 2.0 * roof_mottle * detail_keep(mottle_size, px);
+	return base * shade;
 }
 #endif
 
@@ -142,7 +320,7 @@ void vertex() {
 // Bare metal under the paint (multiplied by the albedo texture like the paint).
 uniform vec4 wear_color : source_color = vec4(0.2, 0.22, 0.26, 1.0);
 // Metres of surface per UV unit (the model's UV scale).
-uniform float uv_metres = 16.0;
+uniform float uv_metres = 48.0;
 // Size of the larger worn patches, in metres.
 uniform float wear_size : hint_range(0.1, 10.0) = 1.4;
 // How much is worn: 0 none, about 0.3 a weathered look, 1 most of it.
@@ -217,6 +395,25 @@ void fragment() {
 	// are linear (glTF's, kept as they are by Godot's import), like albedo.
 	ALBEDO *= COLOR.rgb;
 	EMISSION += COLOR.rgb * (1.0 - COLOR.a) * vertex_glow_energy;
+#endif
+#ifdef TOON_DETAIL
+	// The kind is the same across a face: compare with a margin.
+	float kind = floor(UV.x + 0.5);
+	if (kind > 0.5) {
+		vec3 n = normalize(surface_normal);
+		vec2 c = surface_coords(surface_pos, n);
+		vec2 width = fwidth(c);
+		float px = max(width.x, width.y);
+		if (kind == SURFACE_GLASS) {
+			ALBEDO = glass_detail(ALBEDO, c, px, NORMAL, VIEW, INV_VIEW_MATRIX, EMISSION);
+		} else if (kind == SURFACE_WALL) {
+			ALBEDO = wall_detail(ALBEDO, c, px);
+		} else if (kind == SURFACE_METAL) {
+			ALBEDO = metal_detail(ALBEDO, c, px);
+		} else if (kind == SURFACE_TILES) {
+			ALBEDO = tile_detail(ALBEDO, surface_pos, n, fwidth(surface_pos.y), px);
+		}
+	}
 #endif
 #ifndef TOON_INSTANCED
 	ALBEDO = mix(ALBEDO, hit_flash.rgb, hit_flash.a);

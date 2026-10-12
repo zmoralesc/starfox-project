@@ -30,7 +30,7 @@ import numpy as np
 from mathutils import Vector, Matrix, Euler
 from mathutils.bvhtree import BVHTree
 
-PROJECT_ROOT = r"C:\Users\zemc7\OneDrive\Documentos\spaceship-project"
+PROJECT_ROOT = r"C:\dev\spaceship-project"
 SOURCE_DIR = os.path.join(PROJECT_ROOT, "models", "destroyer", "source")
 PREVIEW_DIR = os.path.join(SOURCE_DIR, "juggernaut_preview")
 BLEND_FILE = os.path.join(SOURCE_DIR, "juggernaut.blend")
@@ -116,14 +116,15 @@ def get_or_create_material(name):
 # surface, so it adds no geometry. Every mesh gets UVs projected along its
 # faces' main axis at PLATING_TILE metres per repeat (add_plating_uvs).
 PLATING_MATS = {"Hull", "HullLight", "HullDark", "HullMid", "Crimson"}  # crimson: worn in game by toon_worn.gdshader
-PLATING_TILE = 16.0   # metres of hull per texture repeat
-PLATING_SIZE = 2048   # pixels per side (128 px per metre)
+PLATING_TILE = 48.0   # metres of hull per texture repeat (plates 9-24 m: smaller read as brickwork on a 1 km ship)
+PLATING_SIZE = 2048   # pixels per side (43 px per metre)
+PLATE_SCALE = 3.0     # the plate layout below is in metres x this (rows 6-12 m, plates 9-24 m)
 PLATING_PNG = os.path.join(PREVIEW_DIR, "juggernaut_plating.png")
 
 # Brightness multipliers, in linear light (what the shader multiplies by).
 PLATE_TONES = (0.80, 1.0)  # each plate picks one: the large-scale variation
 SEAM_TONE = 0.30           # panel seams
-SEAM_PX = 7                # seam width (5.5 cm)
+SEAM_PX = 7                # seam width (16 cm; pixel sizes like this one do not scale with PLATE_SCALE)
 EDGE_TONE = 1.0            # the lit lip beside each seam
 DETAIL_TONE = 0.42         # hatch outlines, vent slats, bolts
 
@@ -135,7 +136,7 @@ def build_plating_pixels(seed=11):
     staggered like hull plating. Tiles seamlessly: rows split v exactly, and
     plates wrap around u."""
     S = PLATING_SIZE
-    px = S / PLATING_TILE
+    px = S / PLATING_TILE * PLATE_SCALE   # pixels per layout metre (sizes below are x PLATE_SCALE on the hull)
     rng = random.Random(seed)
     img = np.ones((S, S), dtype=np.float32)
 

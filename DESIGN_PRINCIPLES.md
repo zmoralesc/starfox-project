@@ -1,8 +1,8 @@
 # Design principles
 
 ## Gameplay
-- When deciding on gameplay mechanics and how they work, always favor letting the player cheat a little bit over perfect fairness. It is better for a player to be surprised that something worked when they thought it shouldn't, over the player getting frustrated because something did not work they they thought it should.
 - Gameplay elements should ideally be designed around the wingmen system.
+- When in doubt, prefer things to slightly go the player's way over perfect fairness.
 
 ## HUD
 - The player's attention is limited, and so we should reduce the amount of text they have to read. Favor visual indicators over plain text. Favor simplicity over complexity.
@@ -10,7 +10,7 @@
 
 ## Visual style
 
-- Cel-shaded, painted look.
+- High budget 2D animated style.
 - Leaning towards Breath of the Wild.
 - Favor effects that look like 2D high-budget animation.
 - Favor the use of shaders.

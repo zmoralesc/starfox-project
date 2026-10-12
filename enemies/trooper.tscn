@@ -1,0 +1,95 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://enemies/trooper.gd" id="1_trooper"]
+[ext_resource type="PackedScene" path="res://weapons/enemy_laser.tscn" id="2_laser"]
+[ext_resource type="AudioStream" path="res://audio/sfx/laser.mp3" id="sfx_laser"]
+[ext_resource type="AudioStream" path="res://audio/sfx/explosion_medium.mp3" id="sfx_explosion"]
+[ext_resource type="AudioStream" path="res://audio/sfx/thrusters.mp3" id="sfx_thrusters"]
+[ext_resource type="Script" path="res://enemies/hurtbox.gd" id="hurtbox_script"]
+[ext_resource type="PackedScene" path="res://models/trooper/trooper.glb" id="3_model"]
+[ext_resource type="Script" path="res://enemies/trooper_model.gd" id="4_trooper_model"]
+[ext_resource type="PackedScene" path="res://effects/trooper_wreck.tscn" id="5_wreck"]
+
+[sub_resource type="CapsuleShape3D" id="Shape_body"]
+radius = 2.0
+height = 7.0
+
+[sub_resource type="BoxShape3D" id="Shape_hurtbox"]
+size = Vector3(5, 8, 4)
+
+[sub_resource type="StandardMaterial3D" id="Mat_charge"]
+transparency = 1
+blend_mode = 1
+shading_mode = 0
+albedo_color = Color(1, 0.6, 0.2, 0.6)
+
+[sub_resource type="SphereMesh" id="Mesh_charge"]
+material = SubResource("Mat_charge")
+radius = 0.3
+height = 0.6
+radial_segments = 12
+rings = 6
+
+[node name="Trooper" type="CharacterBody3D"]
+collision_layer = 4
+motion_mode = 1
+script = ExtResource("1_trooper")
+max_health = 10
+radius = 4.0
+wreck_scene = ExtResource("5_wreck")
+view_cone_deg = 70.0
+attack_range = 350.0
+aim_scatter = 2.0
+cruise_speed = 0.0
+min_speed = 0.0
+pitch_rate = 0.0
+yaw_rate = 2.0
+laser_scene = ExtResource("2_laser")
+laser_speed = 250.0
+fire_interval = 0.18
+spread_deg = 1.5
+explosion_size = 6.0
+explosion_sound = ExtResource("sfx_explosion")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("Shape_body")
+
+[node name="Model" type="Node3D" parent="."]
+
+[node name="Trooper" parent="Model" instance=ExtResource("3_model")]
+script = ExtResource("4_trooper_model")
+
+[node name="MuzzleL" type="Marker3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.16, 0.45, -2.32)
+
+[node name="MuzzleR" type="Marker3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.54, 0.45, -2.32)
+
+[node name="Charge" type="MeshInstance3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.35, 0.45, -2.6)
+cast_shadow = 0
+mesh = SubResource("Mesh_charge")
+
+[node name="BackpackPoint" type="Marker3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 1.05)
+
+[node name="SmokePoint" type="Marker3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 1.05)
+
+[node name="FireSound" type="AudioStreamPlayer3D" parent="."]
+stream = ExtResource("sfx_laser")
+volume_db = -8.0
+max_distance = 500.0
+max_polyphony = 3
+
+[node name="EngineSound" type="AudioStreamPlayer3D" parent="."]
+stream = ExtResource("sfx_thrusters")
+volume_db = -10.0
+max_distance = 300.0
+autoplay = true
+
+[node name="Hurtbox" type="Area3D" parent="."]
+script = ExtResource("hurtbox_script")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Hurtbox"]
+shape = SubResource("Shape_hurtbox")

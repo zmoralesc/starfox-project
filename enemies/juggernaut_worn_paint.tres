@@ -5,7 +5,7 @@
 [resource]
 shader = ExtResource("1_worn")
 shader_parameter/wear_color = Color(0.2, 0.22, 0.26, 1)
-shader_parameter/uv_metres = 16.0
+shader_parameter/uv_metres = 48.0
 shader_parameter/wear_size = 1.4
 shader_parameter/wear_amount = 0.05
 shader_parameter/wear_ragged = 0.6

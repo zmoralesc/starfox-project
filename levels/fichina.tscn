@@ -76,6 +76,9 @@ water_material = SubResource("Mat_ice")
 water_material_name = "Fichina_Water"
 solid_groups = PackedStringArray("Colony", "Outposts", "Landmarks", "Rocks", "Water")
 unlined_materials = PackedStringArray("Fichina_Pine", "Fichina_PineLight", "Fichina_PineSnow", "Fichina_Trunk", "Fichina_KitFoliage")
+kit_shader_parameters = Dictionary[String, Variant]({
+"lit_windows": 0.12
+})
 piece_draw_distance = Dictionary[String, float]({
 "Kit_Ice_Serac": 3000.0,
 "Kit_Rock_Boulder": 2500.0,

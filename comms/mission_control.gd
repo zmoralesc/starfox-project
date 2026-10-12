@@ -14,6 +14,8 @@ extends Node
 
 ## Destroyers announced so far this mission: the first gets the full hint.
 var _destroyers_seen := 0
+## The first troopers have been announced (the hint comes once a mission).
+var _troopers_seen := false
 ## List -> the line last said from it, so it isn't repeated next time.
 var _last_lines := {}
 
@@ -39,6 +41,15 @@ func announce_destroyer(destroyer: Destroyer) -> void:
 	for thruster in destroyer.thrusters:
 		thruster.destroyed.connect(_on_thruster_down.bind(destroyer))
 	destroyer.destroyed.connect(_say.bind(advisor.destroyer_killed))
+
+
+## Shogun Troopers have arrived: the first time this mission, say how to beat
+## them (EnemySpawner calls it with every wave that brings some).
+func announce_troopers() -> void:
+	if advisor == null or _troopers_seen:
+		return
+	_troopers_seen = true
+	_say(advisor.trooper_hints)
 
 
 ## A part's shield dropped: the bridge's is worth calling out (the

@@ -28,6 +28,15 @@ KIT_FILE = os.path.join(HERE, "kit.blend")
 NAME = "corneria"                     # the exported files' prefix: <NAME>_map.tres...
 MATERIAL_PREFIX = "Corneria_"         # palette materials are <MATERIAL_PREFIX><name>
 FOLIAGE = ("Tree", "TreeLight", "Trunk")   # palette colours drawn without ink lines (foliage)
+# The surface detail the game draws on each palette colour of the kit (its
+# toon_instanced shader, TOON_DETAIL in effects/toon_surface.gdshaderinc):
+# glass (panes, frames, reflections), wall (panel seams), metal (roofing seams)
+# or tiles (roof tiles). Colours not listed are drawn plain.
+SURFACES = {"Glass": "glass", "GlassDark": "glass",
+            "Tower": "wall", "Concrete": "wall", "Cream": "wall", "Wall": "wall", "Stone": "wall",
+            "Military": "wall", "MilitaryDark": "wall",
+            "RoofDark": "metal", "Steel": "metal",
+            "Roof": "tiles"}
 
 SIZE = 16000.0                        # the map: SIZE x SIZE metres, centred on the origin
 HALF = SIZE / 2

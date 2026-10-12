@@ -45,20 +45,20 @@ target = NodePath("../Ship")
 script = ExtResource("13_ink")
 
 [node name="Falco" parent="." node_paths=PackedStringArray("leader") instance=ExtResource("7_wingman")]
-position = Vector3(-10, -1.5, 2)
-leader = NodePath("../Ship")
-slot_offset = Vector3(-10, -1.5, 2)
-speaker = ExtResource("15_falco")
-wing_index = 0
-break_side = -1.0
-
-[node name="Slippy" parent="." node_paths=PackedStringArray("leader") instance=ExtResource("7_wingman")]
 position = Vector3(0, 10, -10)
 leader = NodePath("../Ship")
 slot_offset = Vector3(0, 10, -10)
-speaker = ExtResource("16_slippy")
+speaker = ExtResource("15_falco")
 wing_index = 1
 break_side = 0.0
+
+[node name="Slippy" parent="." node_paths=PackedStringArray("leader") instance=ExtResource("7_wingman")]
+position = Vector3(-10, -1.5, 2)
+leader = NodePath("../Ship")
+slot_offset = Vector3(-10, -1.5, 2)
+speaker = ExtResource("16_slippy")
+wing_index = 0
+break_side = -1.0
 
 [node name="Krystal" parent="." node_paths=PackedStringArray("leader") instance=ExtResource("7_wingman")]
 position = Vector3(10, -1.5, 2)

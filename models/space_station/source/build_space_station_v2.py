@@ -58,7 +58,7 @@ EXPORT = "--export" in ARGS or globals().get("FORCE_EXPORT", False)
 RENDER = "--no-render" not in ARGS
 CHECKS = "--no-checks" not in ARGS
 HERE = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else \
-    r"C:\Users\zemc7\OneDrive\Documentos\spaceship-project\models\space_station\source"
+    r"C:\dev\spaceship-project\models\space_station\source"
 OUT = os.path.dirname(HERE)
 PREVIEW_DIR = os.path.join(HERE, "preview_v2")
 
@@ -220,17 +220,19 @@ def material(name):
 # layer in metres / TEX_TILE laid out round the station's axis
 # (add_station_uvs), so one tile size serves every texture, and a texture's
 # pixels per metre is its size / TEX_TILE. The player sees the station from
-# 50 m to 3 km: the detail is coarse (seams 20 cm wide, plates 4-12 m) so it
+# 50 m to 3 km: the detail is coarse (seams 20 cm wide, plates 12-36 m) so it
 # reads at a few hundred metres and nothing fine enough to shimmer.
-TEX_TILE = 32.0                       # metres per texture repeat (one UV unit)
+TEX_TILE = 96.0                       # metres per texture repeat (one UV unit)
 TEXTURES = {                          # material -> colour texture (multiplied over its colour)
     "Hull": "Plating", "HullLight": "Plating", "HullDark": "Plating", "Accent": "Plating",
     "Trim": "Hazard",
     "Solar": "Solar",
 }
 EMISSION_TEXTURES = {"Window": "Windows"}   # material -> emission texture (its glow colour)
-TEX_SIZES = {"Plating": 2048, "Hazard": 512, "Solar": 512, "Windows": 256}   # pixels per side
+TEX_SIZES = {"Plating": 2048, "Hazard": 1024, "Solar": 1024, "Windows": 512}   # pixels per side
 # Plating: brightness multipliers in linear light (what the shader multiplies by).
+PLATE_SCALE = 3.0                     # the plate layout in build_plating_pixels is in metres x this (rows 9-18 m,
+                                      # plates 12-36 m: smaller read as brickwork on a 1.8 km station); seams don't scale
 PLATE_TONES = (0.80, 0.97)            # each plate picks one: the large-scale variation
 SEAM_TONE = 0.42                      # panel seams
 SEAM_M = 0.22                         # seam width, metres
@@ -301,13 +303,15 @@ def noise_grid(n, rng):
 
 def build_plating_pixels(seed=19):
     """The hull plating tile as an (S, S) array of linear multipliers: rows
-    of 3-6 m plates 4-12 m long, staggered, each a little different in tone,
+    of 9-18 m plates 12-36 m long (layout sizes x PLATE_SCALE), staggered,
+    each a little different in tone,
     with 22 cm seams, a lit lip inside them, grime shading under the top seam
     and at most one feature (hatch, grille, conduit pair, stencil, inset
     strip) per plate. Tiles seamlessly: rows split v exactly and plates wrap
     round u."""
     S = TEX_SIZES["Plating"]
-    px = S / TEX_TILE
+    px = S / TEX_TILE                      # pixels per metre: seams, lips, grime
+    pm = px * PLATE_SCALE                  # pixels per layout metre: plates and their features
     seam = max(2, int(round(SEAM_M * px)))
     rng = random.Random(seed)
     img, fill, scale, shade = _tile_image("Plating", S)
@@ -315,56 +319,56 @@ def build_plating_pixels(seed=19):
     def plate_detail(u0, v0, w, h, tone):
         dark = tone * DETAIL_TONE
         # Bolts in the corners, then at most one feature.
-        b = int(0.25 * px)
-        dot = max(2, int(0.1 * px))
+        b = int(0.25 * pm)
+        dot = max(2, int(0.1 * pm))
         for cu, cv in ((u0 + b, v0 + b), (u0 + w - b - dot, v0 + b),
                        (u0 + b, v0 + h - b - dot), (u0 + w - b - dot, v0 + h - b - dot)):
             fill(cu, cv, dot, dot, dark)
         roll = rng.random()
-        line = max(2, int(0.08 * px))
-        if roll < 0.20 and w > 3.0 * px and h > 2.4 * px:
+        line = max(2, int(0.08 * pm))
+        if roll < 0.20 and w > 3.0 * pm and h > 2.4 * pm:
             # Access hatch: an outlined, slightly darker rectangle.
-            hw = int(rng.uniform(1.2, 2.4) * px)
-            hh = int(rng.uniform(1.0, min(1.6, h / px - 1.0)) * px)
-            hu = u0 + rng.randint(int(0.5 * px), w - hw - int(0.5 * px))
+            hw = int(rng.uniform(1.2, 2.4) * pm)
+            hh = int(rng.uniform(1.0, min(1.6, h / pm - 1.0)) * pm)
+            hu = u0 + rng.randint(int(0.5 * pm), w - hw - int(0.5 * pm))
             hv = v0 + (h - hh) // 2
             scale(hu, hv, hw, hh, 0.92)
             for (a, c, ww, hh2) in ((hu, hv, hw, line), (hu, hv + hh - line, hw, line),
                                     (hu, hv, line, hh), (hu + hw - line, hv, line, hh)):
                 fill(a, c, ww, hh2, dark)
-        elif roll < 0.34 and w > 3.5 * px and h > 2.0 * px:
+        elif roll < 0.34 and w > 3.5 * pm and h > 2.0 * pm:
             # Vent grille: parallel dark slats.
-            gw = int(rng.uniform(1.6, 3.0) * px)
-            gh = int(rng.uniform(0.6, min(1.2, h / px - 0.8)) * px)
-            gu = u0 + rng.randint(int(0.5 * px), w - gw - int(0.5 * px))
+            gw = int(rng.uniform(1.6, 3.0) * pm)
+            gh = int(rng.uniform(0.6, min(1.2, h / pm - 0.8)) * pm)
+            gu = u0 + rng.randint(int(0.5 * pm), w - gw - int(0.5 * pm))
             gv = v0 + (h - gh) // 2
-            step = max(4, int(0.22 * px))
+            step = max(4, int(0.22 * pm))
             for s in range(gu, gu + gw - line, step):
                 fill(s, gv, line, gh, dark)
-        elif roll < 0.42 and w > 2.5 * px:
+        elif roll < 0.42 and w > 2.5 * pm:
             # A pair of conduits along the plate.
             cv = v0 + int(h * rng.uniform(0.3, 0.7))
-            cu = u0 + int(0.4 * px)
-            cw = w - int(0.8 * px)
+            cu = u0 + int(0.4 * pm)
+            cw = w - int(0.8 * pm)
             fill(cu, cv, cw, line, dark)
-            fill(cu, cv + int(0.3 * px), cw, line, dark)
-        elif roll < 0.50 and w > 3.0 * px and h > 1.5 * px:
+            fill(cu, cv + int(0.3 * pm), cw, line, dark)
+        elif roll < 0.50 and w > 3.0 * pm and h > 1.5 * pm:
             # A stencilled marking: a bar and a few squares under it.
-            mu = u0 + rng.randint(int(0.5 * px), w - int(1.8 * px))
-            mv = v0 + rng.randint(int(0.4 * px), h - int(0.9 * px))
-            fill(mu, mv, int(1.0 * px), int(0.22 * px), dark)
+            mu = u0 + rng.randint(int(0.5 * pm), w - int(1.8 * pm))
+            mv = v0 + rng.randint(int(0.4 * pm), h - int(0.9 * pm))
+            fill(mu, mv, int(1.0 * pm), int(0.22 * pm), dark)
             for k in range(rng.randint(2, 4)):
-                fill(mu + k * int(0.3 * px), mv + int(0.32 * px), int(0.2 * px), int(0.2 * px), dark)
-        elif roll < 0.60 and h > 2.0 * px:
+                fill(mu + k * int(0.3 * pm), mv + int(0.32 * pm), int(0.2 * pm), int(0.2 * pm), dark)
+        elif roll < 0.60 and h > 2.0 * pm:
             # Inset strip along the plate.
-            sh = int(0.35 * px)
-            scale(u0 + int(0.5 * px), v0 + (h - sh) // 2, w - int(1.0 * px), sh, 0.88)
+            sh = int(0.35 * pm)
+            scale(u0 + int(0.5 * pm), v0 + (h - sh) // 2, w - int(1.0 * pm), sh, 0.88)
 
     # Rows: 3-6 m bands summing exactly to the tile.
     rows, v = [], 0
     while v < S:
-        h = int(rng.choice((3.0, 4.0, 4.0, 5.0, 6.0)) * px)
-        if S - (v + h) < 3 * px:
+        h = int(rng.choice((3.0, 4.0, 4.0, 5.0, 6.0)) * pm)
+        if S - (v + h) < 3 * pm:
             h = S - v
         rows.append((v, h))
         v += h
@@ -372,12 +376,12 @@ def build_plating_pixels(seed=19):
         # Plates 4-12 m long from a random stagger, wrapping in u.
         u, start = 0, rng.randint(0, S - 1)
         while u < S:
-            w = int(rng.uniform(4.0, 12.0) * px)
-            if S - (u + w) < 4 * px:
+            w = int(rng.uniform(4.0, 12.0) * pm)
+            if S - (u + w) < 4 * pm:
                 w = S - u
             # Some plates split in two across the row.
             parts = [(v0, h)]
-            if h >= 5 * px and rng.random() < 0.3:
+            if h >= 5 * pm and rng.random() < 0.3:
                 cut = int(h * rng.uniform(0.4, 0.6))
                 parts = [(v0, cut), (v0 + cut, h - cut)]
             for pv, ph in parts:
@@ -540,6 +544,7 @@ _UV_OFFSETS = {
     (2, 1): (0.44, 0.06), (2, -1): (0.17, 0.58),
 }
 UV_BOX_PARTS = {"Hangar"}             # axis-aligned parts on the station's axis: box projection
+UV_AXIS_RADIUS = 48.0                 # faces centred closer to the axis (neck end caps) are box-projected
 
 
 def add_station_uvs(me, name, pivot):
@@ -567,7 +572,7 @@ def add_station_uvs(me, name, pivot):
         pts = [to_game(origin + me.vertices[me.loops[li].vertex_index].co) for li in loops]
         c = sum(pts, Vector()) / len(pts)
         rc = math.hypot(c.x, c.y)
-        if box_part or rc < 1.5 * TEX_TILE:
+        if box_part or rc < UV_AXIS_RADIUS:
             ax = max(range(3), key=lambda i: abs(n[i]))
             ou, ov = _UV_OFFSETS[(ax, 1 if n[ax] >= 0 else -1)]
             for li, p in zip(loops, pts):

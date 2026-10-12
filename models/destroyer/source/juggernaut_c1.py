@@ -23,7 +23,7 @@ import numpy as np
 from mathutils import Vector, Matrix, Euler
 from mathutils.bvhtree import BVHTree
 
-PROJECT_ROOT = r"C:\Users\zemc7\OneDrive\Documentos\spaceship-project"
+PROJECT_ROOT = r"C:\dev\spaceship-project"
 SOURCE_DIR = os.path.join(PROJECT_ROOT, "models", "destroyer", "source")
 PREVIEW_DIR = os.path.join(SOURCE_DIR, "juggernaut_preview")
 BLEND_FILE = os.path.join(SOURCE_DIR, "juggernaut.blend")

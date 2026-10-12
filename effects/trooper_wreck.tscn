@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://effects/wreck.gd" id="1_wreck"]
+
+[node name="TrooperWreck" type="Node3D"]
+script = ExtResource("1_wreck")
+radius = 4.0
+lifetime = 3.0
+roll_rate = Vector2(0, 0)
+planet_gravity = 6.0
+align_to_velocity = false
+death_animation = &"death"
+rocket_thrust = 150.0
+rocket_max_speed = 50.0
+rocket_turn_deg = 280.0
+rocket_jink_interval = Vector2(0.15, 0.45)
+rocket_snap_chance = 0.4
+tumble_rate = Vector2(2, 5)
+explosion_size = 7.0

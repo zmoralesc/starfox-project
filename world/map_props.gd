@@ -37,6 +37,11 @@ extends Node3D
 ## new map's foliage, its palette colours baked into vertex colours.
 @export var unlined_materials: PackedStringArray = ["Corneria_Tree", "Corneria_TreeLight", "Corneria_Trunk",
 		"Corneria_KitFoliage"]
+## Shader parameters set on the kit pieces' (lined) materials: the surface
+## detail's uniforms in effects/toon_surface.gdshaderinc (TOON_DETAIL), e.g.
+## "lit_windows" (share of window panes lit from inside), "frame_color",
+## "reflect_sky_color". Unset ones keep the shader's defaults.
+@export var kit_shader_parameters: Dictionary[String, Variant] = {}
 
 @export_group("Draw distance")
 ## How far away each group is still drawn (group name: metres; 0 or absent =
@@ -214,8 +219,12 @@ func _toon_mesh(source: Mesh) -> Mesh:
 	var mesh := source.duplicate() as Mesh
 	for surface in mesh.get_surface_count():
 		var material := mesh.surface_get_material(surface) as BaseMaterial3D
-		var toon := ToonMaterial.from_material(material, material != null and material.resource_name in unlined_materials, true)
+		var unlined := material != null and material.resource_name in unlined_materials
+		var toon := ToonMaterial.from_material(material, unlined, true)
 		if toon:
+			if not unlined:
+				for parameter in kit_shader_parameters:
+					toon.set_shader_parameter(parameter, kit_shader_parameters[parameter])
 			mesh.surface_set_material(surface, toon)
 	return mesh
 

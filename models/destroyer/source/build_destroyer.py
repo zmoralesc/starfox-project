@@ -37,7 +37,7 @@ from mathutils import Matrix, Vector
 
 EXPORT = "--export" in sys.argv or globals().get("FORCE_EXPORT", False)
 HERE = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else \
-    r"C:\Users\zemc7\OneDrive\Documentos\spaceship-project\models\destroyer\source"
+    r"C:\dev\spaceship-project\models\destroyer\source"
 OUT = os.path.dirname(HERE)
 
 # ---------------------------------------------------------------- layout

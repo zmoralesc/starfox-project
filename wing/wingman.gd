@@ -573,6 +573,8 @@ static func target_gone(node) -> bool:  # untyped: may be a freed object
 
 ## Short HUD name for something a wingman can attack.
 static func target_label(node: Node) -> String:
+	if node is Trooper:
+		return "TROOPER"
 	if node is EnemyFighter:
 		return "FIGHTER"
 	if node is DestroyerPart:
@@ -1257,7 +1259,7 @@ func _outward() -> Vector3:
 ## Where to head for while joining from behind: beside the slot, out by
 ## join_approach_offset, closing in to the slot itself over the last
 ## rejoin_behind_distance. Keeps the approach out of the leader's path (a
-## straight line to Slippy's slot, above and ahead, runs right past it). At or
+## straight line to Falco's slot, above and ahead, runs right past it). At or
 ## ahead of the slot, just the slot.
 func _approach_point(slot: Vector3) -> Vector3:
 	var behind := (slot - global_position).dot(-leader.global_basis.z)
