@@ -12,8 +12,9 @@ render_mode use_half_res_pass;
 // lines, only where a much larger noise allows), so one ribbon seen from
 // below stacks into a hanging curtain. Too few slices and the curtains break
 // into parallel stripes near the horizon (16 did); a small per-pixel shift
-// of the slices blends them. It and the stars
-// are drawn in the half-resolution pass and left out of the radiance
+// of the slices blends them. It is drawn in the half-resolution pass, the
+// stars at full resolution, at least star_min_pixels wide so they don't
+// blink as the camera turns (see stars()). Both are left out of the radiance
 // cubemap (ambient light, reflections and the fog's sky colour), which then
 // holds only the smooth gradient and stays cheap to update.
 //
@@ -44,10 +45,15 @@ uniform float sun_energy = 6.0;
 group_uniforms;
 
 group_uniforms stars;
-uniform float star_density : hint_range(0.0, 1.0) = 0.04;
+uniform float star_density : hint_range(0.0, 0.1, 0.0005) = 0.0025;
 uniform float star_brightness = 1.4;
 // Cells round the sky per unit of direction: bigger = smaller, more stars.
 uniform float star_scale = 260.0;
+// A star's radius, in cells; the least it is drawn across, in screen pixels;
+// and how much a star spread to that width is dimmed (see stars()).
+uniform float star_size = 0.12;
+uniform float star_min_pixels = 1.5;
+uniform float star_spread_dimming : hint_range(0.0, 1.0) = 0.5;
 group_uniforms;
 
 group_uniforms aurora;
@@ -87,7 +93,13 @@ vec3 gradient(vec3 dir, vec3 sun) {
 	return col;
 }
 
-float stars(vec3 dir) {
+// `px` is the size of a screen pixel in star cells. A star is far smaller
+// than a pixel, so drawn at its own size it lit only the pixels whose centre
+// happened to land on it, and blinked as the camera turned. Below
+// star_min_pixels it is spread over that many pixels instead, dimmed to keep
+// most of its light (star_spread_dimming: 1 keeps exactly the same light,
+// which reads too faint; 0 doesn't dim).
+float stars(vec3 dir, float px) {
 	vec3 p = dir * star_scale;
 	vec3 cell = floor(p);
 	vec3 f = fract(p) - 0.5;
@@ -97,9 +109,14 @@ float stars(vec3 dir) {
 	if (h > star_density) {
 		return 0.0;
 	}
-	vec3 offset = (vec3(h2, hash(cell.zx + 3.0), fract(h2 * 7.3)) - 0.5) * 0.6;
+	float radius = max(star_size, px * star_min_pixels);
+	// Kept inside its cell even at its widest, so no star is cut off at a
+	// cell's edge.
+	float room = max(0.5 - radius, 0.0) * 2.0;
+	vec3 offset = (vec3(h2, hash(cell.zx + 3.0), fract(h2 * 7.3)) - 0.5) * min(room, 0.6);
 	float d = length(f - offset);
-	return smoothstep(0.12, 0.0, d) * (0.4 + 0.6 * h2);
+	float dim = pow(star_size / radius, 2.0 * star_spread_dimming);
+	return smoothstep(radius, 0.0, d) * (0.4 + 0.6 * h2) * dim;
 }
 
 // The aurora's ribbons at a point on the flat sky (metres): 0..1. A few
@@ -152,17 +169,20 @@ void sky() {
 	vec3 sun = LIGHT0_ENABLED ? LIGHT0_DIRECTION : normalize(vec3(0.0, 0.1, -1.0));
 	vec3 dir = EYEDIR;
 	if (AT_HALF_RES_PASS) {
-		// Stars and the aurora, composited over the gradient below.
-		float night = smoothstep(0.05, 0.5, dir.y) * (1.0 - smoothstep(-0.2, 0.8, dot(dir, sun)));
-		vec3 extra = vec3(stars(dir)) * star_brightness * night + aurora(dir, sun, FRAGCOORD.xy);
-		COLOR = extra;
+		// The aurora, composited over the gradient below.
+		COLOR = aurora(dir, sun, FRAGCOORD.xy);
 		ALPHA = 1.0;
 	} else {
 		vec3 col = gradient(dir, sun);
 		if (!AT_CUBEMAP_PASS) {
-			// The sun's disc, and the half-res pass's stars and aurora.
+			// The sun's disc, the stars (at full resolution: at half, a star
+			// spread wide enough not to blink would be a blob), and the
+			// half-res pass's aurora.
 			float disc = smoothstep(cos(sun_size), cos(sun_size * 0.8), dot(dir, sun));
 			col = mix(col, sun_glow_color.rgb * sun_energy, disc);
+			float night = smoothstep(0.05, 0.5, dir.y) * (1.0 - smoothstep(-0.2, 0.8, dot(dir, sun)));
+			float px = length(fwidth(dir)) * star_scale;
+			col += vec3(stars(dir, px)) * star_brightness * night;
 			col += HALF_RES_COLOR.rgb;
 		}
 		COLOR = col;
