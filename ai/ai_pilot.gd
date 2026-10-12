@@ -51,6 +51,26 @@ const VIEW_MARGIN := 3.0
 ## turn away before the hull it's mounted on (break_distance is the minimum).
 @export var break_turn_factor := 1.2
 
+@export_group("Attacking fighters")
+## Chasing a fighter: on a collision course with it (its closest approach,
+## at our current velocities, nearer than ram_clearance metres beyond both
+## radii), break away from it while there's still time to turn clear. Without
+## this, the break comes only when very close (or head-on, at 80 m).
+@export var avoid_ramming := false
+@export var ram_clearance := 20.0
+## Extra seconds of warning on top of the time the turn itself takes.
+@export var ram_reaction_time := 0.3
+## A fighter slower than this (m/s; the player crawling along) gets strafing
+## runs like a structure (run_out_distance, min_run_distance, turn_in_speed)
+## instead of a chase: with the nose well off it and close, fly out and come
+## back, rather than circle it at its own crawl. 0 = always chase.
+@export var strafe_below_speed := 0.0
+## Turning in on such a fighter, slow down (to no less than min_speed, and
+## no faster than turn_in_speed) until it lies this many turning circles
+## outside ours, so the nose comes round onto it before we pass it. Higher =
+## slower, tighter turns.
+@export var strafe_turn_margin := 1.5
+
 @export_group("AI")
 ## How far behind an enemy fighter to sit while chasing it.
 @export var pursuit_distance := 50.0
@@ -210,6 +230,18 @@ func _attack_goal(target: Node3D, side: float) -> Vector3:
 
 	var fighter := target as Fighter
 	if fighter:
+		# About to fly into it: turn away to the side we'd pass it on.
+		if avoid_ramming:
+			var clear_side := _ram_break_direction(fighter, r, side)
+			if clear_side != Vector3.ZERO:
+				return _break_towards(clear_side, break_out_distance * 0.6)
+		var off_angle := rad_to_deg((-global_basis.z).angle_to(target_pos - global_position))
+		var strafing := fighter.speed < strafe_below_speed
+		# Too slow to chase: turning in on it from close, we circle it at its
+		# own crawl (and if it turns to face us, it out-turns us). Fly out and
+		# come back for a straight run instead.
+		if strafing and off_angle > turn_in_angle_deg and dist < r + min_run_distance:
+			return _extend_from(target_pos, r + run_out_distance)
 		# Sit behind it and match speed; break if we overshoot or meet head-on.
 		# Only close the distance when roughly facing it - charging in while
 		# it's off to the side just makes us orbit it at high speed.
@@ -217,8 +249,10 @@ func _attack_goal(target: Node3D, side: float) -> Vector3:
 		_target_speed = fighter.speed + (dist - pursuit_distance - _pursuit_offset()) * 0.8 * clampf(facing, 0.0, 1.0)
 		if facing < 0.5:
 			_target_speed = minf(_target_speed, cruise_speed)
+		if strafing and off_angle > turn_in_slow_deg:
+			_target_speed = _strafe_turn_in_speed(dist, off_angle)
 		var head_on := global_basis.z.dot(fighter.global_basis.z) < -0.5
-		if dist < r + 15.0 or (head_on and dist < 80.0):
+		if dist < r + 15.0 or (head_on and dist < 80.0 and not avoid_ramming):
 			return _start_break(target_pos, r + break_out_distance * 0.6, side)
 		return _lead_point(target)
 
@@ -264,6 +298,74 @@ func _start_break(from: Vector3, distance: float, side: float, view_margin := 0.
 		# to pick another from wherever we got to, and circle the hull.
 		point = _viewpoint(from, distance, (ours + away * 0.5).normalized(), view_margin)
 	# Long enough to get there at full speed (it may be across the target).
+	_fly_to_then_attack(point, maxf(4.0, global_position.distance_to(point) / max_speed * 1.5))
+	_engage = null
+	_target_speed = max_speed
+	return _waypoint
+
+
+## Chasing `fighter` (radius `r`): if we're on a collision course with it, the
+## direction to break towards (the side we'd pass it on, or `side` if dead
+## on), else zero. The course is our velocities held steady; we break only
+## once the closest approach is as near in time as the turn needed to open the
+## gap to ram_clearance takes (plus ram_reaction_time), which keeps head-on
+## passes firing as long as is safe. Catching it up from behind, we don't
+## break while braking (at `acceleration`) can still stop us short.
+func _ram_break_direction(fighter: Fighter, r: float, side: float) -> Vector3:
+	var offset := global_position - fighter.global_position
+	var closing := velocity - fighter.velocity
+	var closing_sq := closing.length_squared()
+	if closing_sq < 1.0:
+		return Vector3.ZERO
+	var t := -offset.dot(closing) / closing_sq
+	if t <= 0.0:
+		return Vector3.ZERO  # already moving apart
+	var miss := offset + closing * t
+	var clearance := r + radius_of(self) + ram_clearance
+	var short := clearance - miss.length()
+	if short <= 0.0:
+		return Vector3.ZERO
+	var dist := offset.length()
+	var behind := fighter.velocity.dot(-offset) > 0.0
+	if behind and closing_sq / (2.0 * acceleration) < dist - clearance:
+		return Vector3.ZERO
+	# Turning at full rate, the side force (speed × turn rate) moves us
+	# ½·a·t² off our line; the turn rate takes about 1 / turn_response to build.
+	var turn_rate := minf(pitch_rate, yaw_rate)
+	var needed := sqrt(2.0 * short / maxf(speed * turn_rate, 1.0)) + 1.0 / turn_response + ram_reaction_time
+	if t > needed:
+		return Vector3.ZERO
+	if miss.length_squared() < 1.0:
+		return global_basis.x * side
+	return miss.normalized()
+
+
+## Speed for turning in on a slow fighter `dist` away and `off_angle` degrees
+## off the nose: a point at angle θ is out of reach inside our turning circle
+## (radius speed / turn rate) while dist < 2·radius·sin θ, so fly slow enough
+## that dist is strafe_turn_margin times that.
+func _strafe_turn_in_speed(dist: float, off_angle: float) -> float:
+	var reach := 2.0 * sin(deg_to_rad(minf(off_angle, 90.0))) * strafe_turn_margin
+	return clampf(minf(pitch_rate, yaw_rate) * dist / maxf(reach, 0.01), min_speed, turn_in_speed)
+
+
+## Breaks off an attack on a fighter towards `direction` (bent along our
+## heading, so it's a turn rather than a reversal), for `distance` metres.
+func _break_towards(direction: Vector3, distance: float) -> Vector3:
+	var away := (direction - global_basis.z * 0.5).normalized()
+	_fly_to_then_attack(_clear_of_obstacles(global_position + away * distance),
+		maxf(2.0, distance / max_speed * 1.5))
+	_engage = null
+	_target_speed = max_speed
+	return _waypoint
+
+
+## Flies out from a slow fighter at `from` to `distance` from it, the way our
+## nose already points (away from it), to turn in for a straight run.
+func _extend_from(from: Vector3, distance: float) -> Vector3:
+	var ours := (global_position - from).normalized()
+	var away := (ours - global_basis.z).normalized()
+	var point := _clear_of_obstacles(from + away * distance)
 	_fly_to_then_attack(point, maxf(4.0, global_position.distance_to(point) / max_speed * 1.5))
 	_engage = null
 	_target_speed = max_speed
